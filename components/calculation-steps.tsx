@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { ReliabilityBadge } from "@/components/v1-1/reliability-badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { getEvidenceSource } from "@/lib/evidence/sources";
 import { formatEuro } from "@/lib/format";
@@ -56,9 +57,12 @@ export function CalculationSteps({ steps }: { steps: CalculationStep[] }) {
                 </span>
                 <div>
                   <p className="text-sm font-semibold text-foreground">{step.label}</p>
-                  <Badge tone={toneByConfidence[step.confidenceStatus]} className="mt-2">
-                    {labelByConfidence[step.confidenceStatus]}
-                  </Badge>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Badge tone={toneByConfidence[step.confidenceStatus]}>
+                      {labelByConfidence[step.confidenceStatus]}
+                    </Badge>
+                    <ReliabilityBadge status={step.displayStatus} />
+                  </div>
                 </div>
               </div>
               <StepField label="Entrée" value={formatStepValue(step.inputValue)} mono />

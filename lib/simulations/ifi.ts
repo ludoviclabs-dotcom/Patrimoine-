@@ -31,11 +31,15 @@ export function calculateIfi(household: Household = demoHousehold): SimulationRu
         createStep(
           "ifi-step-missing",
           1,
-          "Données immobilières incomplètes",
+          "Donnees immobilieres incompletes",
           "Valeur manquante",
-          "Abstention déterministe",
-          "Contrôle requis",
+          "Abstention deterministe",
+          "Controle requis",
           "needs_review",
+          {
+            coverageLimitIds: ["coverage-ifi-rental-simple", "coverage-ifi-sci-simple"],
+            nextAction: "Completer les valeurs immobilieres avant de relancer la simulation.",
+          },
         ),
       ],
       result: {
@@ -44,7 +48,7 @@ export function calculateIfi(household: Household = demoHousehold): SimulationRu
         taxableRealEstateBeforeDebt: null,
         deductibleDebt,
         triggered: null,
-        message: "Simulation suspendue : une valeur immobilière manque au dossier.",
+        message: "Simulation suspendue : une valeur immobiliere manque au dossier.",
       },
     };
   }
@@ -70,56 +74,102 @@ export function calculateIfi(household: Household = demoHousehold): SimulationRu
     createStep(
       "ifi-step-main-residence",
       1,
-      "Résidence principale",
+      "Residence principale",
       mainResidence,
-      "Valeur déclarée × 70 %",
+      "Valeur declaree x 70 %",
       mainResidenceTaxable,
       "indicative",
+      {
+        usedData: ["Residence principale declaree", "Abattement residence principale"],
+        intermediateResult: `${mainResidence} x 70 % = ${mainResidenceTaxable}`,
+        coverageLimitIds: ["coverage-ifi-main-residence"],
+        nextAction: "Confirmer la valeur avec un avis de valeur recent.",
+      },
     ),
     createStep(
       "ifi-step-rental",
       2,
       "Immobilier locatif",
       rental,
-      "Valeur immobilière retenue",
+      "Valeur immobiliere retenue",
       rental,
       "indicative",
+      {
+        usedData: ["Immobilier locatif declare"],
+        intermediateResult: `${rental}`,
+        coverageLimitIds: ["coverage-ifi-rental-simple"],
+        nextAction: "Verifier titres, baux et valorisation retenue.",
+      },
     ),
     createStep(
       "ifi-step-sci",
       3,
-      "Parts SCI immobilière",
+      "Parts SCI immobiliere",
       sci,
-      "Valeur immobilière à contrôler",
+      "Valeur immobiliere a controler",
       sci,
       "needs_review",
+      {
+        usedData: ["Parts SCI declarees"],
+        intermediateResult: `${sci}`,
+        coverageLimitIds: ["coverage-ifi-sci-simple", "coverage-ifi-holdings"],
+        nextAction: "Confirmer la repartition des parts et les actifs immobiliers sous-jacents.",
+      },
     ),
     createStep(
       "ifi-step-subtotal",
       4,
-      "Sous-total immobilier IFI simplifié",
+      "Sous-total immobilier IFI simplifie",
       `${mainResidenceTaxable} + ${rental} + ${sci} + ${other}`,
       "Somme des valeurs retenues",
       taxableRealEstateBeforeDebt,
       "indicative",
+      {
+        usedData: ["Residence principale", "Immobilier locatif", "Parts SCI"],
+        intermediateResult: `${mainResidenceTaxable} + ${rental} + ${sci} + ${other} = ${taxableRealEstateBeforeDebt}`,
+        coverageLimitIds: [
+          "coverage-ifi-main-residence",
+          "coverage-ifi-rental-simple",
+          "coverage-ifi-sci-simple",
+        ],
+        nextAction: "Controler les cas non couverts avant conclusion.",
+      },
     ),
     createStep(
       "ifi-step-debt",
       5,
-      "Dettes immobilières déclarées",
+      "Dettes immobilieres declarees",
       deductibleDebt,
-      "Sous conditions de déductibilité",
+      "Sous conditions de deductibilite",
       -deductibleDebt,
       "needs_review",
+      {
+        usedData: ["Dettes immobilieres declarees"],
+        intermediateResult: `${taxableRealEstateBeforeDebt} - ${deductibleDebt} = ${taxableBase}`,
+        coverageLimitIds: ["coverage-ifi-deductible-debt"],
+        nextAction: "Verifier la nature et la deductibilite de chaque dette.",
+      },
     ),
     createStep(
       "ifi-step-threshold",
       6,
-      "Base simplifiée comparée au seuil",
+      "Base simplifiee comparee au seuil",
       taxableBase,
       `Base nette ${triggered ? ">" : "<="} ${THRESHOLD}`,
       triggered ? "Alerte IFI" : "Sous seuil indicatif",
       "indicative",
+      {
+        usedData: ["Base IFI simplifiee", "Seuil IFI"],
+        intermediateResult: `${taxableBase} ${triggered ? ">" : "<="} ${THRESHOLD}`,
+        coverageLimitIds: [
+          "coverage-ifi-trusts",
+          "coverage-ifi-demembrement-complexe",
+          "coverage-ifi-actifs-pro-complexes",
+          "coverage-ifi-non-residents-complexes",
+        ],
+        nextAction:
+          "Faire relire les dettes, SCI et situations particulieres avant usage professionnel.",
+      },
     ),
   ];
 
@@ -137,8 +187,8 @@ export function calculateIfi(household: Household = demoHousehold): SimulationRu
       deductibleDebt,
       triggered,
       message: triggered
-        ? "Alerte IFI : la base simplifiée dépasse le seuil, revue professionnelle requise."
-        : "Pas d’alerte immédiate dans cette simulation, sous réserve de validation des dettes et situations particulières.",
+        ? "Alerte IFI : la base simplifiee depasse le seuil, revue professionnelle requise."
+        : "Pas d'alerte immediate dans cette simulation, sous reserve de validation des dettes et situations particulieres.",
     },
   };
 }
@@ -151,7 +201,22 @@ function createStep(
   formula: string,
   outputValue: number | string,
   confidenceStatus: CalculationStep["confidenceStatus"],
+  meta: Partial<
+    Pick<
+      CalculationStep,
+      "usedData" | "intermediateResult" | "coverageLimitIds" | "nextAction" | "displayStatus"
+    >
+  > = {},
 ): CalculationStep {
+  const statusByConfidence: Record<
+    CalculationStep["confidenceStatus"],
+    CalculationStep["displayStatus"]
+  > = {
+    validated: "validated_calculation",
+    indicative: "indicative_calculation",
+    needs_review: "professional_review_required",
+  };
+
   return {
     id,
     order,
@@ -162,5 +227,10 @@ function createStep(
     ruleVersionId: RULE_ID,
     evidenceSourceId: SOURCE_ID,
     confidenceStatus,
+    usedData: meta.usedData ?? [label],
+    intermediateResult: meta.intermediateResult ?? String(outputValue),
+    coverageLimitIds: meta.coverageLimitIds ?? ["coverage-ifi-main-residence"],
+    nextAction: meta.nextAction ?? "Conserver l'etape dans le dossier de preuve.",
+    displayStatus: meta.displayStatus ?? statusByConfidence[confidenceStatus],
   };
 }

@@ -1,42 +1,78 @@
-import type { EvidenceSource } from "@/lib/types";
+import type { EvidenceSource, SourceSnapshot } from "@/lib/types";
 
 export const evidenceSources: EvidenceSource[] = [
   {
     id: "src-service-public-ifi-2026",
-    title: "Impôt sur la fortune immobilière : seuil, résidence principale et dettes",
+    title: "Impot sur la fortune immobiliere : seuil, residence principale et dettes",
     authority: "service-public",
     url: "https://www.service-public.gouv.fr/particuliers/vosdroits/F138",
     checkedAt: "2026-05-26",
+    sourceVersion: "service-public-ifi-2026-03-06",
+    verifiedAt: "2026-05-26T08:00:00.000Z",
+    contentHash: "sp-ifi-2026-03-06-a91f",
+    summary:
+      "Seuil IFI, biens immobiliers directs et indirects, abattement residence principale et dettes deductibles sous conditions.",
+    linkedRuleIds: ["rule-ifi-simplified-2026-v1"],
+    lastControlAt: "2026-05-26T08:15:00.000Z",
+    snapshotStatus: "current",
     legalScope: "IFI",
     reliability: "official",
     status: "active",
   },
   {
     id: "src-impots-facturation-electronique-2026",
-    title: "Facturation électronique et plateformes agréées",
+    title: "Facturation electronique et plateformes agreees",
     authority: "impots",
-    url: "https://www.impots.gouv.fr/facturation-electronique-et-plateformes-partenaires",
+    url: "https://www.impots.gouv.fr/facturation-electronique-et-plateformes-agreees",
     checkedAt: "2026-05-26",
+    sourceVersion: "impots-e-invoicing-2026-05",
+    verifiedAt: "2026-05-26T08:05:00.000Z",
+    contentHash: "impots-fe-2026-05-b12c",
+    summary:
+      "Calendrier reception 2026, emission 2026/2027, plateformes agreees et obligations e-reporting.",
+    linkedRuleIds: ["rule-e-invoicing-readiness-2026-v1"],
+    lastControlAt: "2026-05-26T08:16:00.000Z",
+    snapshotStatus: "current",
     legalScope: "facturation-electronique",
     reliability: "official",
     status: "active",
   },
   {
     id: "src-cnil-aipd",
-    title: "Réaliser une analyse d’impact relative à la protection des données",
+    title: "Realiser une analyse d'impact relative a la protection des donnees",
     authority: "cnil",
     url: "https://www.cnil.fr/fr/realiser-une-analyse-dimpact-si-necessaire",
     checkedAt: "2026-05-26",
+    sourceVersion: "cnil-aipd-2026-05",
+    verifiedAt: "2026-05-26T08:10:00.000Z",
+    contentHash: "cnil-aipd-2026-05-c33d",
+    summary:
+      "Cadre AIPD pour traitements susceptibles d'engendrer un risque eleve, avec mesures de reduction et documentation.",
+    linkedRuleIds: ["rule-rgpd-dpia-demo-2026-v1", "rule-ai-governance-2026-v1"],
+    lastControlAt: "2026-05-26T08:17:00.000Z",
+    snapshotStatus: "current",
     legalScope: "rgpd",
     reliability: "official",
     status: "active",
   },
   {
     id: "src-legifrance-code-civil-transmission",
-    title: "Code civil : succession, réserve et libéralités",
+    title: "Code civil : succession, reserve et liberalites",
     authority: "legifrance",
     url: "https://www.legifrance.gouv.fr/codes/id/LEGITEXT000006070721/",
     checkedAt: "2026-05-26",
+    sourceVersion: "legifrance-code-civil-2026-05",
+    verifiedAt: "2026-05-26T08:20:00.000Z",
+    contentHash: "legifrance-civil-2026-05-d44e",
+    summary:
+      "References civiles pour succession, reserve hereditaire, liberalites et points de validation notaire.",
+    linkedRuleIds: [
+      "rule-transmission-checklist-2026-v1",
+      "rule-donation-usufruit-2026-v1",
+      "rule-sci-arbitrage-2026-v1",
+    ],
+    lastControlAt: "2026-05-26T08:30:00.000Z",
+    snapshotStatus: "to-review",
     legalScope: "transmission",
     reliability: "official",
     status: "to-review",
@@ -47,6 +83,14 @@ export const evidenceSources: EvidenceSource[] = [
     authority: "bofip",
     url: "https://bofip.impots.gouv.fr/bofip/265-PGP.html",
     checkedAt: "2026-05-26",
+    sourceVersion: "bofip-plus-value-2026-05",
+    verifiedAt: "2026-05-26T08:25:00.000Z",
+    contentHash: "bofip-pvi-2026-05-e55f",
+    summary:
+      "Structure de reference pour plus-value immobiliere avant abattements detailles et cas particuliers.",
+    linkedRuleIds: ["rule-plus-value-immobiliere-2026-v1"],
+    lastControlAt: "2026-05-26T08:31:00.000Z",
+    snapshotStatus: "to-review",
     legalScope: "plus-value",
     reliability: "official",
     status: "to-review",
@@ -57,6 +101,14 @@ export const evidenceSources: EvidenceSource[] = [
     authority: "impots",
     url: "https://www.impots.gouv.fr/particulier/questions/comment-sont-evalues-lusufruit-et-la-nue-propriete",
     checkedAt: "2026-05-26",
+    sourceVersion: "impots-usufruit-2026-05",
+    verifiedAt: "2026-05-26T08:26:00.000Z",
+    contentHash: "impots-usufruit-2026-05-f66a",
+    summary:
+      "Bareme indicatif usufruit/nue-propriete a valider dans le contexte de donation et transmission.",
+    linkedRuleIds: ["rule-donation-usufruit-2026-v1"],
+    lastControlAt: "2026-05-26T08:32:00.000Z",
+    snapshotStatus: "to-review",
     legalScope: "donation",
     reliability: "official",
     status: "to-review",
@@ -67,6 +119,14 @@ export const evidenceSources: EvidenceSource[] = [
     authority: "aife",
     url: "https://www.economie.gouv.fr/aife/facturation-electronique",
     checkedAt: "2026-05-26",
+    sourceVersion: "aife-fe-2026-05",
+    verifiedAt: "2026-05-26T08:28:00.000Z",
+    contentHash: "aife-fe-2026-05-g77b",
+    summary:
+      "Programme facturation electronique, formats et preparation operationnelle des entreprises.",
+    linkedRuleIds: ["rule-e-invoicing-readiness-2026-v1"],
+    lastControlAt: "2026-05-26T08:33:00.000Z",
+    snapshotStatus: "current",
     legalScope: "facturation-electronique",
     reliability: "official",
     status: "active",
@@ -77,12 +137,35 @@ export const evidenceSources: EvidenceSource[] = [
     authority: "commission-europeenne",
     url: "https://digital-strategy.ec.europa.eu/fr/policies/regulatory-framework-ai",
     checkedAt: "2026-05-26",
+    sourceVersion: "eu-ai-act-2026-05",
+    verifiedAt: "2026-05-26T08:35:00.000Z",
+    contentHash: "eu-ai-act-2026-05-h88c",
+    summary:
+      "Cadre de gouvernance IA utilise comme reference de prudence, sans IA runtime activee en V1.1.",
+    linkedRuleIds: ["rule-ai-governance-2026-v1"],
+    lastControlAt: "2026-05-26T08:40:00.000Z",
+    snapshotStatus: "to-review",
     legalScope: "ai-act",
     reliability: "official",
     status: "to-review",
   },
 ];
 
+export const sourceSnapshots: SourceSnapshot[] = evidenceSources.map((source) => ({
+  id: `snapshot-${source.id}`,
+  sourceId: source.id,
+  sourceVersion: source.sourceVersion,
+  capturedAt: source.verifiedAt,
+  contentHash: source.contentHash,
+  summary: source.summary,
+  linkedRuleIds: source.linkedRuleIds,
+  status: source.snapshotStatus,
+}));
+
 export function getEvidenceSource(id: string) {
   return evidenceSources.find((source) => source.id === id);
+}
+
+export function getSourceSnapshot(sourceId: string) {
+  return sourceSnapshots.find((snapshot) => snapshot.sourceId === sourceId);
 }

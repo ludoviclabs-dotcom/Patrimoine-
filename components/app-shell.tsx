@@ -7,27 +7,30 @@ import {
   ClipboardCheck,
   FileText,
   FolderKanban,
+  GitCompareArrows,
   Landmark,
   Library,
   ShieldCheck,
   Sparkles,
   UserRound,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/dashboard", label: "Synthèse", icon: BarChart3 },
+  { href: "/dashboard", label: "Synthese", icon: BarChart3 },
   { href: "/cabinet", label: "Cabinet", icon: FolderKanban },
   { href: "/client", label: "Client", icon: UserRound },
   { href: "/simulations", label: "Simulations", icon: Landmark },
+  { href: "/scenarios", label: "Scenarios", icon: GitCompareArrows },
   { href: "/evidence", label: "Sources", icon: Library },
   { href: "/review", label: "Revue", icon: ClipboardCheck },
   { href: "/report", label: "Rapport", icon: FileText },
-  { href: "/compliance", label: "Conformité", icon: ShieldCheck },
+  { href: "/compliance", label: "Conformite", icon: ShieldCheck },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   return (
@@ -57,7 +60,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition",
+                    "flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)]",
                     active
                       ? "bg-[var(--surface-strong)] text-white"
                       : "text-muted hover:bg-[var(--surface-soft)] hover:text-foreground",
@@ -73,10 +76,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mt-auto hidden rounded-lg border border-border bg-[var(--surface-soft)] p-4 lg:block">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
               <Sparkles className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-              V1 socle cabinet
+              V1.1 confiance
             </div>
             <p className="text-sm leading-6 text-muted">
-              Règles déterministes, sources versionnées, tenant pilote et revue humaine.
+              Simulations indicatives, sources versionnees, limites visibles et revue humaine.
             </p>
           </div>
         </div>
@@ -96,7 +99,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <Link
               href="/report"
-              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--surface-strong)] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#223029]"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[var(--surface-strong)] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#223029] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
               <FileText className="h-4 w-4" aria-hidden="true" />
               Rapport

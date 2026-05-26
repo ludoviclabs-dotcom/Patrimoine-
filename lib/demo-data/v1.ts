@@ -93,6 +93,12 @@ export const demoDocuments: DocumentRecord[] = [
     storageProvider: "demo-placeholder",
     required: true,
     updatedAt: "2026-05-26T09:30:00.000Z",
+    dataQuality: {
+      status: "supporting_document_received",
+      supportingDocumentId: "doc-tax-notice-2025",
+      expectedAction: "Controler la coherence avec les revenus et liquidites declares.",
+      validationStatus: "pending",
+    },
   },
   {
     id: "doc-loan-contracts",
@@ -105,6 +111,12 @@ export const demoDocuments: DocumentRecord[] = [
     storageProvider: "demo-placeholder",
     required: true,
     updatedAt: "2026-05-26T09:40:00.000Z",
+    dataQuality: {
+      status: "supporting_document_received",
+      supportingDocumentId: "doc-loan-contracts",
+      expectedAction: "Extraire le capital restant du par pret et rattacher aux actifs.",
+      validationStatus: "pending",
+    },
   },
   {
     id: "doc-company-statutes",
@@ -117,6 +129,12 @@ export const demoDocuments: DocumentRecord[] = [
     storageProvider: "vercel-blob-private",
     required: true,
     updatedAt: "2026-05-26T10:00:00.000Z",
+    dataQuality: {
+      status: "user_declared",
+      supportingDocumentId: "doc-company-statutes",
+      expectedAction: "Recevoir les statuts et la table de capitalisation.",
+      validationStatus: "not_started",
+    },
   },
   {
     id: "doc-life-insurance",
@@ -129,6 +147,12 @@ export const demoDocuments: DocumentRecord[] = [
     storageProvider: "vercel-blob-private",
     required: true,
     updatedAt: "2026-05-26T10:00:00.000Z",
+    dataQuality: {
+      status: "estimated",
+      supportingDocumentId: "doc-life-insurance",
+      expectedAction: "Collecter contrats, valeurs de rachat et clauses beneficiaires.",
+      validationStatus: "not_started",
+    },
   },
   {
     id: "doc-family-record",
@@ -141,6 +165,12 @@ export const demoDocuments: DocumentRecord[] = [
     storageProvider: "demo-placeholder",
     required: true,
     updatedAt: "2026-05-26T10:10:00.000Z",
+    dataQuality: {
+      status: "professional_validated",
+      supportingDocumentId: "doc-family-record",
+      expectedAction: "Confirmer le regime matrimonial avec le notaire.",
+      validationStatus: "validated",
+    },
   },
 ];
 
@@ -206,6 +236,28 @@ export const demoDpiaRecords: DpiaRecord[] = [
 ];
 
 export const demoV1AuditLogs: readonly AuditLogEntry[] = Object.freeze([
+  Object.freeze({
+    id: "audit-v1-006",
+    tenantId: demoTenant.id,
+    actorUserId: "user-conseiller-marie",
+    action: "report.exported",
+    entityType: "case",
+    entityId: "case-claire-marc-2026",
+    createdAt: "2026-05-26T10:50:00.000Z",
+    summary: "Rapport professionnel imprime en PDF navigateur.",
+    metadata: { status: "indicative", validated: false },
+  }),
+  Object.freeze({
+    id: "audit-v1-005",
+    tenantId: demoTenant.id,
+    actorUserId: "user-conseiller-marie",
+    action: "scenario.compared",
+    entityType: "simulation",
+    entityId: "scenario-comparison-claire-marc",
+    createdAt: "2026-05-26T10:45:00.000Z",
+    summary: "Comparateur de scenarios V1.1 ouvert en rendez-vous cabinet.",
+    metadata: { scenarios: 5 },
+  }),
   Object.freeze({
     id: "audit-v1-004",
     tenantId: demoTenant.id,

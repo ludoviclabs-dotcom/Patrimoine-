@@ -29,7 +29,17 @@ function step(
   ruleVersionId: string,
   evidenceSourceId: string,
   confidenceStatus: CalculationStep["confidenceStatus"] = "indicative",
+  coverageLimitIds: string[] = ["coverage-donation-usufruit-simple"],
 ): CalculationStep {
+  const statusByConfidence: Record<
+    CalculationStep["confidenceStatus"],
+    CalculationStep["displayStatus"]
+  > = {
+    validated: "validated_calculation",
+    indicative: "indicative_calculation",
+    needs_review: "professional_review_required",
+  };
+
   return {
     id,
     order,
@@ -40,6 +50,11 @@ function step(
     ruleVersionId,
     evidenceSourceId,
     confidenceStatus,
+    usedData: [label],
+    intermediateResult: String(outputValue),
+    coverageLimitIds,
+    nextAction: "Faire relire cette hypothese avant usage professionnel.",
+    displayStatus: statusByConfidence[confidenceStatus],
   };
 }
 
@@ -85,6 +100,8 @@ export function simulateDismemberedDonation({
         bareOwnershipValue,
         donationRuleId,
         donationSourceId,
+        "indicative",
+        ["coverage-donation-usufruit-simple"],
       ),
     ],
   };
@@ -124,6 +141,8 @@ export function simulateRealEstateGain({
         grossGain,
         plusValueRuleId,
         plusValueSourceId,
+        "indicative",
+        ["coverage-plus-value-structure"],
       ),
       step(
         "plus-value-step-costs",
@@ -135,6 +154,7 @@ export function simulateRealEstateGain({
         plusValueRuleId,
         plusValueSourceId,
         "needs_review",
+        ["coverage-plus-value-structure"],
       ),
     ],
   };
@@ -176,6 +196,8 @@ export function simulateSciArbitrage({
         netExposure,
         sciRuleId,
         sciSourceId,
+        "indicative",
+        ["coverage-sci-arbitrage"],
       ),
       step(
         "sci-step-cashflow",
@@ -187,6 +209,7 @@ export function simulateSciArbitrage({
         sciRuleId,
         sciSourceId,
         "needs_review",
+        ["coverage-sci-arbitrage"],
       ),
     ],
   };

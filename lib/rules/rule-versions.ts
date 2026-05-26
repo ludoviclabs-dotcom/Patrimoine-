@@ -4,7 +4,7 @@ export const ruleVersions: RuleVersion[] = [
   {
     id: "rule-ifi-simplified-2026-v1",
     ruleSet: "ifi",
-    version: "2026.1-demo",
+    version: "IFI-2026.03",
     title: "IFI simplifié : résidence principale, immobilier taxable et dette immobilière",
     effectiveFrom: "2026-01-01",
     status: "active",

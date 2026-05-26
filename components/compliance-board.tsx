@@ -1,6 +1,7 @@
 import { BrainCircuit, FileText, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { aiGovernancePolicy } from "@/lib/compliance/ai-governance";
 import { aiGovernanceChecklist, dpiaSummary, processingRegister, retentionPolicy } from "@/lib/compliance/registry";
 
 export function ComplianceBoard() {
@@ -70,6 +71,7 @@ export function ComplianceBoard() {
             </div>
             <BrainCircuit className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
           </CardHeader>
+          <Badge tone="danger">Runtime IA : {aiGovernancePolicy.runtimeStatus}</Badge>
           <ul className="space-y-3 text-sm leading-6 text-muted">
             {aiGovernanceChecklist.map((item) => (
               <li key={item} className="rounded-lg border border-border p-3">

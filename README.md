@@ -1,6 +1,6 @@
 # Patrimoine Fiscal Demo
 
-V0 demonstrateur evidence-first pour une plateforme patrimoniale et fiscale francaise.
+Demonstrateur evidence-first pour une plateforme patrimoniale et fiscale francaise.
 
 La promesse du produit est volontairement stricte :
 
@@ -15,9 +15,9 @@ La promesse du produit est volontairement stricte :
 - TypeScript strict
 - Tailwind CSS
 - Composants UI locaux inspires de shadcn/ui
-- Drizzle ORM + schema Postgres V1
+- Drizzle ORM + schema Postgres V1/V1.1
 - Vercel Blob adapter pret a brancher pour pieces privees
-- Fixtures TypeScript pour la V0
+- Fixtures TypeScript pour le mode demo
 - Vitest pour les golden cases
 - Playwright pour le parcours demo
 
@@ -44,16 +44,17 @@ Le test e2e peut etre lance avec :
 npm run e2e
 ```
 
-## Parcours V0
+## Parcours demo
 
 - `/dashboard` : synthese patrimoniale Claire et Marc.
-- `/cabinet` : portail cabinet V1 avec tenant, roles, dossiers et moteurs avances.
-- `/client` : collecte documentaire, consentements et droits client.
-- `/simulations` : IFI simplifie, transmission, facturation electronique.
-- `/evidence` : sources officielles et regles versionnees.
+- `/cabinet` : cockpit cabinet V1.1 avec completude, data quality, radar, timeline, coverage limits et watcher.
+- `/client` : collecte documentaire, completude, data quality, consentements et droits client.
+- `/simulations` : IFI simplifie, transmission, facturation electronique et panneau "Pourquoi ce resultat ?".
+- `/scenarios` : comparateur 5 scenarios, radar de vigilance, timeline et checklist rendez-vous.
+- `/evidence` : sources officielles enrichies, snapshots, regles versionnees, diff de regles et watcher.
 - `/review` : validation humaine et audit append-only.
-- `/report` : rapport imprimable / export PDF via navigateur.
-- `/compliance` : registre RGPD, AIPD pilote et gouvernance IA.
+- `/report` : rapport professionnel enrichi / export PDF via navigateur.
+- `/compliance` : registre RGPD, AIPD pilote et gouvernance IA runtime desactivee.
 
 ## Donnees demo
 
@@ -84,6 +85,19 @@ Persona : Claire et Marc, dirigeants d'une PME, deux enfants.
 - Moteurs additionnels indicatifs : donation demembree, plus-value immobiliere,
   arbitrage SCI.
 - Registre RGPD, AIPD pilote, politique de conservation et garde-fous IA.
+
+## Couche V1.1 ajoutee
+
+- Score de completude dossier Claire/Marc : 72 %, avec manquants explicites.
+- Data quality status sur actifs, passifs et documents critiques.
+- Badges de fiabilite sur les resultats et `calculation_steps` enrichies.
+- Limites de couverture visibles : couvert, partiel, non couvert V1.
+- Evidence Center enrichi : sourceVersion, verifiedAt, contentHash, resume, regles liees.
+- Source snapshots et watcher demo via `/api/cron/source-watch`.
+- Comparateur 5 scenarios, radar de vigilance, timeline patrimoniale.
+- 7 personas fictifs et checklists rendez-vous cabinet.
+- `vercel.json` avec cron quotidien vers `/api/cron/source-watch`.
+- Routes API demo : completeness, coverage, source-snapshots, scenario-comparisons, personas.
 
 ## Prochaine etape
 

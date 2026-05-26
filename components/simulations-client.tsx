@@ -5,6 +5,8 @@ import { CheckCircle2, PlayCircle } from "lucide-react";
 import { AuditTrail, type AuditEvent } from "@/components/audit-trail";
 import { CalculationSteps } from "@/components/calculation-steps";
 import { Button } from "@/components/ui/button";
+import { CoverageLimitsPanel } from "@/components/v1-1/coverage-limits-panel";
+import { WhyThisResultPanel } from "@/components/v1-1/why-this-result-panel";
 import { formatEuro } from "@/lib/format";
 import type { calculateIfi } from "@/lib/simulations/ifi";
 import { EInvoicingPanel, IfiSummaryPanel, TransmissionPanel } from "@/components/scenario-panels";
@@ -27,6 +29,7 @@ export function SimulationsClient({
 }) {
   const [active, setActive] = useState<ScenarioKey>("ifi");
   const [events, setEvents] = useState<AuditEvent[]>(initialAudit);
+  const [showWhy, setShowWhy] = useState(false);
 
   const launchSimulation = () => {
     const now = new Date();
@@ -62,10 +65,17 @@ export function SimulationsClient({
           threshold={formatEuro(ifiRun.result.threshold)}
           message={ifiRun.result.message}
         />
+        <div className="flex flex-wrap gap-3">
+          <Button type="button" onClick={() => setShowWhy((current) => !current)}>
+            Pourquoi ce resultat ?
+          </Button>
+        </div>
+        {showWhy ? <WhyThisResultPanel step={ifiRun.steps[0]} /> : null}
         <CalculationSteps steps={ifiRun.steps} />
+        <CoverageLimitsPanel module="ifi" />
       </div>
     );
-  }, [active, ifiRun]);
+  }, [active, ifiRun, showWhy]);
 
   return (
     <div className="space-y-6">

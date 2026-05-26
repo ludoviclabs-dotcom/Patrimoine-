@@ -1,6 +1,8 @@
 import { AppShell } from "@/components/app-shell";
 import { DocumentChecklist } from "@/components/document-checklist";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { CompletenessScorePanel } from "@/components/v1-1/completeness-score-panel";
+import { DataQualityPanel } from "@/components/v1-1/data-quality-panel";
 
 export default function ClientPortalPage() {
   return (
@@ -13,7 +15,9 @@ export default function ClientPortalPage() {
             d&apos;export ou suppression des données.
           </p>
         </section>
+        <CompletenessScorePanel />
         <DocumentChecklist />
+        <DataQualityPanel />
         <Card>
           <CardHeader>
             <div>

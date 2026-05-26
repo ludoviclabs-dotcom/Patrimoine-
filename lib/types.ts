@@ -27,9 +27,49 @@ export type EvidenceSource = {
   authority: EvidenceAuthority;
   url: string;
   checkedAt: string;
+  sourceVersion: string;
+  verifiedAt: string;
+  contentHash: string;
+  summary: string;
+  linkedRuleIds: string[];
+  lastControlAt: string;
+  snapshotStatus: "current" | "to-review" | "archived";
   legalScope: LegalScope;
   reliability: "official" | "professional" | "internal";
   status: "active" | "to-review" | "archived";
+};
+
+export type ReliabilityStatus =
+  | "validated_calculation"
+  | "indicative_calculation"
+  | "user_assumption"
+  | "official_source"
+  | "professional_review_required"
+  | "not_covered_v1";
+
+export type DataQualityStatus =
+  | "user_declared"
+  | "supporting_document_received"
+  | "estimated"
+  | "external_source"
+  | "professional_validated";
+
+export type CoverageStatus = "covered" | "partially_covered" | "not_covered_v1";
+
+export type CoverageLimit = {
+  id: string;
+  module: "ifi" | "transmission" | "facturation-electronique" | "donation" | "plus-value" | "sci";
+  label: string;
+  status: CoverageStatus;
+  explanation: string;
+  requiredProfessional?: "notaire" | "avocat" | "expert-comptable" | "cgp";
+};
+
+export type DataQualityProfile = {
+  status: DataQualityStatus;
+  supportingDocumentId?: string;
+  expectedAction: string;
+  validationStatus: "not_started" | "pending" | "validated";
 };
 
 export type CalculationStep = {
@@ -42,6 +82,11 @@ export type CalculationStep = {
   ruleVersionId: string;
   evidenceSourceId: string;
   confidenceStatus: "validated" | "indicative" | "needs_review";
+  usedData: string[];
+  intermediateResult: string;
+  coverageLimitIds: string[];
+  nextAction: string;
+  displayStatus: ReliabilityStatus;
 };
 
 export type SimulationRun = {
@@ -73,6 +118,7 @@ export type Asset = {
   category: AssetCategory;
   value: number;
   ifiKind?: "main-residence" | "rental" | "sci" | "excluded";
+  dataQuality: DataQualityProfile;
 };
 
 export type Liability = {
@@ -80,6 +126,7 @@ export type Liability = {
   label: string;
   value: number;
   linkedCategory: "real-estate" | "company" | "personal";
+  dataQuality: DataQualityProfile;
 };
 
 export type Household = {
@@ -197,6 +244,7 @@ export type DocumentRecord = {
   blobPath?: string;
   required: boolean;
   updatedAt: string;
+  dataQuality: DataQualityProfile;
 };
 
 export type ReviewDecision = "pending" | "approved" | "changes_requested" | "rejected";
@@ -220,7 +268,11 @@ export type AuditAction =
   | "review.decided"
   | "data.export.requested"
   | "data.deletion.requested"
-  | "source.checked";
+  | "source.checked"
+  | "source.changed"
+  | "rule.updated"
+  | "scenario.compared"
+  | "report.exported";
 
 export type AuditLogEntry = {
   id: string;
@@ -251,4 +303,113 @@ export type DpiaRecord = {
   status: "draft" | "in_review" | "approved";
   lastReviewedAt: string;
   mitigations: string[];
+};
+
+export type CompletenessScore = {
+  householdId: string;
+  score: number;
+  missingItems: string[];
+  checkedItems: string[];
+  status: "incomplete" | "ready_for_simulation" | "review_required";
+};
+
+export type SourceSnapshot = {
+  id: string;
+  sourceId: string;
+  sourceVersion: string;
+  capturedAt: string;
+  contentHash: string;
+  summary: string;
+  linkedRuleIds: string[];
+  status: "current" | "changed" | "to-review" | "archived";
+};
+
+export type RuleDiff = {
+  id: string;
+  fromVersion: string;
+  toVersion: string;
+  changedField: string;
+  impact: string;
+  dossiersToRecalculate: number;
+  status: "fixture" | "review_required";
+};
+
+export type ScenarioComparison = {
+  id: string;
+  label: string;
+  netWealthEstimate: number;
+  availableLiquidity: number;
+  legalComplexity: "faible" | "moderee" | "elevee";
+  taxRisk: "faible" | "moyen" | "eleve";
+  requiredDocuments: string[];
+  requiredValidation: string;
+  transmissionImpact: string;
+};
+
+export type RiskRadarAxis =
+  | "fiscalite"
+  | "transmission"
+  | "liquidite"
+  | "concentration_immobiliere"
+  | "dette"
+  | "documentation"
+  | "conformite_entreprise";
+
+export type RiskRadarItem = {
+  axis: RiskRadarAxis;
+  vigilanceLevel: 1 | 2 | 3 | 4 | 5;
+  label: string;
+  rationale: string;
+};
+
+export type TimelineEvent = {
+  id: string;
+  year: string;
+  title: string;
+  description: string;
+  status: "regulatory" | "planned" | "to-review";
+};
+
+export type DemoPersona = {
+  id: string;
+  name: string;
+  profile: string;
+  demoObjective: string;
+  prefilledData: string[];
+  suggestedScenarios: string[];
+  expectedResults: string[];
+  missingDocuments: string[];
+  sourceIds: string[];
+  sampleReportId: string;
+};
+
+export type MeetingBrief = {
+  id: string;
+  audience: "expert-comptable" | "notaire" | "avocat-fiscaliste" | "cgp";
+  title: string;
+  dossierSummary: string;
+  questions: string[];
+  documentsToBring: string[];
+  taxPointsToValidate: string[];
+  testedScenarios: string[];
+};
+
+export type SourceWatchResult = {
+  sourceId: string;
+  previousHash: string;
+  currentHash: string;
+  status: "unchanged" | "changed" | "failed";
+  checkedAt: string;
+  recommendedAction: string;
+};
+
+export type AiAssistanceStatus = "disabled" | "draft_only" | "enabled_with_review";
+
+export type AiGovernancePolicy = {
+  id: string;
+  runtimeStatus: AiAssistanceStatus;
+  allowedUses: string[];
+  prohibitedUses: string[];
+  citationRequired: boolean;
+  abstentionRequired: boolean;
 };
