@@ -13,5 +13,5 @@ test("core demo workflow", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Service-Public" }).first()).toBeVisible();
 
   await page.getByLabel("Navigation principale").getByRole("link", { name: "Rapport" }).click();
-  await expect(page.getByText(/Analyse indicative, à valider par un professionnel habilité/)).toBeVisible();
+  await expect(page.getByText(/analyse indicative, à valider par un professionnel habilité/i)).toBeVisible();
 });

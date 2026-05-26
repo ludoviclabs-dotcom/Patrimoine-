@@ -10,7 +10,7 @@ export const percentFormatter = new Intl.NumberFormat("fr-FR", {
 });
 
 export function formatEuro(value: number) {
-  return euroFormatter.format(value).replace(/\s€/, " €");
+  return `${formatNumber(value)} €`;
 }
 
 export function formatNumber(value: number) {

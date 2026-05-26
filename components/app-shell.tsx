@@ -4,20 +4,27 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  ClipboardCheck,
   FileText,
+  FolderKanban,
   Landmark,
   Library,
   ShieldCheck,
   Sparkles,
+  UserRound,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "Synthèse", icon: BarChart3 },
+  { href: "/cabinet", label: "Cabinet", icon: FolderKanban },
+  { href: "/client", label: "Client", icon: UserRound },
   { href: "/simulations", label: "Simulations", icon: Landmark },
   { href: "/evidence", label: "Sources", icon: Library },
+  { href: "/review", label: "Revue", icon: ClipboardCheck },
   { href: "/report", label: "Rapport", icon: FileText },
+  { href: "/compliance", label: "Conformité", icon: ShieldCheck },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -66,10 +73,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="mt-auto hidden rounded-lg border border-border bg-[var(--surface-soft)] p-4 lg:block">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
               <Sparkles className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-              V0 sans runtime IA
+              V1 socle cabinet
             </div>
             <p className="text-sm leading-6 text-muted">
-              Règles déterministes, sources versionnées et revue humaine explicite.
+              Règles déterministes, sources versionnées, tenant pilote et revue humaine.
             </p>
           </div>
         </div>
