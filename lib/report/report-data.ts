@@ -9,7 +9,7 @@ export function getReportSummary(household: Household) {
     liquidity: getLiquidity(household),
     allocation: getAllocation(household),
     limits:
-      "Analyse indicative, à valider par un professionnel habilité avant toute décision juridique, fiscale ou patrimoniale.",
+      "analyse indicative, à valider par un professionnel habilité avant toute décision juridique, fiscale ou patrimoniale.",
     openQuestions: [
       "Nature exacte et déductibilité des dettes immobilières.",
       "Composition détaillée des parts SCI et éventuelles exonérations.",
