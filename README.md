@@ -49,12 +49,15 @@ npm run e2e
 - `/dashboard` : synthese patrimoniale Claire et Marc.
 - `/cabinet` : cockpit cabinet V1.1 avec completude, data quality, radar, timeline, coverage limits et watcher.
 - `/client` : collecte documentaire, completude, data quality, consentements et droits client.
+- `/workflow` : dossier, saisie actifs/passifs, simulation persistable, replay, revue et rapport versionne.
 - `/simulations` : IFI simplifie, transmission, facturation electronique et panneau "Pourquoi ce resultat ?".
 - `/scenarios` : comparateur 5 scenarios, radar de vigilance, timeline et checklist rendez-vous.
 - `/evidence` : sources officielles enrichies, snapshots, regles versionnees, diff de regles et watcher.
+- `/admin/evidence` : controle des sources, hash, alertes et impact dossiers.
 - `/review` : validation humaine et audit append-only.
 - `/report` : rapport professionnel enrichi / export PDF via navigateur.
 - `/compliance` : registre RGPD, AIPD pilote et gouvernance IA runtime desactivee.
+- `/pilot` : cas pilote, script commercial 7 minutes, deck et mentions non-conseil.
 
 ## Donnees demo
 
@@ -104,3 +107,14 @@ Persona : Claire et Marc, dirigeants d'une PME, deux enfants.
 Brancher un provider Postgres Marketplace, choisir le provider auth, configurer
 Vercel Blob prive, puis remplacer progressivement les fixtures V1 par les
 repositories Postgres.
+
+## Couche V1.2 ajoutee
+
+- Isolation tenant/cabinet/client renforcee, tests roles et politiques documentaires privees.
+- `CRON_SECRET` requis en production pour `/api/cron/source-watch`.
+- Contrat audit insert-only pret Postgres.
+- Workflow metier demo via APIs : cases, assets, liabilities, simulations, replays,
+  review decisions, report versions.
+- Evidence control : hash SHA-256, fetch controle optionnel avec `EVIDENCE_LIVE_CHECKS=enabled`,
+  alertes et diff de regles.
+- Pack produit pilote : 3 cas, script 7 minutes, deck, mentions RGPD/non-conseil.

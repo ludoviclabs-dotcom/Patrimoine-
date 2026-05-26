@@ -61,6 +61,7 @@ export const demoClients: ClientRecord[] = [
     tenantId: demoTenant.id,
     householdId: demoHousehold.id,
     ownerUserId: "user-conseiller-marie",
+    clientUserId: "user-client-claire",
     name: "Claire et Marc",
     riskLevel: "sensitive",
     createdAt: "2026-05-26T09:10:00.000Z",

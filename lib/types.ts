@@ -196,6 +196,7 @@ export type ClientRecord = {
   tenantId: string;
   householdId: string;
   ownerUserId: string;
+  clientUserId?: string;
   name: string;
   riskLevel: "standard" | "sensitive" | "high";
   createdAt: string;
@@ -401,6 +402,77 @@ export type SourceWatchResult = {
   status: "unchanged" | "changed" | "failed";
   checkedAt: string;
   recommendedAction: string;
+};
+
+export type DemoRequestContext = {
+  mode: "demo-fixtures";
+  tenantId: string;
+  userId: string;
+  role: UserRole;
+};
+
+export type DocumentUploadPolicy = {
+  provider: "vercel-blob-private" | "demo-placeholder";
+  visibility: "private";
+  allowPublicUrl: false;
+  maxSizeMb: number;
+  acceptedKinds: DocumentKind[];
+  reason: string;
+};
+
+export type PersistedSimulationRun = SimulationRun & {
+  tenantId: string;
+  caseId: string;
+  ruleSnapshotId: string;
+  inputSnapshotId: string;
+  replayable: true;
+  result: IfiResult;
+};
+
+export type SimulationReplay = {
+  previousRunId: string;
+  replayRunId: string;
+  changedFields: string[];
+  previousTaxableBase: number | null;
+  replayTaxableBase: number | null;
+  status: "unchanged" | "changed" | "needs_review";
+};
+
+export type ReportVersion = {
+  id: string;
+  tenantId: string;
+  caseId: string;
+  version: string;
+  status: "draft" | "issued_for_review" | "validated";
+  generatedAt: string;
+  simulationRunIds: string[];
+  reviewerUserId?: string;
+  validationDecision: ReviewDecision;
+  evidenceSourceIds: string[];
+  coverageLimitIds: string[];
+};
+
+export type EvidenceControlResult = {
+  sourceId: string;
+  url: string;
+  previousHash: string;
+  currentHash: string;
+  status: "unchanged" | "changed" | "failed";
+  checkedAt: string;
+  alert: boolean;
+  recommendedAction: string;
+  error?: string;
+};
+
+export type RuleDiffImpact = {
+  id: string;
+  ruleVersionId: string;
+  sourceId: string;
+  fromHash: string;
+  toHash: string;
+  impactedCaseIds: string[];
+  recommendedAction: string;
+  status: "review_required" | "no_action";
 };
 
 export type AiAssistanceStatus = "disabled" | "draft_only" | "enabled_with_review";

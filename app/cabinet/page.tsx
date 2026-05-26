@@ -8,6 +8,7 @@ import { PersonaLibrary } from "@/components/v1-1/persona-library";
 import { PatrimonialTimeline } from "@/components/v1-1/patrimonial-timeline";
 import { RiskRadar } from "@/components/v1-1/risk-radar";
 import { SourceWatchPanel } from "@/components/v1-1/source-watch-panel";
+import { SecurityBoard } from "@/components/v1-2/security-board";
 import { demoPersonas } from "@/lib/demo-data/personas";
 import { patrimonialTimeline, riskRadarItems } from "@/lib/scenario-comparisons/comparisons";
 
@@ -24,6 +25,7 @@ export default function CabinetPage() {
         </section>
 
         <CompletenessScorePanel />
+        <SecurityBoard />
         <V1StatusBoard />
 
         <section className="grid gap-6 xl:grid-cols-[1fr_420px]">

@@ -53,6 +53,10 @@ export const auditActionEnum = pgEnum("audit_action", [
   "data.export.requested",
   "data.deletion.requested",
   "source.checked",
+  "source.changed",
+  "rule.updated",
+  "scenario.compared",
+  "report.exported",
 ]);
 
 export const tenants = pgTable("tenants", {
@@ -211,6 +215,13 @@ export const evidenceSources = pgTable("evidence_sources", {
   legalScope: varchar("legal_scope", { length: 80 }).notNull(),
   reliability: varchar("reliability", { length: 32 }).notNull(),
   status: varchar("status", { length: 32 }).notNull(),
+  sourceVersion: varchar("source_version", { length: 120 }),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  contentHash: varchar("content_hash", { length: 160 }),
+  summary: text("summary"),
+  linkedRuleIds: jsonb("linked_rule_ids").$type<string[]>(),
+  lastControlAt: timestamp("last_control_at", { withTimezone: true }),
+  snapshotStatus: varchar("snapshot_status", { length: 32 }),
 });
 
 export const ruleVersions = pgTable("rule_versions", {
@@ -308,6 +319,65 @@ export const auditLogs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("audit_tenant_created_idx").on(table.tenantId, table.createdAt)],
+);
+
+export const sourceSnapshots = pgTable(
+  "source_snapshots",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    sourceId: varchar("source_id", { length: 120 })
+      .notNull()
+      .references(() => evidenceSources.id),
+    sourceVersion: varchar("source_version", { length: 120 }).notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+    contentHash: varchar("content_hash", { length: 160 }).notNull(),
+    summary: text("summary").notNull(),
+    linkedRuleIds: jsonb("linked_rule_ids").$type<string[]>().notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+  },
+  (table) => [index("source_snapshots_source_idx").on(table.sourceId)],
+);
+
+export const ruleDiffs = pgTable(
+  "rule_diffs",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    ruleVersionId: varchar("rule_version_id", { length: 120 })
+      .notNull()
+      .references(() => ruleVersions.id),
+    sourceId: varchar("source_id", { length: 120 })
+      .notNull()
+      .references(() => evidenceSources.id),
+    fromHash: varchar("from_hash", { length: 160 }).notNull(),
+    toHash: varchar("to_hash", { length: 160 }).notNull(),
+    impactedCaseIds: jsonb("impacted_case_ids").$type<string[]>().notNull(),
+    recommendedAction: text("recommended_action").notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("rule_diffs_source_idx").on(table.sourceId)],
+);
+
+export const reportVersions = pgTable(
+  "report_versions",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => clientCases.id),
+    version: varchar("version", { length: 64 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    simulationRunIds: jsonb("simulation_run_ids").$type<string[]>().notNull(),
+    reviewerUserId: uuid("reviewer_user_id").references(() => users.id),
+    validationDecision: reviewDecisionEnum("validation_decision").notNull().default("pending"),
+    evidenceSourceIds: jsonb("evidence_source_ids").$type<string[]>().notNull(),
+    coverageLimitIds: jsonb("coverage_limit_ids").$type<string[]>().notNull(),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("report_versions_case_idx").on(table.caseId)],
 );
 
 export const consents = pgTable(

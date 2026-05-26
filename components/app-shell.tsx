@@ -8,8 +8,10 @@ import {
   FileText,
   FolderKanban,
   GitCompareArrows,
+  KeyRound,
   Landmark,
   Library,
+  Presentation,
   ShieldCheck,
   Sparkles,
   UserRound,
@@ -22,12 +24,15 @@ const navItems = [
   { href: "/dashboard", label: "Synthese", icon: BarChart3 },
   { href: "/cabinet", label: "Cabinet", icon: FolderKanban },
   { href: "/client", label: "Client", icon: UserRound },
+  { href: "/workflow", label: "Workflow", icon: KeyRound },
   { href: "/simulations", label: "Simulations", icon: Landmark },
   { href: "/scenarios", label: "Scenarios", icon: GitCompareArrows },
   { href: "/evidence", label: "Sources", icon: Library },
+  { href: "/admin/evidence", label: "Admin preuve", icon: ShieldCheck },
   { href: "/review", label: "Revue", icon: ClipboardCheck },
   { href: "/report", label: "Rapport", icon: FileText },
   { href: "/compliance", label: "Conformite", icon: ShieldCheck },
+  { href: "/pilot", label: "Pilotage", icon: Presentation },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
