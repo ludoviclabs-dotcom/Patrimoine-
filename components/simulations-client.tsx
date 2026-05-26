@@ -1,0 +1,104 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { CheckCircle2, PlayCircle } from "lucide-react";
+import { AuditTrail, type AuditEvent } from "@/components/audit-trail";
+import { CalculationSteps } from "@/components/calculation-steps";
+import { Button } from "@/components/ui/button";
+import { formatEuro } from "@/lib/format";
+import type { calculateIfi } from "@/lib/simulations/ifi";
+import { EInvoicingPanel, IfiSummaryPanel, TransmissionPanel } from "@/components/scenario-panels";
+
+type ScenarioKey = "ifi" | "transmission" | "facturation-electronique";
+type IfiRun = ReturnType<typeof calculateIfi>;
+
+const labels: Record<ScenarioKey, string> = {
+  ifi: "IFI",
+  transmission: "Transmission",
+  "facturation-electronique": "Facturation électronique",
+};
+
+export function SimulationsClient({
+  ifiRun,
+  initialAudit,
+}: {
+  ifiRun: IfiRun;
+  initialAudit: AuditEvent[];
+}) {
+  const [active, setActive] = useState<ScenarioKey>("ifi");
+  const [events, setEvents] = useState<AuditEvent[]>(initialAudit);
+
+  const launchSimulation = () => {
+    const now = new Date();
+    const stamped = new Intl.DateTimeFormat("fr-FR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(now);
+
+    setEvents((current) => [
+      {
+        id: `audit-local-${now.getTime()}`,
+        at: stamped,
+        actor: labels[active],
+        event: `Simulation ${labels[active]} lancée en mode demo`,
+      },
+      ...current,
+    ]);
+  };
+
+  const activePanel = useMemo(() => {
+    if (active === "transmission") {
+      return <TransmissionPanel />;
+    }
+
+    if (active === "facturation-electronique") {
+      return <EInvoicingPanel />;
+    }
+
+    return (
+      <div className="space-y-5">
+        <IfiSummaryPanel
+          taxableBase={formatEuro(ifiRun.result.taxableBase ?? 0)}
+          threshold={formatEuro(ifiRun.result.threshold)}
+          message={ifiRun.result.message}
+        />
+        <CalculationSteps steps={ifiRun.steps} />
+      </div>
+    );
+  }, [active, ifiRun]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 rounded-lg border border-border bg-white p-4 shadow-[var(--shadow)] lg:flex-row lg:items-center">
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Scénarios">
+          {(Object.keys(labels) as ScenarioKey[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={active === key}
+              onClick={() => setActive(key)}
+              className={`inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold transition ${
+                active === key
+                  ? "bg-[var(--surface-strong)] text-white"
+                  : "bg-[var(--surface-soft)] text-muted hover:text-foreground"
+              }`}
+            >
+              {active === key ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> : null}
+              {labels[key]}
+            </button>
+          ))}
+        </div>
+        <Button type="button" onClick={launchSimulation}>
+          <PlayCircle className="h-4 w-4" aria-hidden="true" />
+          Lancer simulation
+        </Button>
+      </div>
+
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[1fr_360px]">
+        <div className="min-w-0">{activePanel}</div>
+        <AuditTrail events={events} />
+      </div>
+    </div>
+  );
+}

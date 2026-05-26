@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f8f5;
+  --foreground: #17201d;
+  --muted: #66736d;
+  --muted-2: #8a958f;
+  --border: #dde3dd;
+  --surface: #ffffff;
+  --surface-soft: #eef4ef;
+  --surface-strong: #17201d;
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --accent-soft: #dff3ef;
+  --warning: #b7791f;
+  --warning-soft: #fff4d8;
+  --danger: #b42318;
+  --success: #166534;
+  --shadow: 0 18px 45px rgba(23, 32, 29, 0.08);
+}
+
+@theme inline {
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --color-white: #ffffff;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color: var(--foreground);
+  scroll-behavior: smooth;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, rgba(247, 248, 245, 0.9) 0%, rgba(247, 248, 245, 1) 36%),
+    radial-gradient(circle at top right, rgba(15, 118, 110, 0.08), transparent 34rem);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(15, 118, 110, 0.22);
+}
+
+.text-white {
+  color: #ffffff !important;
+}
+
+.text-muted {
+  color: var(--muted) !important;
+}
+
+.text-foreground {
+  color: var(--foreground) !important;
+}
+
+.border-border {
+  border-color: var(--border) !important;
+}
+
+.bg-white {
+  background-color: #ffffff !important;
+}
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  body {
+    background: #ffffff;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block;
+  }
+
+  .print-page {
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
+  }
+}
