@@ -13,6 +13,9 @@ const categoryLabels: Record<AssetCategory, string> = {
   insurance: "Assurance-vie",
   "real-estate": "Immobilier",
   company: "Entreprise",
+  retirement: "Retraite",
+  holding: "Holding",
+  other: "Autres",
 };
 
 const categoryColors: Record<AssetCategory, string> = {
@@ -21,6 +24,9 @@ const categoryColors: Record<AssetCategory, string> = {
   insurance: "#8a6f2a",
   "real-estate": "#b7791f",
   company: "#2f3d37",
+  retirement: "#5b6f95",
+  holding: "#7c3aed",
+  other: "#64748b",
 };
 
 export function getGrossWealth(household: Household) {
@@ -53,6 +59,9 @@ export function getAllocation(household: Household): AllocationItem[] {
       insurance: 0,
       "real-estate": 0,
       company: 0,
+      retirement: 0,
+      holding: 0,
+      other: 0,
     },
   );
 
@@ -69,16 +78,15 @@ export function getAllocation(household: Household): AllocationItem[] {
 export function getDashboardAlerts(household: Household) {
   const gross = getGrossWealth(household);
   const debt = getTotalDebt(household);
-  const realEstate = getAllocation(household).find(
-    (item) => item.category === "real-estate",
-  )?.value ?? 0;
+  const realEstate =
+    getAllocation(household).find((item) => item.category === "real-estate")?.value ?? 0;
   const liquidity = getLiquidity(household);
 
   return [
     {
       id: "alert-ifi",
       title: "IFI à vérifier",
-      detail: "Base simplifiée sous seuil, contrôle requis sur SCI, dettes et exonérations.",
+      detail: "Base sous seuil indicatif, contrôle requis sur SCI, dettes et exonérations.",
       tone: "warning" as const,
     },
     {

@@ -46,13 +46,14 @@ npm run e2e
 
 ## Parcours demo
 
+- `/cabinet` : cockpit cabinet V2 avec promesse pro, CTA dossier/persona/rapport/demo et moteurs LF 2026.
+- `/dossiers` : onboarding 90 secondes, personas instanciables et dossier vivant.
 - `/dashboard` : synthese patrimoniale Claire et Marc.
-- `/cabinet` : cockpit cabinet V1.1 avec completude, data quality, radar, timeline, coverage limits et watcher.
 - `/client` : collecte documentaire, completude, data quality, consentements et droits client.
 - `/workflow` : dossier, saisie actifs/passifs, simulation persistable, replay, revue et rapport versionne.
-- `/simulations` : IFI simplifie, transmission, facturation electronique et panneau "Pourquoi ce resultat ?".
+- `/simulations` : moteurs fiscaux cabinet V2, IFI, IR/PFU/CDHR, plus-value, transmission, Dutreil, apport-cession, taxe holding.
 - `/scenarios` : comparateur 5 scenarios, radar de vigilance, timeline et checklist rendez-vous.
-- `/evidence` : sources officielles enrichies, snapshots, regles versionnees, diff de regles et watcher.
+- `/evidence` : Preuves & conformite, sources officielles enrichies, snapshots, regles versionnees, diff de regles et watcher.
 - `/admin/evidence` : controle des sources, hash, alertes et impact dossiers.
 - `/review` : validation humaine et audit append-only.
 - `/report` : rapport professionnel enrichi / export PDF via navigateur.
@@ -118,3 +119,16 @@ repositories Postgres.
 - Evidence control : hash SHA-256, fetch controle optionnel avec `EVIDENCE_LIVE_CHECKS=enabled`,
   alertes et diff de regles.
 - Pack produit pilote : 3 cas, script 7 minutes, deck, mentions RGPD/non-conseil.
+
+## Couche V2 ajoutee
+
+- Repositionnement cabinet : moteur fiscal source pour CGP, experts-comptables et fiscalistes.
+- Navigation resserree : Cockpit, Dossiers, Simulations, Preuves, Rapports.
+- Onboarding 90 secondes et instanciation des 7 personas en dossiers de demonstration.
+- Dossier vivant : enveloppes fiscales, snapshot, simulations, revue et rapport versionne.
+- Moteurs fiscaux V2 : IFI complet, IR/PFU/CDHR, plus-value immobiliere, transmission,
+  Pacte Dutreil, apport-cession 150-0 B ter et taxe holding patrimoniale.
+- Generateur documentaire cabinet : DER, FIL, lettre de mission, rapport d'adequation,
+  note fiscale et checklist LCB-FT.
+- Routes API V2 demo : `personas/:id/instantiate`, `onboarding`, `tax-runs`,
+  `documents/generate`, `reports/:id/version`.

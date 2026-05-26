@@ -1,8 +1,9 @@
+import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { RuleDiffPanel } from "@/components/v1-1/rule-diff-panel";
-import { EvidenceWorkspace } from "@/components/v1-1/evidence-workspace";
-import { SourceWatchPanel } from "@/components/v1-1/source-watch-panel";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { EvidenceWorkspace } from "@/components/v1-1/evidence-workspace";
+import { RuleDiffPanel } from "@/components/v1-1/rule-diff-panel";
+import { SourceWatchPanel } from "@/components/v1-1/source-watch-panel";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { ruleVersions } from "@/lib/rules/rule-versions";
 
@@ -11,11 +12,25 @@ export default function EvidencePage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Evidence Center V1.1</h2>
+          <h2 className="text-2xl font-bold text-foreground">Preuves & conformité</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            Sources officielles versionnees, snapshots, regles liees, statut de controle et diff de
-            regles.
+            Sources officielles versionnées, snapshots, règles liées, statut de contrôle,
+            diff de règles, AIPD et gouvernance IA désactivée par défaut.
           </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              href="/admin/evidence"
+              className="inline-flex h-10 items-center rounded-lg bg-[var(--surface-strong)] px-4 text-sm font-semibold text-white"
+            >
+              Administrer les sources
+            </Link>
+            <Link
+              href="/compliance"
+              className="inline-flex h-10 items-center rounded-lg border border-border bg-white px-4 text-sm font-semibold text-foreground"
+            >
+              Voir conformité RGPD / IA
+            </Link>
+          </div>
         </div>
 
         <section className="grid min-w-0 gap-6 xl:grid-cols-[1fr_380px]">
@@ -24,8 +39,8 @@ export default function EvidencePage() {
             <Card>
               <CardHeader>
                 <div>
-                  <CardTitle>Regles versionnees</CardTitle>
-                  <p className="mt-1 text-sm text-muted">Chaque regle pointe vers au moins une source.</p>
+                  <CardTitle>Règles versionnées</CardTitle>
+                  <p className="mt-1 text-sm text-muted">Chaque règle pointe vers au moins une source.</p>
                 </div>
               </CardHeader>
               <div className="space-y-4">

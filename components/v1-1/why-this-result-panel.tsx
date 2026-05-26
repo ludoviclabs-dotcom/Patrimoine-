@@ -19,24 +19,24 @@ export function WhyThisResultPanel({ step }: { step: CalculationStep }) {
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>Pourquoi ce resultat ?</CardTitle>
+          <CardTitle>Pourquoi ce résultat ?</CardTitle>
           <p className="mt-1 text-sm text-muted">
-            Calcul, explication, source, limite et action sont volontairement separes.
+            Calcul, explication, source, limite et action sont volontairement séparés.
           </p>
         </div>
         <HelpCircle className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
       </CardHeader>
 
       <div className="grid gap-4">
-        <Section title="1. Donnees utilisees">
+        <Section title="1. Données utilisées">
           <ul className="space-y-1">
             {step.usedData.map((data) => (
               <li key={data}>{data}</li>
             ))}
           </ul>
         </Section>
-        <Section title="2. Formule appliquee">{step.formula}</Section>
-        <Section title="3. Calcul intermediaire">{step.intermediateResult}</Section>
+        <Section title="2. Formule appliquée">{step.formula}</Section>
+        <Section title="3. Calcul intermédiaire">{step.intermediateResult}</Section>
         <Section title="4. Source officielle">
           {source ? (
             <a
@@ -66,7 +66,7 @@ export function WhyThisResultPanel({ step }: { step: CalculationStep }) {
             ))}
           </div>
         </Section>
-        <Section title="6. A valider">
+        <Section title="6. À valider">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span>{step.nextAction}</span>
             <ReliabilityBadge status={step.displayStatus} />

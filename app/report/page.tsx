@@ -14,9 +14,10 @@ export default function ReportPage() {
       <div className="space-y-5">
         <div className="no-print flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <h2 className="text-2xl font-bold text-foreground">Rapport professionnel</h2>
+            <h2 className="text-2xl font-bold text-foreground">Rapport cabinet V2</h2>
             <p className="mt-2 text-sm leading-6 text-muted">
-              Prêt pour impression navigateur ou export PDF local.
+              Livrable premium avec page de garde, sommaire, hypothèses, sources,
+              limites, validation et annexes de calcul.
             </p>
           </div>
           <ReportPrintButton />

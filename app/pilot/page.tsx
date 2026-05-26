@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { PilotPackPanel } from "@/components/v1-2/pilot-pack-panel";
+import { GoToMarketPanel } from "@/components/v2/go-to-market-panel";
 
 export default function PilotPage() {
   return (
@@ -12,6 +13,7 @@ export default function PilotPage() {
             mentions RGPD / non-conseil.
           </p>
         </section>
+        <GoToMarketPanel />
         <PilotPackPanel />
       </div>
     </AppShell>

@@ -1,15 +1,25 @@
 import { demoHousehold } from "../demo-data/household";
 import type { CalculationStep, Household, IfiResult, SimulationRun } from "../types";
 
-const RULE_ID = "rule-ifi-simplified-2026-v1";
+const RULE_ID = "rule-ifi-complete-2026-v2";
 const SOURCE_ID = "src-service-public-ifi-2026";
 const THRESHOLD = 1_300_000;
+const DISCOUNT_MAX_BASE = 1_400_000;
+const CAP_RATE = 0.75;
+
+type IfiOptions = {
+  annualIncome?: number;
+  otherTaxes?: number;
+};
 
 function numberOrNull(value: number | undefined) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function calculateIfi(household: Household = demoHousehold): SimulationRun & {
+export function calculateIfi(
+  household: Household = demoHousehold,
+  options: IfiOptions = {},
+): SimulationRun & {
   result: IfiResult;
 } {
   const realEstateAssets = household.assets.filter(
@@ -53,10 +63,13 @@ export function calculateIfi(household: Household = demoHousehold): SimulationRu
     };
   }
 
-  const mainResidence = realEstateAssets
-    .filter((asset) => asset.ifiKind === "main-residence")
+  const directMainResidence = realEstateAssets
+    .filter((asset) => asset.ifiKind === "main-residence" && asset.isDirectlyHeld !== false)
     .reduce((sum, asset) => sum + asset.value, 0);
-  const mainResidenceTaxable = Math.round(mainResidence * 0.7);
+  const indirectMainResidence = realEstateAssets
+    .filter((asset) => asset.ifiKind === "main-residence" && asset.isDirectlyHeld === false)
+    .reduce((sum, asset) => sum + asset.value, 0);
+  const mainResidenceTaxable = Math.round(directMainResidence * 0.7);
   const rental = realEstateAssets
     .filter((asset) => asset.ifiKind === "rental")
     .reduce((sum, asset) => sum + asset.value, 0);
@@ -66,100 +79,131 @@ export function calculateIfi(household: Household = demoHousehold): SimulationRu
   const other = realEstateAssets
     .filter((asset) => !["main-residence", "rental", "sci"].includes(asset.ifiKind ?? ""))
     .reduce((sum, asset) => sum + asset.value, 0);
-  const taxableRealEstateBeforeDebt = mainResidenceTaxable + rental + sci + other;
+  const taxableRealEstateBeforeDebt =
+    mainResidenceTaxable + indirectMainResidence + rental + sci + other;
   const taxableBase = Math.max(0, taxableRealEstateBeforeDebt - deductibleDebt);
   const triggered = taxableBase > THRESHOLD;
+  const grossIfi = triggered ? calculateProgressiveIfi(taxableBase) : 0;
+  const discount =
+    triggered && taxableBase <= DISCOUNT_MAX_BASE
+      ? Math.max(0, Math.round(17_500 - taxableBase * 0.0125))
+      : 0;
+  const ifiAfterDiscount = Math.max(0, grossIfi - discount);
+  const capLimit =
+    options.annualIncome && options.annualIncome > 0
+      ? Math.round(options.annualIncome * CAP_RATE)
+      : null;
+  const taxBeforeCap = ifiAfterDiscount + (options.otherTaxes ?? 0);
+  const capApplied = Boolean(capLimit !== null && taxBeforeCap > capLimit);
+  const cappedIfi =
+    capLimit !== null && capApplied ? Math.max(0, capLimit - (options.otherTaxes ?? 0)) : ifiAfterDiscount;
+  const netIfi = Math.max(0, cappedIfi);
 
   const steps: CalculationStep[] = [
     createStep(
       "ifi-step-main-residence",
       1,
-      "Residence principale",
-      mainResidence,
+      "Résidence principale détenue en direct",
+      directMainResidence,
       "Valeur declaree x 70 %",
       mainResidenceTaxable,
       "indicative",
       {
-        usedData: ["Residence principale declaree", "Abattement residence principale"],
-        intermediateResult: `${mainResidence} x 70 % = ${mainResidenceTaxable}`,
+        usedData: ["Résidence principale déclarée", "Détention directe", "Abattement résidence principale"],
+        intermediateResult: `${directMainResidence} x 70 % = ${mainResidenceTaxable}`,
         coverageLimitIds: ["coverage-ifi-main-residence"],
-        nextAction: "Confirmer la valeur avec un avis de valeur recent.",
+        nextAction: "Confirmer la détention directe et la valeur avec un avis récent.",
+      },
+    ),
+    createStep(
+      "ifi-step-indirect-main-residence",
+      2,
+      "Résidence principale via société ou SCI",
+      indirectMainResidence,
+      "Pas d'abattement automatique dans le moteur V2",
+      indirectMainResidence,
+      indirectMainResidence > 0 ? "needs_review" : "indicative",
+      {
+        usedData: ["Biens indiqués comme résidence principale hors détention directe"],
+        intermediateResult: `${indirectMainResidence}`,
+        coverageLimitIds: ["coverage-ifi-sci-simple", "coverage-ifi-main-residence"],
+        nextAction: "Valider la structure de détention avant d'appliquer un abattement.",
       },
     ),
     createStep(
       "ifi-step-rental",
-      2,
+      3,
       "Immobilier locatif",
       rental,
       "Valeur immobiliere retenue",
       rental,
       "indicative",
       {
-        usedData: ["Immobilier locatif declare"],
+        usedData: ["Immobilier locatif déclaré"],
         intermediateResult: `${rental}`,
         coverageLimitIds: ["coverage-ifi-rental-simple"],
-        nextAction: "Verifier titres, baux et valorisation retenue.",
+        nextAction: "Vérifier titres, baux et valorisation retenue.",
       },
     ),
     createStep(
       "ifi-step-sci",
-      3,
-      "Parts SCI immobiliere",
+      4,
+      "Parts SCI immobilière",
       sci,
       "Valeur immobiliere a controler",
       sci,
       "needs_review",
       {
-        usedData: ["Parts SCI declarees"],
+        usedData: ["Parts SCI déclarées"],
         intermediateResult: `${sci}`,
         coverageLimitIds: ["coverage-ifi-sci-simple", "coverage-ifi-holdings"],
-        nextAction: "Confirmer la repartition des parts et les actifs immobiliers sous-jacents.",
+        nextAction: "Confirmer la répartition des parts et les actifs immobiliers sous-jacents.",
       },
     ),
     createStep(
       "ifi-step-subtotal",
-      4,
-      "Sous-total immobilier IFI simplifie",
-      `${mainResidenceTaxable} + ${rental} + ${sci} + ${other}`,
+      5,
+      "Sous-total immobilier IFI",
+      `${mainResidenceTaxable} + ${indirectMainResidence} + ${rental} + ${sci} + ${other}`,
       "Somme des valeurs retenues",
       taxableRealEstateBeforeDebt,
       "indicative",
       {
-        usedData: ["Residence principale", "Immobilier locatif", "Parts SCI"],
-        intermediateResult: `${mainResidenceTaxable} + ${rental} + ${sci} + ${other} = ${taxableRealEstateBeforeDebt}`,
+        usedData: ["Résidence principale", "Immobilier locatif", "Parts SCI"],
+        intermediateResult: `${mainResidenceTaxable} + ${indirectMainResidence} + ${rental} + ${sci} + ${other} = ${taxableRealEstateBeforeDebt}`,
         coverageLimitIds: [
           "coverage-ifi-main-residence",
           "coverage-ifi-rental-simple",
           "coverage-ifi-sci-simple",
         ],
-        nextAction: "Controler les cas non couverts avant conclusion.",
+        nextAction: "Contrôler les cas non couverts avant conclusion.",
       },
     ),
     createStep(
       "ifi-step-debt",
-      5,
-      "Dettes immobilieres declarees",
+      6,
+      "Dettes immobilières déclarées",
       deductibleDebt,
       "Sous conditions de deductibilite",
       -deductibleDebt,
       "needs_review",
       {
-        usedData: ["Dettes immobilieres declarees"],
+        usedData: ["Dettes immobilières déclarées"],
         intermediateResult: `${taxableRealEstateBeforeDebt} - ${deductibleDebt} = ${taxableBase}`,
         coverageLimitIds: ["coverage-ifi-deductible-debt"],
-        nextAction: "Verifier la nature et la deductibilite de chaque dette.",
+        nextAction: "Vérifier la nature, le justificatif et la déductibilité de chaque dette.",
       },
     ),
     createStep(
       "ifi-step-threshold",
-      6,
-      "Base simplifiee comparee au seuil",
+      7,
+      "Base nette comparée au seuil",
       taxableBase,
       `Base nette ${triggered ? ">" : "<="} ${THRESHOLD}`,
       triggered ? "Alerte IFI" : "Sous seuil indicatif",
       "indicative",
       {
-        usedData: ["Base IFI simplifiee", "Seuil IFI"],
+        usedData: ["Base IFI", "Seuil IFI"],
         intermediateResult: `${taxableBase} ${triggered ? ">" : "<="} ${THRESHOLD}`,
         coverageLimitIds: [
           "coverage-ifi-trusts",
@@ -168,7 +212,22 @@ export function calculateIfi(household: Household = demoHousehold): SimulationRu
           "coverage-ifi-non-residents-complexes",
         ],
         nextAction:
-          "Faire relire les dettes, SCI et situations particulieres avant usage professionnel.",
+          "Faire relire les dettes, SCI et situations particulières avant usage professionnel.",
+      },
+    ),
+    createStep(
+      "ifi-step-scale-discount-cap",
+      8,
+      "Barème, décote et plafonnement",
+      taxableBase,
+      "barème progressif - décote éventuelle - plafonnement 75 %",
+      netIfi,
+      triggered ? "needs_review" : "indicative",
+      {
+        usedData: ["Base IFI", "Barème", "Décote 1,3-1,4 M€", "Plafonnement 75 % si revenu fourni"],
+        intermediateResult: `IFI brut ${grossIfi} - décote ${discount} = ${ifiAfterDiscount}; IFI net ${netIfi}`,
+        coverageLimitIds: ["coverage-ifi-main-residence", "coverage-ifi-deductible-debt"],
+        nextAction: "Valider revenus, autres impôts et réductions avant émission d'un rapport.",
       },
     ),
   ];
@@ -186,11 +245,33 @@ export function calculateIfi(household: Household = demoHousehold): SimulationRu
       taxableRealEstateBeforeDebt,
       deductibleDebt,
       triggered,
+      grossIfi,
+      discount,
+      cappedIfi,
+      netIfi,
+      capApplied,
       message: triggered
         ? "Alerte IFI : la base simplifiee depasse le seuil, revue professionnelle requise."
         : "Pas d'alerte immediate dans cette simulation, sous reserve de validation des dettes et situations particulieres.",
     },
   };
+}
+
+export function calculateProgressiveIfi(taxableBase: number) {
+  const brackets = [
+    { floor: 800_000, ceiling: 1_300_000, rate: 0.005 },
+    { floor: 1_300_000, ceiling: 2_570_000, rate: 0.007 },
+    { floor: 2_570_000, ceiling: 5_000_000, rate: 0.01 },
+    { floor: 5_000_000, ceiling: 10_000_000, rate: 0.0125 },
+    { floor: 10_000_000, ceiling: Number.POSITIVE_INFINITY, rate: 0.015 },
+  ];
+
+  return Math.round(
+    brackets.reduce((sum, bracket) => {
+      const taxableSlice = Math.max(0, Math.min(taxableBase, bracket.ceiling) - bracket.floor);
+      return sum + taxableSlice * bracket.rate;
+    }, 0),
+  );
 }
 
 function createStep(

@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
-import { ReliabilityBadge } from "@/components/v1-1/reliability-badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { ReliabilityBadge } from "@/components/v1-1/reliability-badge";
 import { getEvidenceSource } from "@/lib/evidence/sources";
 import { formatEuro } from "@/lib/format";
 import { getRuleVersion } from "@/lib/rules/rule-versions";

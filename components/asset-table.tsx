@@ -1,13 +1,16 @@
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatEuro } from "@/lib/format";
-import type { Household } from "@/lib/types";
+import type { AssetCategory, Household } from "@/lib/types";
 
-const labels = {
+const labels: Record<AssetCategory, string> = {
   liquidity: "Liquidités",
   financial: "Financier",
   insurance: "Assurance-vie",
   "real-estate": "Immobilier",
   company: "Entreprise",
+  retirement: "Retraite",
+  holding: "Holding",
+  other: "Autres",
 };
 
 export function AssetTable({ household }: { household: Household }) {
@@ -16,7 +19,7 @@ export function AssetTable({ household }: { household: Household }) {
       <CardHeader>
         <div>
           <CardTitle>Actifs et passifs</CardTitle>
-          <p className="mt-1 text-sm text-muted">Données fictives utilisées par la V0.</p>
+          <p className="mt-1 text-sm text-muted">Données fictives utilisées par la démo V2.</p>
         </div>
       </CardHeader>
       <div className="space-y-2">

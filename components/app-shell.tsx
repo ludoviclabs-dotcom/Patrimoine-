@@ -4,35 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
-  ClipboardCheck,
   FileText,
   FolderKanban,
-  GitCompareArrows,
-  KeyRound,
   Landmark,
   Library,
-  Presentation,
   ShieldCheck,
   Sparkles,
-  UserRound,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/dashboard", label: "Synthese", icon: BarChart3 },
-  { href: "/cabinet", label: "Cabinet", icon: FolderKanban },
-  { href: "/client", label: "Client", icon: UserRound },
-  { href: "/workflow", label: "Workflow", icon: KeyRound },
+  { href: "/cabinet", label: "Cockpit", icon: BarChart3 },
+  { href: "/dossiers", label: "Dossiers", icon: FolderKanban },
   { href: "/simulations", label: "Simulations", icon: Landmark },
-  { href: "/scenarios", label: "Scenarios", icon: GitCompareArrows },
-  { href: "/evidence", label: "Sources", icon: Library },
-  { href: "/admin/evidence", label: "Admin preuve", icon: ShieldCheck },
-  { href: "/review", label: "Revue", icon: ClipboardCheck },
-  { href: "/report", label: "Rapport", icon: FileText },
-  { href: "/compliance", label: "Conformite", icon: ShieldCheck },
-  { href: "/pilot", label: "Pilotage", icon: Presentation },
+  { href: "/evidence", label: "Preuves", icon: Library },
+  { href: "/report", label: "Rapports", icon: FileText },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -42,7 +30,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen lg:flex">
       <aside className="no-print border-b border-border bg-white/90 backdrop-blur lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-b-0 lg:border-r">
         <div className="flex h-full flex-col gap-6 px-4 py-4 lg:px-5 lg:py-6">
-          <Link href="/dashboard" className="flex items-center gap-3">
+          <Link href="/cabinet" className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-strong)] text-white">
               <ShieldCheck className="h-5 w-5" aria-hidden="true" />
             </span>
@@ -50,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="block text-sm font-bold tracking-[0.18em] text-foreground">
                 PATRIMOINE
               </span>
-              <span className="block text-xs font-medium text-muted">Fiscal Demo</span>
+              <span className="block text-xs font-medium text-muted">Cabinet fiscal V2</span>
             </span>
           </Link>
 
@@ -58,7 +46,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             {navItems.map((item) => {
               const Icon = item.icon;
               const active =
-                pathname === item.href || (pathname === "/" && item.href === "/dashboard");
+                pathname === item.href ||
+                (pathname === "/" && item.href === "/cabinet") ||
+                (item.href === "/evidence" && ["/admin/evidence", "/compliance"].includes(pathname)) ||
+                (item.href === "/dossiers" && ["/workflow", "/client", "/review"].includes(pathname));
 
               return (
                 <Link
@@ -81,10 +72,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mt-auto hidden rounded-lg border border-border bg-[var(--surface-soft)] p-4 lg:block">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
               <Sparkles className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
-              V1.1 confiance
+              V2 cabinet
             </div>
             <p className="text-sm leading-6 text-muted">
-              Simulations indicatives, sources versionnees, limites visibles et revue humaine.
+              Moteur fiscal sourcé, dossiers dirigeants LF 2026 et validation professionnelle.
             </p>
           </div>
         </div>
@@ -95,11 +86,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
-                Dossier demo
+                Dossier de démonstration
               </p>
               <div className="mt-1 flex flex-wrap items-center gap-3">
                 <h1 className="text-xl font-bold text-foreground">Claire et Marc</h1>
-                <Badge tone="warning">Analyse indicative</Badge>
+                <Badge tone="warning">Simulation indicative</Badge>
               </div>
             </div>
             <Link

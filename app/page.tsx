@@ -1,3 +1,3 @@
-import DashboardPage from "@/app/dashboard/page";
+import CabinetPage from "@/app/cabinet/page";
 
-export default DashboardPage;
+export default CabinetPage;

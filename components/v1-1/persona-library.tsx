@@ -8,8 +8,8 @@ export function PersonaLibrary({ personas }: { personas: DemoPersona[] }) {
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>Bibliotheque de personas demo</CardTitle>
-          <p className="mt-1 text-sm text-muted">Cas fictifs prets pour rendez-vous cabinet.</p>
+          <CardTitle>Bibliothèque de personas démo</CardTitle>
+          <p className="mt-1 text-sm text-muted">Cas fictifs prêts pour rendez-vous cabinet.</p>
         </div>
         <UsersRound className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
       </CardHeader>

@@ -7,7 +7,7 @@ import type { CoverageStatus } from "@/lib/types";
 const statusLabels: Record<CoverageStatus, string> = {
   covered: "Couvert",
   partially_covered: "Partiel",
-  not_covered_v1: "Non couvert V1",
+  not_covered_v1: "Non couvert V2",
 };
 
 const statusTones: Record<CoverageStatus, Parameters<typeof Badge>[0]["tone"]> = {
@@ -25,7 +25,7 @@ export function CoverageLimitsPanel({ module = "ifi" }: { module?: (typeof cover
         <div>
           <CardTitle>Limites de couverture</CardTitle>
           <p className="mt-1 text-sm text-muted">
-            Le bornage est affiche comme fonctionnalite produit, pas comme note de bas de page.
+            Le bornage est affiché comme fonctionnalité produit, pas comme note de bas de page.
           </p>
         </div>
         <ShieldAlert className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />

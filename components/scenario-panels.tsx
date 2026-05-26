@@ -63,7 +63,9 @@ export function EInvoicingPanel() {
       <CardHeader>
         <div>
           <CardTitle>Facturation électronique TPE/PME</CardTitle>
-          <p className="mt-1 text-sm text-muted">Réception 2026, émission PME/micro 2027 et plateforme agréée.</p>
+          <p className="mt-1 text-sm text-muted">
+            Réception 2026, émission PME/micro 2027 et plateforme agréée.
+          </p>
         </div>
         <ReceiptText className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
       </CardHeader>
@@ -75,7 +77,8 @@ export function EInvoicingPanel() {
             <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${score}%` }} />
           </div>
           <p className="mt-4 text-sm leading-6 text-muted">
-            Les échéances du 1er septembre 2026 et du 1er septembre 2027 doivent être confirmées dans le calendrier projet.
+            Les échéances du 1er septembre 2026 et du 1er septembre 2027 doivent être confirmées
+            dans le calendrier projet.
           </p>
         </div>
         <div className="space-y-3">
@@ -108,7 +111,7 @@ export function IfiSummaryPanel({
       <CardHeader>
         <div>
           <CardTitle>Simulation IFI</CardTitle>
-          <p className="mt-1 text-sm text-muted">Base immobilière simplifiée au 1er janvier 2026.</p>
+          <p className="mt-1 text-sm text-muted">Base immobilière au 1er janvier 2026.</p>
         </div>
         <Landmark className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
       </CardHeader>
@@ -118,7 +121,7 @@ export function IfiSummaryPanel({
           <p className="mt-2 font-mono text-3xl font-semibold text-foreground">{taxableBase}</p>
         </div>
         <div className="rounded-lg bg-[var(--surface-soft)] p-4">
-          <p className="text-sm font-medium text-muted">Seuil d’alerte</p>
+          <p className="text-sm font-medium text-muted">Seuil d&apos;alerte</p>
           <p className="mt-2 font-mono text-3xl font-semibold text-foreground">{threshold}</p>
         </div>
       </div>

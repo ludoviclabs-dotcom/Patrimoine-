@@ -26,6 +26,11 @@ const scopeLabels: Record<EvidenceSource["legalScope"], string> = {
   "plus-value": "Plus-value",
   sci: "SCI",
   "ai-act": "AI Act",
+  "ir-pfu-cdhr": "IR/PFU/CDHR",
+  dutreil: "Dutreil",
+  "apport-cession": "Apport-cession",
+  "holding-tax": "Taxe holding",
+  "mif2-dda": "MIF II / DDA",
 };
 
 export function EvidenceList({ sources }: { sources: EvidenceSource[] }) {
@@ -67,7 +72,7 @@ export function EvidenceRail({ sources }: { sources: EvidenceSource[] }) {
       <CardHeader>
         <div>
           <CardTitle>Evidence Center</CardTitle>
-          <p className="mt-1 text-sm text-muted">Sources officielles liées aux règles V0.</p>
+          <p className="mt-1 text-sm text-muted">Sources officielles liées aux règles V2.</p>
         </div>
       </CardHeader>
       <div className="space-y-3">

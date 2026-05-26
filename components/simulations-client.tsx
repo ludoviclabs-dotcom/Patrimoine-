@@ -4,12 +4,12 @@ import { useMemo, useState } from "react";
 import { CheckCircle2, PlayCircle } from "lucide-react";
 import { AuditTrail, type AuditEvent } from "@/components/audit-trail";
 import { CalculationSteps } from "@/components/calculation-steps";
+import { EInvoicingPanel, IfiSummaryPanel, TransmissionPanel } from "@/components/scenario-panels";
 import { Button } from "@/components/ui/button";
 import { CoverageLimitsPanel } from "@/components/v1-1/coverage-limits-panel";
 import { WhyThisResultPanel } from "@/components/v1-1/why-this-result-panel";
 import { formatEuro } from "@/lib/format";
 import type { calculateIfi } from "@/lib/simulations/ifi";
-import { EInvoicingPanel, IfiSummaryPanel, TransmissionPanel } from "@/components/scenario-panels";
 
 type ScenarioKey = "ifi" | "transmission" | "facturation-electronique";
 type IfiRun = ReturnType<typeof calculateIfi>;
@@ -43,7 +43,7 @@ export function SimulationsClient({
         id: `audit-local-${now.getTime()}`,
         at: stamped,
         actor: labels[active],
-        event: `Simulation ${labels[active]} lancée en mode demo`,
+        event: `Simulation ${labels[active]} lancée en mode démo`,
       },
       ...current,
     ]);
@@ -67,7 +67,7 @@ export function SimulationsClient({
         />
         <div className="flex flex-wrap gap-3">
           <Button type="button" onClick={() => setShowWhy((current) => !current)}>
-            Pourquoi ce resultat ?
+            Pourquoi ce résultat ?
           </Button>
         </div>
         {showWhy ? <WhyThisResultPanel step={ifiRun.steps[0]} /> : null}

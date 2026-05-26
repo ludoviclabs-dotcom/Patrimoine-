@@ -19,7 +19,12 @@ export type LegalScope =
   | "donation"
   | "plus-value"
   | "sci"
-  | "ai-act";
+  | "ai-act"
+  | "ir-pfu-cdhr"
+  | "dutreil"
+  | "apport-cession"
+  | "holding-tax"
+  | "mif2-dda";
 
 export type EvidenceSource = {
   id: string;
@@ -58,7 +63,18 @@ export type CoverageStatus = "covered" | "partially_covered" | "not_covered_v1";
 
 export type CoverageLimit = {
   id: string;
-  module: "ifi" | "transmission" | "facturation-electronique" | "donation" | "plus-value" | "sci";
+  module:
+    | "ifi"
+    | "transmission"
+    | "facturation-electronique"
+    | "donation"
+    | "plus-value"
+    | "sci"
+    | "ir-pfu-cdhr"
+    | "dutreil"
+    | "apport-cession"
+    | "holding-tax"
+    | "documents-cabinet";
   label: string;
   status: CoverageStatus;
   explanation: string;
@@ -98,11 +114,20 @@ export type SimulationRun = {
     | "donation"
     | "demembrement"
     | "plus-value"
-    | "sci-arbitrage";
+    | "sci-arbitrage"
+    | "ir-pfu-cdhr"
+    | "dutreil"
+    | "apport-cession"
+    | "holding-tax";
   householdId: string;
   status: "indicative" | "needs_review";
   steps: CalculationStep[];
   createdAt: string;
+  inputSnapshotId?: string;
+  ruleSnapshotId?: string;
+  coverageLimitIds?: string[];
+  professionalValidationRequired?: boolean;
+  computedResult?: Record<string, number | string | boolean | null>;
 };
 
 export type AssetCategory =
@@ -110,7 +135,22 @@ export type AssetCategory =
   | "financial"
   | "insurance"
   | "real-estate"
-  | "company";
+  | "company"
+  | "retirement"
+  | "holding"
+  | "other";
+
+export type TaxEnvelope =
+  | "liquidites"
+  | "immobilier-direct"
+  | "sci"
+  | "societe-operationnelle"
+  | "holding"
+  | "cto"
+  | "pea"
+  | "assurance-vie"
+  | "per"
+  | "autres";
 
 export type Asset = {
   id: string;
@@ -118,6 +158,12 @@ export type Asset = {
   category: AssetCategory;
   value: number;
   ifiKind?: "main-residence" | "rental" | "sci" | "excluded";
+  envelope?: TaxEnvelope;
+  acquisitionDate?: string;
+  acquisitionValue?: number;
+  ownerAge?: number;
+  isDirectlyHeld?: boolean;
+  isProfessionalAsset?: boolean;
   dataQuality: DataQualityProfile;
 };
 
@@ -152,7 +198,12 @@ export type RuleVersion = {
     | "donation"
     | "plus-value"
     | "sci"
-    | "ai-governance";
+    | "ai-governance"
+    | "ir-pfu-cdhr"
+    | "dutreil"
+    | "apport-cession"
+    | "holding-tax"
+    | "documents-cabinet";
   version: string;
   title: string;
   effectiveFrom: string;
@@ -167,6 +218,11 @@ export type IfiResult = {
   deductibleDebt: number;
   triggered: boolean | null;
   message: string;
+  grossIfi?: number;
+  discount?: number;
+  cappedIfi?: number;
+  netIfi?: number;
+  capApplied?: boolean;
 };
 
 export type UserRole = "admin" | "conseiller" | "expert" | "client";
@@ -450,6 +506,84 @@ export type ReportVersion = {
   validationDecision: ReviewDecision;
   evidenceSourceIds: string[];
   coverageLimitIds: string[];
+};
+
+export type TaxModule =
+  | "ifi"
+  | "ir-pfu-cdhr"
+  | "plus-value-immo"
+  | "transmission"
+  | "dutreil"
+  | "apport-cession"
+  | "holding-tax";
+
+export type DossierSnapshot = {
+  id: string;
+  tenantId: string;
+  caseId: string;
+  householdId: string;
+  capturedAt: string;
+  assetIds: string[];
+  liabilityIds: string[];
+  objectiveLabels: string[];
+  dataQualityScore: number;
+  sourceVersionIds: string[];
+};
+
+export type PersonaInstantiation = {
+  id: string;
+  personaId: string;
+  tenantId: string;
+  caseId: string;
+  householdId: string;
+  title: string;
+  createdAt: string;
+  dossierSnapshotId: string;
+  suggestedScenarioIds: string[];
+  missingDocuments: string[];
+};
+
+export type ProfessionalDocumentKind =
+  | "der"
+  | "fil"
+  | "lettre-mission"
+  | "rapport-adequation"
+  | "note-synthese-fiscale"
+  | "checklist-lcb-ft";
+
+export type ProfessionalDocument = {
+  id: string;
+  tenantId: string;
+  caseId: string;
+  kind: ProfessionalDocumentKind;
+  title: string;
+  status: "draft" | "issued_for_review" | "validated" | "archived";
+  generatedAt: string;
+  version: string;
+  hash: string;
+  requiredInputs: string[];
+  professionalValidationRequired: boolean;
+};
+
+export type TaxRun = SimulationRun & {
+  module: TaxModule;
+  tenantId: string;
+  caseId: string;
+  dossierSnapshotId: string;
+  evidenceSourceIds: string[];
+  resultLabel: string;
+  resultAmount?: number;
+  reviewerRequired: "notaire" | "avocat" | "expert-comptable" | "cgp";
+};
+
+export type OnboardingInput = {
+  householdName: string;
+  matrimonialRegime: string;
+  children: number;
+  fiscalResidence: string;
+  primaryGoal: string;
+  horizon: string;
+  professionalToConsult: "notaire" | "avocat" | "expert-comptable" | "cgp";
 };
 
 export type EvidenceControlResult = {
