@@ -15,6 +15,7 @@ import { CabinetHero } from "@/components/v2/cabinet-hero";
 import { GoToMarketPanel } from "@/components/v2/go-to-market-panel";
 import { ProfessionalDocumentsPanel } from "@/components/v2/professional-documents-panel";
 import { TaxRunsPanel } from "@/components/v2/tax-runs-panel";
+import { InstitutionalProofOverview } from "@/components/v2-2/institutional-proof-overview";
 import { MaturityMatrixPanel } from "@/components/v2-2/maturity-matrix-panel";
 import { demoPersonas } from "@/lib/demo-data/personas";
 import { patrimonialTimeline, riskRadarItems } from "@/lib/scenario-comparisons/comparisons";
@@ -28,6 +29,7 @@ export default function CabinetPage() {
     <AppShell>
       <div className="space-y-8">
         <CabinetHero />
+        <InstitutionalProofOverview />
 
         <section>
           <h2 className="text-2xl font-bold text-foreground">Cockpit cabinet V2</h2>

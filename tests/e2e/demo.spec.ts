@@ -11,8 +11,15 @@ test("core V2 cabinet workflow", async ({ page }) => {
   await expect(page.getByText("Contrat repository")).toBeVisible();
   await expect(page.getByText("PFU 31,4 %", { exact: true })).toBeVisible();
   await expect(page.getByText("Revue expert", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Preuve vivante PFU/ })).toBeVisible();
+  await expect(page.getByText("30 % -> 31,4 %").first()).toBeVisible();
+  await expect(page.getByText("Impact dossier").first()).toBeVisible();
+  await expect(page.getByText("source.changed, rule.updated, simulation.recalculation_required")).toBeVisible();
+  await expect(page.getByText("Registre RGPD art. 30")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Diff réglementaire PFU" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Piste d'audit métier" })).toBeVisible();
   await expect(page.getByText("Matrice de maturité")).toBeVisible();
-  await expect(page.getByText("Assurance-vie PEL CEL")).toBeVisible();
+  await expect(page.getByText("Assurance-vie PEL CEL").first()).toBeVisible();
   await expect(page.getByText("Calculé", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("link", { name: "Dossiers" }).click();
