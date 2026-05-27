@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/app-shell";
 import { SimulationsClient } from "@/components/simulations-client";
+import { TaxScenarioLab } from "@/components/v2/tax-scenario-lab";
 import { TaxRunsPanel } from "@/components/v2/tax-runs-panel";
 import { demoAuditTrail } from "@/lib/demo-data/audit";
 import { demoHousehold } from "@/lib/demo-data/household";
@@ -21,6 +22,7 @@ export default function SimulationsPage() {
             et taxe holding.
           </p>
         </div>
+        <TaxScenarioLab />
         <TaxRunsPanel runs={taxRuns} />
         <SimulationsClient ifiRun={ifiRun} initialAudit={demoAuditTrail} />
       </div>

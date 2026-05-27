@@ -11,6 +11,8 @@ import type {
 const tenantId = demoTenant.id;
 const caseId = "case-claire-marc-2026";
 const dossierSnapshotId = "snapshot-dossier-claire-marc-v2";
+const DIRECT_LINE_ALLOWANCE_PER_CHILD = 100_000;
+const FAMILY_CASH_GIFT_EXEMPTION = 31_865;
 
 type StepMeta = {
   id: string;
@@ -25,6 +27,83 @@ type StepMeta = {
   confidenceStatus?: CalculationStep["confidenceStatus"];
   nextAction?: string;
 };
+
+type ProgressiveBracket = {
+  ceiling: number;
+  rate: number;
+};
+
+const directLineDonationBrackets: ProgressiveBracket[] = [
+  { ceiling: 8_072, rate: 0.05 },
+  { ceiling: 12_109, rate: 0.1 },
+  { ceiling: 15_932, rate: 0.15 },
+  { ceiling: 552_324, rate: 0.2 },
+  { ceiling: 902_838, rate: 0.3 },
+  { ceiling: 1_805_677, rate: 0.4 },
+  { ceiling: Number.POSITIVE_INFINITY, rate: 0.45 },
+];
+
+export function getBareOwnershipRate(age: number) {
+  if (age < 21) return 0.1;
+  if (age < 31) return 0.2;
+  if (age < 41) return 0.3;
+  if (age < 51) return 0.4;
+  if (age < 61) return 0.5;
+  if (age < 71) return 0.6;
+  if (age < 81) return 0.7;
+  if (age < 91) return 0.8;
+  return 0.9;
+}
+
+export function calculateProgressiveTax(base: number, brackets: ProgressiveBracket[] = directLineDonationBrackets) {
+  let previousCeiling = 0;
+  let tax = 0;
+
+  for (const bracket of brackets) {
+    const slice = Math.max(0, Math.min(base, bracket.ceiling) - previousCeiling);
+    tax += slice * bracket.rate;
+    previousCeiling = bracket.ceiling;
+    if (base <= bracket.ceiling) break;
+  }
+
+  return Math.round(tax);
+}
+
+export function calculateRealEstateHoldingAllowances(yearsHeld: number) {
+  const fullYears = Math.max(0, Math.floor(yearsHeld));
+  const incomeTaxAllowanceRate =
+    fullYears <= 5 ? 0 : fullYears >= 22 ? 1 : fullYears === 21 ? 0.96 : Math.min(0.96, (fullYears - 5) * 0.06);
+  const socialAllowanceRate =
+    fullYears <= 5
+      ? 0
+      : fullYears >= 30
+        ? 1
+        : fullYears <= 21
+          ? (fullYears - 5) * 0.0165
+          : 0.28 + (fullYears - 22) * 0.09;
+
+  return {
+    yearsHeld: fullYears,
+    incomeTaxAllowanceRate: Math.min(1, incomeTaxAllowanceRate),
+    socialAllowanceRate: Math.min(1, socialAllowanceRate),
+  };
+}
+
+export function calculateHighRealEstateGainSurtax(incomeTaxBase: number) {
+  const pv = Math.max(0, incomeTaxBase);
+
+  if (pv <= 50_000) return 0;
+  if (pv <= 60_000) return Math.round(pv * 0.02 - (60_000 - pv) / 20);
+  if (pv <= 100_000) return Math.round(pv * 0.02);
+  if (pv <= 110_000) return Math.round(pv * 0.03 - (110_000 - pv) / 10);
+  if (pv <= 150_000) return Math.round(pv * 0.03);
+  if (pv <= 160_000) return Math.round(pv * 0.04 - (160_000 - pv) * 0.15);
+  if (pv <= 200_000) return Math.round(pv * 0.04);
+  if (pv <= 210_000) return Math.round(pv * 0.05 - (210_000 - pv) * 0.2);
+  if (pv <= 250_000) return Math.round(pv * 0.05);
+  if (pv <= 260_000) return Math.round(pv * 0.06 - (260_000 - pv) * 0.25);
+  return Math.round(pv * 0.06);
+}
 
 function makeStep(meta: StepMeta): CalculationStep {
   const confidenceStatus = meta.confidenceStatus ?? "indicative";
@@ -171,12 +250,20 @@ export function simulateRealEstateGainV2({
   isMainResidence?: boolean;
 } = {}) {
   const grossGain = Math.max(0, salePrice - purchasePrice - acquisitionCosts - works);
-  const incomeTaxAllowanceRate = isMainResidence ? 1 : yearsHeld <= 5 ? 0 : Math.min(1, (yearsHeld - 5) * 0.06);
-  const socialAllowanceRate = isMainResidence ? 1 : yearsHeld <= 5 ? 0 : Math.min(1, (yearsHeld - 5) * 0.0165);
+  const allowances = calculateRealEstateHoldingAllowances(yearsHeld);
+  const incomeTaxAllowanceRate = isMainResidence ? 1 : allowances.incomeTaxAllowanceRate;
+  const socialAllowanceRate = isMainResidence ? 1 : allowances.socialAllowanceRate;
   const incomeTaxBase = Math.round(grossGain * (1 - incomeTaxAllowanceRate));
   const socialTaxBase = Math.round(grossGain * (1 - socialAllowanceRate));
-  const estimatedTax = Math.round(incomeTaxBase * 0.19 + socialTaxBase * 0.172);
-  const surtaxSignal = incomeTaxBase > 50_000 ? "Surtaxe à vérifier" : "Pas de surtaxe signalée";
+  const incomeTax = Math.round(incomeTaxBase * 0.19);
+  const socialTax = Math.round(socialTaxBase * 0.172);
+  const surtax = isMainResidence ? 0 : calculateHighRealEstateGainSurtax(incomeTaxBase);
+  const estimatedTax = incomeTax + socialTax + surtax;
+  const surtaxSignal = isMainResidence
+    ? "Résidence principale exonérée dans le cas simple"
+    : surtax > 0
+      ? "Surtaxe plus-value élevée appliquée"
+      : "Pas de surtaxe signalée";
 
   const steps = [
     makeStep({
@@ -195,7 +282,7 @@ export function simulateRealEstateGainV2({
       order: 2,
       label: "Abattements durée de détention",
       inputValue: yearsHeld,
-      formula: "abattements IR et prélèvements sociaux",
+      formula: "IR 22 ans / prélèvements sociaux 30 ans",
       outputValue: `${Math.round(incomeTaxAllowanceRate * 100)} % / ${Math.round(socialAllowanceRate * 100)} %`,
       ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
       evidenceSourceId: "src-bofip-plus-value-immobiliere",
@@ -207,13 +294,26 @@ export function simulateRealEstateGainV2({
       order: 3,
       label: "Impôt indicatif plus-value",
       inputValue: `${incomeTaxBase} / ${socialTaxBase}`,
-      formula: "base IR x 19 % + base PS x 17,2 %",
+      formula: "base IR x 19 % + base PS x 17,2 % + surtaxe éventuelle",
       outputValue: estimatedTax,
       ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
       evidenceSourceId: "src-bofip-plus-value-immobiliere",
       coverageLimitIds: ["coverage-plus-value-structure"],
       confidenceStatus: "needs_review",
       nextAction: "Contrôler exonération résidence principale, surtaxe et justificatifs.",
+    }),
+    makeStep({
+      id: "pvi-step-surtax",
+      order: 4,
+      label: "Surtaxe plus-value élevée",
+      inputValue: incomeTaxBase,
+      formula: "barème spécifique si plus-value imposable IR > 50 000 €",
+      outputValue: surtax,
+      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
+      evidenceSourceId: "src-bofip-plus-value-immobiliere",
+      coverageLimitIds: ["coverage-plus-value-structure"],
+      confidenceStatus: surtax > 0 ? "needs_review" : "indicative",
+      nextAction: "Valider la nature du bien, le seuil et les abattements avant toute conclusion.",
     }),
   ];
 
@@ -225,7 +325,19 @@ export function simulateRealEstateGainV2({
     resultAmount: estimatedTax,
     evidenceSourceIds: ["src-bofip-plus-value-immobiliere"],
     reviewerRequired: "avocat",
-    computedResult: { grossGain, incomeTaxBase, socialTaxBase, estimatedTax, surtaxSignal },
+    computedResult: {
+      grossGain,
+      incomeTaxAllowanceRate,
+      socialAllowanceRate,
+      incomeTaxBase,
+      socialTaxBase,
+      incomeTax,
+      socialTax,
+      surtax,
+      estimatedTax,
+      surtaxSignal,
+      isMainResidence,
+    },
   });
 }
 
@@ -234,35 +346,57 @@ export function simulateTransmissionV2({
   children = 2,
   priorDonations = 0,
   donorAge = 51,
+  useDismemberment = false,
+  familyCashGift = 0,
 }: {
   assetValue?: number;
   children?: number;
   priorDonations?: number;
   donorAge?: number;
+  useDismemberment?: boolean;
+  familyCashGift?: number;
 } = {}) {
-  const allowancePerChild = 100_000;
-  const grossShare = Math.round(assetValue / children);
-  const taxableShare = Math.max(0, grossShare + priorDonations - allowancePerChild);
-  const indicativeRights = Math.round(taxableShare * 0.2 * children);
+  const childCount = Math.max(1, children);
+  const bareOwnershipRate = getBareOwnershipRate(donorAge);
+  const transmittedValue = useDismemberment ? Math.round(assetValue * bareOwnershipRate) : assetValue;
+  const grossShare = Math.round(transmittedValue / childCount);
+  const availableAllowancePerChild = Math.max(0, DIRECT_LINE_ALLOWANCE_PER_CHILD - priorDonations);
+  const taxableShare = Math.max(0, grossShare - availableAllowancePerChild);
+  const rightsPerChild = calculateProgressiveTax(taxableShare);
+  const indicativeRights = rightsPerChild * childCount;
+  const familyCashGiftNeedsReview = familyCashGift > 0;
 
   const steps = [
     makeStep({
       id: "transmission-step-share",
       order: 1,
       label: "Part transmise par enfant",
-      inputValue: assetValue,
-      formula: `${assetValue} / ${children}`,
+      inputValue: transmittedValue,
+      formula: `${transmittedValue} / ${childCount}`,
       outputValue: grossShare,
       ruleVersionId: "rule-transmission-checklist-2026-v1",
       evidenceSourceId: "src-legifrance-code-civil-transmission",
       coverageLimitIds: ["coverage-transmission-checklist"],
     }),
     makeStep({
-      id: "transmission-step-allowance",
+      id: "transmission-step-bare-ownership",
       order: 2,
+      label: "Valeur fiscale en nue-propriété",
+      inputValue: `${assetValue} / ${donorAge} ans`,
+      formula: useDismemberment ? `valeur x ${Math.round(bareOwnershipRate * 100)} %` : "pleine propriété retenue",
+      outputValue: transmittedValue,
+      ruleVersionId: "rule-donation-usufruit-2026-v1",
+      evidenceSourceId: "src-impots-donation-usufruit",
+      coverageLimitIds: ["coverage-donation-usufruit-simple"],
+      confidenceStatus: useDismemberment ? "needs_review" : "indicative",
+      nextAction: "Valider l'âge, la réserve d'usufruit et l'acte envisagé avec le notaire.",
+    }),
+    makeStep({
+      id: "transmission-step-allowance",
+      order: 3,
       label: "Abattement indicatif par enfant",
-      inputValue: `${grossShare} + donations antérieures ${priorDonations}`,
-      formula: "base enfant - 100 000 €",
+      inputValue: `${grossShare} / donations antérieures ${priorDonations}`,
+      formula: "part enfant - abattement disponible sur 15 ans",
       outputValue: taxableShare,
       ruleVersionId: "rule-transmission-checklist-2026-v1",
       evidenceSourceId: "src-legifrance-code-civil-transmission",
@@ -270,17 +404,58 @@ export function simulateTransmissionV2({
       confidenceStatus: "needs_review",
       nextAction: "Valider donations antérieures, donation-partage et protection du conjoint.",
     }),
+    makeStep({
+      id: "transmission-step-progressive-scale",
+      order: 4,
+      label: "Droits indicatifs au barème ligne directe",
+      inputValue: taxableShare,
+      formula: "barème progressif 5 % à 45 %",
+      outputValue: indicativeRights,
+      ruleVersionId: "rule-transmission-checklist-2026-v1",
+      evidenceSourceId: "src-legifrance-code-civil-transmission",
+      coverageLimitIds: ["coverage-transmission-checklist"],
+      confidenceStatus: "needs_review",
+      nextAction: "Faire liquider les droits par le notaire avant toute décision.",
+    }),
+    makeStep({
+      id: "transmission-step-family-cash-gift",
+      order: 5,
+      label: "Don familial de somme d'argent",
+      inputValue: familyCashGift,
+      formula: `exonération potentielle ${FAMILY_CASH_GIFT_EXEMPTION} € sous conditions`,
+      outputValue: familyCashGiftNeedsReview ? "À vérifier" : "Non mobilisé",
+      ruleVersionId: "rule-transmission-checklist-2026-v1",
+      evidenceSourceId: "src-legifrance-code-civil-transmission",
+      coverageLimitIds: ["coverage-transmission-checklist"],
+      confidenceStatus: familyCashGiftNeedsReview ? "needs_review" : "indicative",
+      nextAction: "Vérifier âge du donateur, majorité du bénéficiaire et cumul des exonérations.",
+    }),
   ];
 
   return taxRun({
     module: "transmission",
     scenario: "transmission",
     steps,
-    resultLabel: `Donateur ${donorAge} ans, ${children} enfants`,
+    resultLabel: `Donateur ${donorAge} ans, ${childCount} enfants`,
     resultAmount: indicativeRights,
     evidenceSourceIds: ["src-legifrance-code-civil-transmission", "src-impots-donation-usufruit"],
     reviewerRequired: "notaire",
-    computedResult: { assetValue, children, grossShare, taxableShare, indicativeRights, donorAge },
+    computedResult: {
+      assetValue,
+      children: childCount,
+      donorAge,
+      useDismemberment,
+      bareOwnershipRate,
+      transmittedValue,
+      grossShare,
+      priorDonations,
+      availableAllowancePerChild,
+      taxableShare,
+      rightsPerChild,
+      indicativeRights,
+      familyCashGift,
+      familyCashGiftNeedsReview,
+    },
   });
 }
 
@@ -288,17 +463,23 @@ export function simulateDutreilV2({
   companyValue = 850_000,
   eligibleOperatingValue = 790_000,
   nonEligibleAssets = 60_000,
+  excludedLuxuryAssetsValue = 0,
   collectiveCommitmentSigned = true,
+  managementCommitmentSigned = true,
   individualCommitmentYears = 6,
 }: {
   companyValue?: number;
   eligibleOperatingValue?: number;
   nonEligibleAssets?: number;
+  excludedLuxuryAssetsValue?: number;
   collectiveCommitmentSigned?: boolean;
+  managementCommitmentSigned?: boolean;
   individualCommitmentYears?: number;
 } = {}) {
-  const eligible = collectiveCommitmentSigned && individualCommitmentYears >= 6;
-  const exemptValue = eligible ? Math.round(eligibleOperatingValue * 0.75) : 0;
+  const totalExcludedValue = nonEligibleAssets + excludedLuxuryAssetsValue;
+  const eligibleBase = Math.max(0, Math.min(eligibleOperatingValue, companyValue - totalExcludedValue));
+  const eligible = collectiveCommitmentSigned && managementCommitmentSigned && individualCommitmentYears >= 6;
+  const exemptValue = eligible ? Math.round(eligibleBase * 0.75) : 0;
   const taxableBeforeOtherAllowances = companyValue - exemptValue;
 
   const steps = [
@@ -306,8 +487,8 @@ export function simulateDutreilV2({
       id: "dutreil-step-eligibility",
       order: 1,
       label: "Éligibilité Dutreil LF 2026",
-      inputValue: `${collectiveCommitmentSigned} / ${individualCommitmentYears} ans`,
-      formula: "engagement collectif + engagement individuel 6 ans",
+      inputValue: `${collectiveCommitmentSigned} / ${managementCommitmentSigned} / ${individualCommitmentYears} ans`,
+      formula: "engagement collectif + fonction de direction + engagement individuel 6 ans",
       outputValue: eligible ? "Éligible sous réserve" : "Non éligible",
       ruleVersionId: "rule-dutreil-2026-v2",
       evidenceSourceId: "src-legifrance-dutreil-2026",
@@ -315,11 +496,24 @@ export function simulateDutreilV2({
       confidenceStatus: "needs_review",
     }),
     makeStep({
-      id: "dutreil-step-exemption",
+      id: "dutreil-step-exclusions",
       order: 2,
+      label: "Actifs exclus ou non affectés",
+      inputValue: `${nonEligibleAssets} / ${excludedLuxuryAssetsValue}`,
+      formula: "actifs non éligibles + biens somptuaires à exclure",
+      outputValue: totalExcludedValue,
+      ruleVersionId: "rule-dutreil-2026-v2",
+      evidenceSourceId: "src-legifrance-dutreil-2026",
+      coverageLimitIds: ["coverage-dutreil-eligibility"],
+      confidenceStatus: totalExcludedValue > 0 ? "needs_review" : "indicative",
+      nextAction: "Inventorier les actifs non affectés à l'exploitation et les biens somptuaires.",
+    }),
+    makeStep({
+      id: "dutreil-step-exemption",
+      order: 3,
       label: "Abattement Dutreil indicatif",
-      inputValue: eligibleOperatingValue,
-      formula: "valeur éligible x 75 %",
+      inputValue: eligibleBase,
+      formula: "valeur éligible nette x 75 %",
       outputValue: exemptValue,
       ruleVersionId: "rule-dutreil-2026-v2",
       evidenceSourceId: "src-legifrance-dutreil-2026",
@@ -333,11 +527,24 @@ export function simulateDutreilV2({
     module: "dutreil",
     scenario: "dutreil",
     steps,
-    resultLabel: `${nonEligibleAssets} € d'actifs à exclure ou documenter`,
+    resultLabel: `${totalExcludedValue} € d'actifs à exclure ou documenter`,
     resultAmount: taxableBeforeOtherAllowances,
     evidenceSourceIds: ["src-legifrance-dutreil-2026"],
     reviewerRequired: "notaire",
-    computedResult: { eligible, companyValue, eligibleOperatingValue, exemptValue, taxableBeforeOtherAllowances },
+    computedResult: {
+      eligible,
+      companyValue,
+      eligibleOperatingValue,
+      nonEligibleAssets,
+      excludedLuxuryAssetsValue,
+      totalExcludedValue,
+      eligibleBase,
+      collectiveCommitmentSigned,
+      managementCommitmentSigned,
+      individualCommitmentYears,
+      exemptValue,
+      taxableBeforeOtherAllowances,
+    },
   });
 }
 
@@ -399,19 +606,29 @@ export function simulateHoldingTaxV2({
   passiveIncomeRatio = 0.56,
   individualControlRatio = 0.72,
   luxuryAssetsValue = 420_000,
+  financialAssetsValue = 0,
+  realEstateLuxuryValue = 0,
+  cashAndReceivablesValue = 0,
 }: {
   isSubjectToCorporateTax?: boolean;
   totalAssets?: number;
   passiveIncomeRatio?: number;
   individualControlRatio?: number;
   luxuryAssetsValue?: number;
+  financialAssetsValue?: number;
+  realEstateLuxuryValue?: number;
+  cashAndReceivablesValue?: number;
 } = {}) {
-  const conditionsMet =
-    isSubjectToCorporateTax &&
-    totalAssets >= 5_000_000 &&
-    passiveIncomeRatio > 0.5 &&
-    individualControlRatio >= 0.5;
-  const holdingTax = conditionsMet ? Math.round(luxuryAssetsValue * 0.2) : 0;
+  const criteria = {
+    isSubjectToCorporateTax,
+    assetThreshold: totalAssets >= 5_000_000,
+    passiveIncome: passiveIncomeRatio > 0.5,
+    individualControl: individualControlRatio >= 0.5,
+  };
+  const conditionsMet = Object.values(criteria).every(Boolean);
+  const taxableLuxuryInventory =
+    luxuryAssetsValue + financialAssetsValue + realEstateLuxuryValue + cashAndReceivablesValue;
+  const holdingTax = conditionsMet ? Math.round(taxableLuxuryInventory * 0.2) : 0;
 
   const steps = [
     makeStep({
@@ -427,10 +644,23 @@ export function simulateHoldingTaxV2({
       confidenceStatus: "needs_review",
     }),
     makeStep({
-      id: "holding-step-tax",
+      id: "holding-step-inventory",
       order: 2,
+      label: "Inventaire taxable indicatif",
+      inputValue: `${luxuryAssetsValue} / ${financialAssetsValue} / ${realEstateLuxuryValue} / ${cashAndReceivablesValue}`,
+      formula: "biens somptuaires + actifs financiers + immobilier de jouissance + liquidités ciblées",
+      outputValue: taxableLuxuryInventory,
+      ruleVersionId: "rule-holding-tax-2026-v2",
+      evidenceSourceId: "src-legifrance-holding-tax-2026",
+      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      confidenceStatus: taxableLuxuryInventory > 0 ? "needs_review" : "indicative",
+      nextAction: "Qualifier chaque ligne de l'inventaire avant application du taux.",
+    }),
+    makeStep({
+      id: "holding-step-tax",
+      order: 3,
       label: "Taxe indicative sur actifs non professionnels",
-      inputValue: luxuryAssetsValue,
+      inputValue: taxableLuxuryInventory,
       formula: "valeur vénale brute x 20 %",
       outputValue: holdingTax,
       ruleVersionId: "rule-holding-tax-2026-v2",
@@ -449,7 +679,22 @@ export function simulateHoldingTaxV2({
     resultAmount: holdingTax,
     evidenceSourceIds: ["src-legifrance-holding-tax-2026"],
     reviewerRequired: "avocat",
-    computedResult: { conditionsMet, totalAssets, passiveIncomeRatio, individualControlRatio, luxuryAssetsValue, holdingTax },
+    computedResult: {
+      conditionsMet,
+      isSubjectToCorporateTaxCriteria: criteria.isSubjectToCorporateTax,
+      assetThresholdCriteria: criteria.assetThreshold,
+      passiveIncomeCriteria: criteria.passiveIncome,
+      individualControlCriteria: criteria.individualControl,
+      totalAssets,
+      passiveIncomeRatio,
+      individualControlRatio,
+      luxuryAssetsValue,
+      financialAssetsValue,
+      realEstateLuxuryValue,
+      cashAndReceivablesValue,
+      taxableLuxuryInventory,
+      holdingTax,
+    },
   });
 }
 

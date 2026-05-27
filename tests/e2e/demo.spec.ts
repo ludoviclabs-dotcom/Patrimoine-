@@ -20,12 +20,19 @@ test("core V2 cabinet workflow", async ({ page }) => {
 
   await page.getByRole("link", { name: "Simulations" }).click();
   await expect(page.getByRole("heading", { name: "Simulations fiscales cabinet" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Laboratoire de simulation paramétrable" })).toBeVisible();
+  await page.getByRole("button", { name: "Dutreil", exact: true }).click();
+  await page.getByLabel("Actifs somptuaires exclus").fill("40000");
+  await page.getByRole("button", { name: "Lancer avec ces hypothèses" }).click();
+  await expect(page.getByText("Scénario recalculé depuis les hypothèses saisies")).toBeVisible();
+  await expect(page.getByText("Actifs exclus ou non affectés")).toBeVisible();
+  await page.getByRole("button", { name: "Taxe holding", exact: true }).click();
+  await expect(page.getByText("Inventaire taxable indicatif")).toBeVisible();
   await expect(page.getByRole("heading", { name: "IR / PFU / CDHR" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Pacte Dutreil/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Taxe holding/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Taxe holding", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Lancer le scénario" }).click();
   await expect(page.getByText(/Scénario .* lancé/)).toBeVisible();
-  await page.getByRole("button", { name: "Pourquoi ce résultat ?" }).click();
   await expect(page.getByText("Données utilisées")).toBeVisible();
 
   await page.getByRole("link", { name: "Preuves" }).click();
@@ -37,6 +44,8 @@ test("core V2 cabinet workflow", async ({ page }) => {
   await page.getByRole("link", { name: "Rapports" }).click();
   await expect(page.getByRole("heading", { name: "Rapport cabinet V2" })).toBeVisible();
   await expect(page.getByText("Rapport cabinet fiscal evidence-first")).toBeVisible();
+  await expect(page.getByText("Hypothèses saisies par le conseiller")).toBeVisible();
+  await expect(page.getByText("Cas non couverts / revue obligatoire")).toBeVisible();
   await expect(page.getByText("Documents cabinet préparés")).toBeVisible();
   await expect(page.getByText(/Aucun conseil fiscal ou juridique définitif/i)).toBeVisible();
 });

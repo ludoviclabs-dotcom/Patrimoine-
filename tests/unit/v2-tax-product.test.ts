@@ -4,7 +4,9 @@ import { instantiatePersona, createOnboardingDossier, getLivingDossier } from ".
 import { demoHousehold } from "../../lib/demo-data/household";
 import { calculateIfi } from "../../lib/simulations/ifi";
 import {
+  calculateRealEstateHoldingAllowances,
   generateProfessionalDocuments,
+  getBareOwnershipRate,
   getV2TaxRuns,
   simulateApportCessionV2,
   simulateDutreilV2,
@@ -94,6 +96,105 @@ describe("V2 cabinet fiscal product layer", () => {
     expect(simulateDutreilV2().computedResult?.exemptValue).toBe(592_500);
     expect(simulateApportCessionV2().computedResult?.requiredReinvestment).toBe(840_000);
     expect(simulateHoldingTaxV2().computedResult?.holdingTax).toBe(84_000);
+  });
+
+  it("applies exact holding allowances and main residence treatment for real estate gains", () => {
+    expect(calculateRealEstateHoldingAllowances(5)).toEqual({
+      yearsHeld: 5,
+      incomeTaxAllowanceRate: 0,
+      socialAllowanceRate: 0,
+    });
+    expect(calculateRealEstateHoldingAllowances(22)).toMatchObject({
+      yearsHeld: 22,
+      incomeTaxAllowanceRate: 1,
+      socialAllowanceRate: 0.28,
+    });
+    expect(calculateRealEstateHoldingAllowances(30)).toEqual({
+      yearsHeld: 30,
+      incomeTaxAllowanceRate: 1,
+      socialAllowanceRate: 1,
+    });
+
+    expect(simulateRealEstateGainV2({ isMainResidence: true }).resultAmount).toBe(0);
+    expect(
+      simulateRealEstateGainV2({
+        salePrice: 900_000,
+        purchasePrice: 300_000,
+        acquisitionCosts: 0,
+        works: 0,
+        yearsHeld: 5,
+      }).computedResult?.surtax,
+    ).toBeGreaterThan(0);
+  });
+
+  it("computes direct-line donation, prior donations and cash gifts as review items", () => {
+    expect(simulateTransmissionV2({ assetValue: 100_000, children: 2 }).resultAmount).toBe(0);
+    expect(simulateTransmissionV2({ assetValue: 600_000, children: 1 }).resultAmount).toBeGreaterThan(0);
+    expect(
+      simulateTransmissionV2({
+        assetValue: 300_000,
+        children: 2,
+        familyCashGift: 31_865,
+      }).computedResult?.familyCashGiftNeedsReview,
+    ).toBe(true);
+  });
+
+  it("keeps dismemberment rates aligned with age thresholds", () => {
+    expect(getBareOwnershipRate(50)).toBe(0.4);
+    expect(getBareOwnershipRate(51)).toBe(0.5);
+    expect(getBareOwnershipRate(60)).toBe(0.5);
+    expect(getBareOwnershipRate(61)).toBe(0.6);
+    expect(getBareOwnershipRate(70)).toBe(0.6);
+    expect(getBareOwnershipRate(71)).toBe(0.7);
+  });
+
+  it("hardens Dutreil with commitments, exclusions and eligible net base", () => {
+    expect(simulateDutreilV2().computedResult?.exemptValue).toBe(592_500);
+    expect(simulateDutreilV2({ individualCommitmentYears: 5 }).computedResult?.exemptValue).toBe(0);
+    const withExcludedAssets = simulateDutreilV2({ excludedLuxuryAssetsValue: 40_000 });
+
+    expect(withExcludedAssets.computedResult?.totalExcludedValue).toBe(100_000);
+    expect(withExcludedAssets.computedResult?.eligibleBase).toBe(750_000);
+    expect(withExcludedAssets.computedResult?.exemptValue).toBe(562_500);
+  });
+
+  it("computes holding tax only when criteria and taxable inventory are present", () => {
+    expect(simulateHoldingTaxV2({ totalAssets: 4_900_000 }).computedResult?.holdingTax).toBe(0);
+
+    const run = simulateHoldingTaxV2({
+      luxuryAssetsValue: 100_000,
+      financialAssetsValue: 120_000,
+      realEstateLuxuryValue: 80_000,
+      cashAndReceivablesValue: 30_000,
+    });
+
+    expect(run.computedResult?.taxableLuxuryInventory).toBe(330_000);
+    expect(run.computedResult?.holdingTax).toBe(66_000);
+  });
+
+  it("keeps every dynamic TaxRun attached to proof, limits and professional status", () => {
+    const runs = [
+      simulateRealEstateGainV2({ yearsHeld: 22 }),
+      simulateTransmissionV2({ assetValue: 600_000, priorDonations: 100_000 }),
+      simulateDutreilV2({ excludedLuxuryAssetsValue: 40_000 }),
+      simulateHoldingTaxV2({ financialAssetsValue: 120_000 }),
+    ];
+
+    for (const run of runs) {
+      expect(run.professionalValidationRequired).toBe(true);
+      expect(run.evidenceSourceIds.length).toBeGreaterThan(0);
+      expect(run.coverageLimitIds?.length).toBeGreaterThan(0);
+      expect(run.status).toBe("needs_review");
+      expect(
+        run.steps.every(
+          (step) =>
+            step.ruleVersionId &&
+            step.evidenceSourceId &&
+            step.displayStatus &&
+            step.coverageLimitIds.length > 0,
+        ),
+      ).toBe(true);
+    }
   });
 
   it("instantiates personas, onboarding dossier and professional documents", () => {

@@ -4,23 +4,23 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { demoHousehold } from "@/lib/demo-data/household";
 import { formatEuro } from "@/lib/format";
-import {
-  simulateDismemberedDonation,
-  simulateRealEstateGain,
-  simulateSciArbitrage,
-} from "@/lib/simulations/advanced";
+import { simulateSciArbitrage } from "@/lib/simulations/advanced";
+import { simulateRealEstateGainV2, simulateTransmissionV2 } from "@/lib/tax/v2-engines";
 
 export function AdvancedSimulationsPanel() {
-  const donation = simulateDismemberedDonation({
-    householdId: demoHousehold.id,
+  const donation = simulateTransmissionV2({
     assetValue: 300_000,
     donorAge: 51,
+    children: 2,
+    useDismemberment: true,
   });
-  const plusValue = simulateRealEstateGain({
-    householdId: demoHousehold.id,
+  const donationValue = typeof donation.steps[1]?.outputValue === "number" ? donation.steps[1].outputValue : 0;
+  const plusValue = simulateRealEstateGainV2({
     salePrice: 720_000,
     purchasePrice: 600_000,
-    declaredCosts: 24_000,
+    acquisitionCosts: 24_000,
+    works: 0,
+    yearsHeld: 9,
   });
   const sci = simulateSciArbitrage({
     householdId: demoHousehold.id,
@@ -37,12 +37,12 @@ export function AdvancedSimulationsPanel() {
           <CardHeader>
             <div>
               <CardTitle>Donation démembrée</CardTitle>
-              <p className="mt-1 text-sm text-muted">Valorisation indicative nue-propriété.</p>
+              <p className="mt-1 text-sm text-muted">Valeur fiscale et droits indicatifs V2.</p>
             </div>
             <Scale className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
           </CardHeader>
           <p className="font-mono text-3xl font-semibold text-foreground">
-            {formatEuro(donation.result.bareOwnershipValue)}
+            {formatEuro(donationValue)}
           </p>
           <Badge className="mt-4" tone="warning">
             À valider notaire/fiscaliste
@@ -52,12 +52,12 @@ export function AdvancedSimulationsPanel() {
           <CardHeader>
             <div>
               <CardTitle>Plus-value immobilière</CardTitle>
-              <p className="mt-1 text-sm text-muted">Base avant abattements détaillés.</p>
+              <p className="mt-1 text-sm text-muted">Impôt indicatif après abattements et surtaxe.</p>
             </div>
             <Landmark className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
           </CardHeader>
           <p className="font-mono text-3xl font-semibold text-foreground">
-            {formatEuro(plusValue.result.netBeforeAllowances)}
+            {formatEuro(plusValue.resultAmount ?? 0)}
           </p>
           <Badge className="mt-4" tone="warning">
             Revue requise

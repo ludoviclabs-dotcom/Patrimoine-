@@ -53,7 +53,7 @@ export function TaxRunsPanel({ runs }: { runs: TaxRun[] }) {
                   {moduleLabels[run.module]}
                 </span>
                 <span className="mt-1 block text-sm text-muted">
-                  {run.resultAmount ? formatEuro(run.resultAmount) : run.resultLabel}
+                  {typeof run.resultAmount === "number" ? formatEuro(run.resultAmount) : run.resultLabel}
                 </span>
               </span>
               <ChevronDown className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />

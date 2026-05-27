@@ -5,7 +5,14 @@ import { MeetingBrief } from "@/components/v1-1/meeting-brief";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { formatEuro } from "@/lib/format";
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
-import { generateProfessionalDocuments, getV2TaxRuns } from "@/lib/tax/v2-engines";
+import {
+  generateProfessionalDocuments,
+  getV2TaxRuns,
+  simulateDutreilV2,
+  simulateHoldingTaxV2,
+  simulateRealEstateGainV2,
+  simulateTransmissionV2,
+} from "@/lib/tax/v2-engines";
 import type { AllocationItem } from "@/lib/demo-data/metrics";
 import type { Household } from "@/lib/types";
 
@@ -36,6 +43,35 @@ export function ReportDocument({
 }) {
   const taxRuns = getV2TaxRuns();
   const documents = generateProfessionalDocuments();
+  const adviserHypotheses = [
+    {
+      label: "Plus-value immobilière",
+      assumptions: "cession 720 000 €, acquisition 420 000 €, 9 ans de détention, hors résidence principale",
+      run: simulateRealEstateGainV2(),
+    },
+    {
+      label: "Donation démembrée",
+      assumptions: "300 000 € transmis, donateur 51 ans, 2 enfants, nue-propriété retenue",
+      run: simulateTransmissionV2({ useDismemberment: true }),
+    },
+    {
+      label: "Pacte Dutreil",
+      assumptions: "850 000 € de titres, 60 000 € d'actifs non éligibles, engagements à documenter",
+      run: simulateDutreilV2(),
+    },
+    {
+      label: "Taxe holding",
+      assumptions: "5,4 M€ d'actifs, revenus passifs 56 %, contrôle 72 %, inventaire taxable 420 000 €",
+      run: simulateHoldingTaxV2(),
+    },
+  ];
+  const mandatoryReviewItems = [
+    "Dettes IFI complexes, prêts familiaux et passifs non directement rattachés à un actif immobilier.",
+    "Non-résidents, trusts, holdings atypiques et sociétés interposées avec actifs mixtes.",
+    "Donation-partage, donations antérieures non documentées et clauses matrimoniales spécifiques.",
+    "Valorisation de titres, actifs somptuaires, biens non affectés à l'exploitation et qualification Dutreil.",
+    "Résidence principale, travaux, frais et surtaxe dans les dossiers de plus-value immobilière.",
+  ];
 
   return (
     <div className="print-page space-y-6 rounded-lg border border-border bg-white p-6 shadow-[var(--shadow)]">
@@ -121,13 +157,31 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">5. Résultats fiscaux V2</h2>
+        <h2 className="text-lg font-semibold text-foreground">5. Hypothèses saisies par le conseiller</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {adviserHypotheses.map((item) => (
+            <div key={item.label} className="rounded-lg border border-border p-4">
+              <p className="text-sm font-semibold text-foreground">{item.label}</p>
+              <p className="mt-2 text-sm leading-6 text-muted">{item.assumptions}</p>
+              <p className="mt-2 font-mono text-sm font-semibold text-foreground">
+                {typeof item.run.resultAmount === "number" ? formatEuro(item.run.resultAmount) : item.run.resultLabel}
+              </p>
+              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted">
+                Statut : revue {item.run.reviewerRequired}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold text-foreground">6. Résultats fiscaux V2</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {taxRuns.map((run) => (
             <div key={run.id} className="rounded-lg border border-border p-4">
               <p className="text-sm font-semibold text-foreground">{run.module}</p>
               <p className="mt-2 font-mono text-base font-semibold text-foreground">
-                {run.resultAmount ? formatEuro(run.resultAmount) : run.resultLabel}
+                {typeof run.resultAmount === "number" ? formatEuro(run.resultAmount) : run.resultLabel}
               </p>
               <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted">
                 Validation : {run.reviewerRequired}
@@ -138,7 +192,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">6. Scénarios comparés</h2>
+        <h2 className="text-lg font-semibold text-foreground">7. Scénarios comparés</h2>
         <div className="mt-4 grid gap-3 lg:grid-cols-5">
           {scenarioComparisons.map((scenario) => (
             <div key={scenario.id} className="rounded-lg border border-border p-4">
@@ -155,7 +209,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">7. Résultats IFI</h2>
+        <h2 className="text-lg font-semibold text-foreground">8. Résultats IFI</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <Metric label="Base IFI" value={formatEuro(ifiRun.result.taxableBase ?? 0)} />
           <Metric label="Seuil d'alerte" value={formatEuro(ifiRun.result.threshold)} />
@@ -167,7 +221,7 @@ export function ReportDocument({
       <CalculationSteps steps={ifiRun.steps} />
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">8. Sources officielles</h2>
+        <h2 className="text-lg font-semibold text-foreground">9. Sources officielles</h2>
         <div className="mt-3 grid gap-3">
           {evidenceSources.map((source) => (
             <a
@@ -188,8 +242,17 @@ export function ReportDocument({
 
       <CoverageLimitsPanel module="ifi" />
 
+      <section className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <h2 className="text-base font-semibold text-red-950">10. Cas non couverts / revue obligatoire</h2>
+        <ul className="mt-3 grid gap-2 text-sm leading-6 text-red-900">
+          {mandatoryReviewItems.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </section>
+
       <section>
-        <h2 className="text-lg font-semibold text-foreground">10. Questions professionnel</h2>
+        <h2 className="text-lg font-semibold text-foreground">11. Questions professionnel</h2>
         <ul className="mt-3 grid gap-2 text-sm leading-6 text-muted">
           {summary.openQuestions.map((question) => (
             <li key={question}>{question}</li>
@@ -200,7 +263,7 @@ export function ReportDocument({
       <MeetingBrief briefs={meetingBriefs.slice(0, 2)} />
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">11. Documents cabinet préparés</h2>
+        <h2 className="text-lg font-semibold text-foreground">12. Documents cabinet préparés</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {documents.map((document) => (
             <div key={document.id} className="rounded-lg border border-border p-4">
