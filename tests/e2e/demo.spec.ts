@@ -7,8 +7,6 @@ test("core V2 cabinet workflow", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Cockpit cabinet V2" })).toBeVisible();
   await expect(page.getByText("Moteur fiscal sourcé pour cabinets")).toBeVisible();
   await expect(page.getByRole("link", { name: "Créer un dossier", exact: true })).toBeVisible();
-  await expect(page.getByText("V2.1 sans connecteurs externes")).toBeVisible();
-  await expect(page.getByText("Contrat repository")).toBeVisible();
   await expect(page.getByText("PFU 31,4 %", { exact: true })).toBeVisible();
   await expect(page.getByText("Revue expert", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Preuve vivante PFU/ })).toBeVisible();
@@ -19,8 +17,8 @@ test("core V2 cabinet workflow", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Diff réglementaire PFU" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Piste d'audit métier" })).toBeVisible();
   await expect(page.getByText("Matrice de maturité")).toBeVisible();
+  await expect(page.getByText("Preuve brute déplacée")).toBeVisible();
   await expect(page.getByText("Assurance-vie PEL CEL").first()).toBeVisible();
-  await expect(page.getByText("Calculé", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("link", { name: "Dossiers" }).click();
   await expect(page.getByRole("heading", { name: "Dossiers cabinet" })).toBeVisible();
@@ -83,7 +81,7 @@ test("mobile V2 navigation and report stay readable", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Cockpit" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Dossiers" })).toBeVisible();
   await expect(page.getByText("Cockpit cabinet V2")).toBeVisible();
-  await expect(page.getByText("V2.1 sans connecteurs externes")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Preuve vivante PFU/ })).toBeVisible();
 
   await page.getByRole("link", { name: "Dossiers" }).click();
   await expect(page.getByText("Onboarding 90 secondes")).toBeVisible();
