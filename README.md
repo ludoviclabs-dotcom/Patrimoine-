@@ -132,3 +132,15 @@ repositories Postgres.
   note fiscale et checklist LCB-FT.
 - Routes API V2 demo : `personas/:id/instantiate`, `onboarding`, `tax-runs`,
   `documents/generate`, `reports/:id/version`.
+
+## Couche V2.1 sans connecteurs ajoutee
+
+- Contrats repository et migration `drizzle/0002_v2_1_pilot_readiness.sql` prets Postgres.
+- Plan de seed `lib/db/seed-v2-1.ts`, non execute sans `DATABASE_URL`.
+- Export RGPD JSON, demande de suppression en revue, politique de conservation pilote.
+- Metadonnees documentaires privees : aucun lien public, aucun fichier reel sans Blob prive.
+- Golden cases fiscaux pour chaque moteur V2, avec sources, regles et validation professionnelle.
+- Controle offline des snapshots de preuves, sans scraping live ni dependance reseau.
+- APIs demo : `repository-readiness`, `data-export`, `data-deletion`,
+  `documents/private-metadata`, `golden-cases`, `evidence/offline-control`.
+- UI cabinet enrichie : panneau V2.1 sans connecteurs, contrat repository et golden cases.

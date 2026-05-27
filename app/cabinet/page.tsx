@@ -9,6 +9,8 @@ import { PatrimonialTimeline } from "@/components/v1-1/patrimonial-timeline";
 import { RiskRadar } from "@/components/v1-1/risk-radar";
 import { SourceWatchPanel } from "@/components/v1-1/source-watch-panel";
 import { SecurityBoard } from "@/components/v1-2/security-board";
+import { GoldenCasesPanel } from "@/components/v2-1/golden-cases-panel";
+import { PilotReadinessPanel } from "@/components/v2-1/pilot-readiness-panel";
 import { CabinetHero } from "@/components/v2/cabinet-hero";
 import { GoToMarketPanel } from "@/components/v2/go-to-market-panel";
 import { ProfessionalDocumentsPanel } from "@/components/v2/professional-documents-panel";
@@ -37,6 +39,7 @@ export default function CabinetPage() {
 
         <CompletenessScorePanel />
         <SecurityBoard />
+        <PilotReadinessPanel />
         <V1StatusBoard />
 
         <section className="grid gap-6 xl:grid-cols-[1fr_420px]">
@@ -72,6 +75,7 @@ export default function CabinetPage() {
         </section>
 
         <ProfessionalDocumentsPanel documents={professionalDocuments} />
+        <GoldenCasesPanel />
         <GoToMarketPanel />
         <PersonaLibrary personas={demoPersonas} />
       </div>

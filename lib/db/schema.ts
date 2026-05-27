@@ -52,6 +52,9 @@ export const auditActionEnum = pgEnum("audit_action", [
   "review.decided",
   "data.export.requested",
   "data.deletion.requested",
+  "data.retention.checked",
+  "document.metadata.created",
+  "golden_case.reviewed",
   "source.checked",
   "source.changed",
   "rule.updated",
@@ -249,6 +252,11 @@ export const simulationRuns = pgTable(
       .references(() => households.id),
     scenario: varchar("scenario", { length: 80 }).notNull(),
     status: varchar("status", { length: 32 }).notNull(),
+    inputSnapshotId: varchar("input_snapshot_id", { length: 160 }),
+    ruleSnapshotId: varchar("rule_snapshot_id", { length: 160 }),
+    coverageLimitIds: jsonb("coverage_limit_ids").$type<string[]>(),
+    professionalValidationRequired: boolean("professional_validation_required").notNull().default(true),
+    computedResult: jsonb("computed_result").$type<Record<string, unknown>>(),
     output: jsonb("output").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -274,6 +282,11 @@ export const calculationSteps = pgTable(
       .notNull()
       .references(() => evidenceSources.id),
     confidenceStatus: varchar("confidence_status", { length: 32 }).notNull(),
+    usedData: jsonb("used_data").$type<string[]>().notNull().default([]),
+    intermediateResult: text("intermediate_result"),
+    coverageLimitIds: jsonb("coverage_limit_ids").$type<string[]>().notNull().default([]),
+    nextAction: text("next_action"),
+    displayStatus: varchar("display_status", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("calculation_steps_run_idx").on(table.simulationRunId)],
@@ -378,6 +391,153 @@ export const reportVersions = pgTable(
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("report_versions_case_idx").on(table.caseId)],
+);
+
+export const dossierSnapshots = pgTable(
+  "dossier_snapshots",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => clientCases.id),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
+    assetIds: jsonb("asset_ids").$type<string[]>().notNull(),
+    liabilityIds: jsonb("liability_ids").$type<string[]>().notNull(),
+    objectiveLabels: jsonb("objective_labels").$type<string[]>().notNull(),
+    dataQualityScore: integer("data_quality_score").notNull(),
+    sourceVersionIds: jsonb("source_version_ids").$type<string[]>().notNull(),
+  },
+  (table) => [index("dossier_snapshots_case_idx").on(table.caseId)],
+);
+
+export const professionalDocuments = pgTable(
+  "professional_documents",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => clientCases.id),
+    kind: varchar("kind", { length: 64 }).notNull(),
+    title: text("title").notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("draft"),
+    version: varchar("version", { length: 64 }).notNull(),
+    hash: varchar("hash", { length: 160 }).notNull(),
+    requiredInputs: jsonb("required_inputs").$type<string[]>().notNull(),
+    professionalValidationRequired: boolean("professional_validation_required").notNull().default(true),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("professional_documents_case_idx").on(table.caseId)],
+);
+
+export const dataRequests = pgTable(
+  "data_requests",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => clientCases.id),
+    kind: varchar("kind", { length: 24 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("queued"),
+    exportFormat: varchar("export_format", { length: 24 }),
+    reason: text("reason").notNull(),
+    auditLogId: varchar("audit_log_id", { length: 160 }).notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [index("data_requests_case_idx").on(table.caseId)],
+);
+
+export const privateDocumentMetadata = pgTable(
+  "private_document_metadata",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    clientId: uuid("client_id")
+      .notNull()
+      .references(() => clients.id),
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => clientCases.id),
+    kind: documentKindEnum("kind").notNull(),
+    label: varchar("label", { length: 220 }).notNull(),
+    status: documentStatusEnum("status").notNull().default("to_review"),
+    storageProvider: varchar("storage_provider", { length: 80 }).notNull().default("demo-private-metadata"),
+    visibility: varchar("visibility", { length: 24 }).notNull().default("private"),
+    allowPublicUrl: boolean("allow_public_url").notNull().default(false),
+    sha256: varchar("sha256", { length: 160 }),
+    expectedAction: text("expected_action").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("private_document_metadata_case_idx").on(table.caseId)],
+);
+
+export const retentionPolicies = pgTable(
+  "retention_policies",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id),
+    scope: varchar("scope", { length: 24 }).notNull(),
+    personalDataMonths: integer("personal_data_months").notNull(),
+    auditLogYears: integer("audit_log_years").notNull(),
+    documentRetentionYears: integer("document_retention_years").notNull(),
+    deletionRequiresProfessionalApproval: boolean("deletion_requires_professional_approval").notNull().default(true),
+    exportAvailable: boolean("export_available").notNull().default(true),
+    lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("retention_policies_tenant_idx").on(table.tenantId)],
+);
+
+export const goldenCases = pgTable(
+  "golden_cases",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    module: varchar("module", { length: 64 }).notNull(),
+    title: text("title").notNull(),
+    inputSnapshotId: varchar("input_snapshot_id", { length: 160 }).notNull(),
+    expected: jsonb("expected").$type<Record<string, string | number | boolean | null>>().notNull(),
+    sourceVersionIds: jsonb("source_version_ids").$type<string[]>().notNull(),
+    ruleVersionIds: jsonb("rule_version_ids").$type<string[]>().notNull(),
+    validationStatus: varchar("validation_status", { length: 64 }).notNull(),
+    reviewer: varchar("reviewer", { length: 64 }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    notes: jsonb("notes").$type<string[]>().notNull(),
+  },
+  (table) => [index("golden_cases_module_idx").on(table.module)],
+);
+
+export const offlineEvidenceSnapshots = pgTable(
+  "offline_evidence_snapshots",
+  {
+    id: varchar("id", { length: 160 }).primaryKey(),
+    sourceId: varchar("source_id", { length: 120 })
+      .notNull()
+      .references(() => evidenceSources.id),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+    canonicalContentHash: varchar("canonical_content_hash", { length: 160 }).notNull(),
+    previousHash: varchar("previous_hash", { length: 160 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    recommendedAction: text("recommended_action").notNull(),
+  },
+  (table) => [index("offline_evidence_snapshots_source_idx").on(table.sourceId)],
 );
 
 export const consents = pgTable(

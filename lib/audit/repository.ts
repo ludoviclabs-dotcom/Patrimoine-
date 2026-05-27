@@ -27,3 +27,11 @@ export function appendAuditEventToRepository(event: AuditLogEntry): AuditAppendR
     },
   };
 }
+
+export function getAuditRepositoryContract(): AuditAppendResult["dbContract"] {
+  return {
+    table: "audit_logs",
+    allowedOperation: "insert_only",
+    forbiddenOperations: ["update", "delete"],
+  };
+}

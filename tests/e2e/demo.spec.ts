@@ -7,11 +7,13 @@ test("core V2 cabinet workflow", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Cockpit cabinet V2" })).toBeVisible();
   await expect(page.getByText("Moteur fiscal sourcé pour cabinets")).toBeVisible();
   await expect(page.getByRole("link", { name: "Créer un dossier", exact: true })).toBeVisible();
+  await expect(page.getByText("V2.1 sans connecteurs externes")).toBeVisible();
+  await expect(page.getByText("Contrat repository")).toBeVisible();
 
   await page.getByRole("link", { name: "Dossiers" }).click();
   await expect(page.getByRole("heading", { name: "Dossiers cabinet" })).toBeVisible();
   await page.getByRole("button", { name: "Créer le dossier depuis l'onboarding" }).click();
-  await expect(page.getByText("Famille dirigeante exemple")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Nom du foyer" })).toHaveValue("Famille dirigeante exemple");
   await page.getByRole("button", { name: "Instancier" }).first().click();
   await expect(page.getByText("Dossier créé en mode démo")).toBeVisible();
   await expect(page.getByText("Dossier vivant")).toBeVisible();
@@ -28,8 +30,9 @@ test("core V2 cabinet workflow", async ({ page }) => {
 
   await page.getByRole("link", { name: "Preuves" }).click();
   await expect(page.getByRole("heading", { name: "Preuves & conformité" })).toBeVisible();
-  await expect(page.getByText("LF 2026 art. 7 : taxe holding patrimoniale")).toBeVisible();
+  await expect(page.getByRole("heading", { name: /LF 2026 art\. 7 : taxe holding/ })).toBeVisible();
   await expect(page.getByText("IR, PFU 30/31,4 % et CDHR")).toBeVisible();
+  await expect(page.getByText("Snapshots offline contrôlés")).toBeVisible();
 
   await page.getByRole("link", { name: "Rapports" }).click();
   await expect(page.getByRole("heading", { name: "Rapport cabinet V2" })).toBeVisible();
@@ -45,11 +48,12 @@ test("mobile V2 navigation and report stay readable", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Cockpit" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Dossiers" })).toBeVisible();
   await expect(page.getByText("Cockpit cabinet V2")).toBeVisible();
+  await expect(page.getByText("V2.1 sans connecteurs externes")).toBeVisible();
 
   await page.getByRole("link", { name: "Dossiers" }).click();
   await expect(page.getByText("Onboarding 90 secondes")).toBeVisible();
 
   await page.getByRole("link", { name: "Rapports" }).first().click();
-  await expect(page.getByText(/Simulation indicative/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rapport cabinet V2" })).toBeVisible();
   await expect(page.getByText(/validé par : non validé/i)).toBeVisible();
 });

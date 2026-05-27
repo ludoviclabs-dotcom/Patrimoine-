@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { EvidenceWorkspace } from "@/components/v1-1/evidence-workspace";
 import { RuleDiffPanel } from "@/components/v1-1/rule-diff-panel";
 import { SourceWatchPanel } from "@/components/v1-1/source-watch-panel";
+import { OfflineEvidenceControlPanel } from "@/components/v2-1/offline-evidence-control-panel";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { ruleVersions } from "@/lib/rules/rule-versions";
 
@@ -58,6 +59,7 @@ export default function EvidencePage() {
               </div>
             </Card>
             <RuleDiffPanel />
+            <OfflineEvidenceControlPanel />
             <SourceWatchPanel />
           </div>
         </section>

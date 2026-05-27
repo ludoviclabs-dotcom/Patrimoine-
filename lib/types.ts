@@ -325,6 +325,9 @@ export type AuditAction =
   | "review.decided"
   | "data.export.requested"
   | "data.deletion.requested"
+  | "data.retention.checked"
+  | "document.metadata.created"
+  | "golden_case.reviewed"
   | "source.checked"
   | "source.changed"
   | "rule.updated"
@@ -563,6 +566,109 @@ export type ProfessionalDocument = {
   hash: string;
   requiredInputs: string[];
   professionalValidationRequired: boolean;
+};
+
+export type ValidationStatus =
+  | "draft"
+  | "pending_professional_review"
+  | "professionally_reviewed"
+  | "rejected"
+  | "superseded";
+
+export type GoldenCase = {
+  id: string;
+  module: TaxModule;
+  title: string;
+  inputSnapshotId: string;
+  expected: Record<string, number | string | boolean | null>;
+  sourceVersionIds: string[];
+  ruleVersionIds: string[];
+  validationStatus: ValidationStatus;
+  reviewer?: "notaire" | "avocat" | "expert-comptable" | "cgp";
+  reviewedAt?: string;
+  notes: string[];
+};
+
+export type DataRequestKind = "export" | "deletion";
+
+export type DataRequest = {
+  id: string;
+  tenantId: string;
+  clientId: string;
+  caseId: string;
+  kind: DataRequestKind;
+  status: "draft" | "queued" | "completed" | "rejected";
+  requestedAt: string;
+  completedAt?: string;
+  exportFormat?: "json" | "pdf";
+  reason: string;
+  auditLogId: string;
+};
+
+export type DataExportBundle = {
+  id: string;
+  tenantId: string;
+  clientId: string;
+  caseId: string;
+  generatedAt: string;
+  format: "json";
+  sections: {
+    client: ClientRecord;
+    case: ClientCase;
+    household: Household;
+    simulations: TaxRun[];
+    reports: ReportVersion[];
+    documents: DocumentRecord[];
+    audit: AuditLogEntry[];
+  };
+  limitations: string[];
+};
+
+export type RetentionPolicy = {
+  id: string;
+  tenantId: string;
+  scope: "demo" | "pilot" | "production";
+  personalDataMonths: number;
+  auditLogYears: number;
+  documentRetentionYears: number;
+  deletionRequiresProfessionalApproval: boolean;
+  exportAvailable: boolean;
+  lastReviewedAt: string;
+};
+
+export type PrivateDocumentMetadata = {
+  id: string;
+  tenantId: string;
+  clientId: string;
+  caseId: string;
+  kind: DocumentKind;
+  label: string;
+  status: DocumentStatus;
+  storageProvider: "demo-private-metadata";
+  visibility: "private";
+  allowPublicUrl: false;
+  sha256?: string;
+  createdAt: string;
+  expectedAction: string;
+};
+
+export type RepositoryReadinessReport = {
+  mode: "demo-fixtures";
+  tenantIsolation: "enforced-in-repository-contract";
+  persistenceTarget: "postgres";
+  tablesReady: string[];
+  externalConnectorsRequired: string[];
+  safeWithoutConnectors: true;
+};
+
+export type OfflineEvidenceSnapshot = {
+  id: string;
+  sourceId: string;
+  capturedAt: string;
+  canonicalContentHash: string;
+  previousHash: string;
+  status: "unchanged" | "changed";
+  recommendedAction: string;
 };
 
 export type TaxRun = SimulationRun & {

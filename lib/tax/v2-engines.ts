@@ -1,4 +1,5 @@
 import { demoHousehold } from "../demo-data/household";
+import { demoTenant } from "../demo-data/v1";
 import type {
   CalculationStep,
   Household,
@@ -7,7 +8,7 @@ import type {
   TaxRun,
 } from "../types";
 
-const tenantId = "tenant-demo-cabinet";
+const tenantId = demoTenant.id;
 const caseId = "case-claire-marc-2026";
 const dossierSnapshotId = "snapshot-dossier-claire-marc-v2";
 
