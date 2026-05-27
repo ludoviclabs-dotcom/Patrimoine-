@@ -16,6 +16,17 @@ export function runDemoSourceWatch(now = new Date("2026-05-26T12:00:00.000Z")): 
       };
     }
 
+    if (source.id === "src-service-public-pfu-2026") {
+      return {
+        sourceId: source.id,
+        previousHash: "sp-entreprendre-pfu-a18796-2025-30-0",
+        currentHash: source.contentHash,
+        status: "changed",
+        checkedAt: now.toISOString(),
+        recommendedAction: "PFU 30 % -> 31,4 % detecte : revue humaine et recalcul des dossiers avec revenus de capitaux.",
+      };
+    }
+
     const simulatedCurrentHash =
       source.id === "src-legifrance-code-civil-transmission"
         ? `${source.contentHash}-review`

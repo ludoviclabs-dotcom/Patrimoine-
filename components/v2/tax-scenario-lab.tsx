@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Calculator, HelpCircle, Play } from "lucide-react";
 import { CalculationSteps } from "@/components/calculation-steps";
+import { LegalNotice } from "@/components/legal-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -186,7 +187,7 @@ export function TaxScenarioLab() {
               <Badge tone="warning">Revue {activeRun.reviewerRequired}</Badge>
             </CardHeader>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Metric label="Résultat indicatif" value={activeRun.resultAmount ? formatEuro(activeRun.resultAmount) : activeRun.resultLabel} />
+              <Metric label="Résultat indicatif" value={typeof activeRun.resultAmount === "number" ? formatEuro(activeRun.resultAmount) : activeRun.resultLabel} />
               <Metric label="Statut" value={runStatus} />
               <Metric label="Sources" value={`${activeRun.evidenceSourceIds.length}`} />
               <Metric label="Limites" value={`${activeRun.coverageLimitIds?.length ?? 0}`} />
@@ -198,6 +199,7 @@ export function TaxScenarioLab() {
       </div>
 
       {showWhy && firstStep ? <WhyThisResultPanel step={firstStep} /> : null}
+      <LegalNotice compact />
     </div>
   );
 }

@@ -31,6 +31,8 @@ export type EvidenceSource = {
   title: string;
   authority: EvidenceAuthority;
   url: string;
+  legalReference?: string;
+  archivedSnapshotLabel?: string;
   checkedAt: string;
   sourceVersion: string;
   verifiedAt: string;
@@ -331,6 +333,7 @@ export type AuditAction =
   | "source.checked"
   | "source.changed"
   | "rule.updated"
+  | "simulation.recalculation_required"
   | "scenario.compared"
   | "report.exported";
 
@@ -339,7 +342,7 @@ export type AuditLogEntry = {
   tenantId: string;
   actorUserId: string;
   action: AuditAction;
-  entityType: "case" | "document" | "simulation" | "review" | "source" | "data_request";
+  entityType: "case" | "document" | "simulation" | "review" | "source" | "rule" | "data_request";
   entityId: string;
   createdAt: string;
   summary: string;
@@ -581,6 +584,11 @@ export type GoldenCase = {
   title: string;
   inputSnapshotId: string;
   expected: Record<string, number | string | boolean | null>;
+  actual: Record<string, number | string | boolean | null>;
+  executionStatus: GoldenCaseExecutionStatus;
+  coverageBadge: GoldenCaseCoverageBadge;
+  failureReason?: string;
+  executedAt: string;
   sourceVersionIds: string[];
   ruleVersionIds: string[];
   validationStatus: ValidationStatus;
@@ -708,11 +716,46 @@ export type RuleDiffImpact = {
   id: string;
   ruleVersionId: string;
   sourceId: string;
+  fromRule: string;
+  toRule: string;
+  effectiveFrom: string;
+  legalBasisUrl: string;
   fromHash: string;
   toHash: string;
   impactedCaseIds: string[];
+  impactedRuns: Array<{
+    runId: string;
+    caseId: string;
+    caseLabel: string;
+    module: TaxModule;
+    metric: string;
+    amountBefore: number;
+    amountAfter: number;
+    delta: number;
+    recalculationRequired: boolean;
+  }>;
+  amountBefore: number;
+  amountAfter: number;
+  delta: number;
+  auditEventIds: string[];
   recommendedAction: string;
   status: "review_required" | "no_action";
+};
+
+export type GoldenCaseExecutionStatus = "pass" | "fail" | "needs_professional_review";
+
+export type GoldenCaseCoverageBadge =
+  | "covered"
+  | "partially_covered"
+  | "not_covered_v1";
+
+export type MaturityItem = {
+  id: string;
+  area: string;
+  status: "fixtures_demo" | "production_ready_without_connector" | "not_built" | "external_connector_required";
+  evidence: string;
+  externalDependency?: string;
+  nextAction: string;
 };
 
 export type AiAssistanceStatus = "disabled" | "draft_only" | "enabled_with_review";

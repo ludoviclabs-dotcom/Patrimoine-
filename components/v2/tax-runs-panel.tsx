@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, Scale } from "lucide-react";
 import { CalculationSteps } from "@/components/calculation-steps";
+import { LegalNotice } from "@/components/legal-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,6 +87,9 @@ export function TaxRunsPanel({ runs }: { runs: TaxRun[] }) {
           </div>
           <div className="mt-5">
             <CalculationSteps steps={active.steps} />
+          </div>
+          <div className="mt-5">
+            <LegalNotice compact />
           </div>
         </Card>
       ) : null}

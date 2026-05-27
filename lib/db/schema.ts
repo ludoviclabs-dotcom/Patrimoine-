@@ -58,6 +58,7 @@ export const auditActionEnum = pgEnum("audit_action", [
   "source.checked",
   "source.changed",
   "rule.updated",
+  "simulation.recalculation_required",
   "scenario.compared",
   "report.exported",
 ]);

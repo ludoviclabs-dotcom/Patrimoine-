@@ -9,6 +9,7 @@ export const processingRegister = [
     legalBasis: "execution de mission et consentement documente",
     recipients: ["cabinet", "professionnel habilite"],
     retention: "Duree de mission + 5 ans en pilote, a confirmer contractuellement",
+    securityMeasures: ["tenant scope", "audit append-only", "export RGPD"],
   },
   {
     id: "processing-document-storage",
@@ -18,6 +19,7 @@ export const processingRegister = [
     legalBasis: "consentement documente et interet legitime de preuve",
     recipients: ["cabinet", "client", "professionnel habilite"],
     retention: "Suppression ou archivage a la cloture du dossier selon mandat",
+    securityMeasures: ["stockage prive requis", "pas d'URL publique", "hash documentaire"],
   },
   {
     id: "processing-professional-review",
@@ -27,6 +29,7 @@ export const processingRegister = [
     legalBasis: "execution de mission",
     recipients: ["expert-comptable", "avocat fiscaliste", "notaire ou CGP selon dossier"],
     retention: "Journal de preuve append-only, duree a confirmer par politique cabinet",
+    securityMeasures: ["journal insert-only", "statut non valide par defaut", "revue humaine"],
   },
 ];
 

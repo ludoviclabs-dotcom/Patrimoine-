@@ -16,6 +16,11 @@ const moduleOptions: Array<"all" | LegalScope> = [
   "plus-value",
   "sci",
   "ai-act",
+  "ir-pfu-cdhr",
+  "dutreil",
+  "apport-cession",
+  "holding-tax",
+  "mif2-dda",
 ];
 
 export function EvidenceWorkspace({ sources }: { sources: EvidenceSource[] }) {
@@ -67,6 +72,11 @@ export function EvidenceWorkspace({ sources }: { sources: EvidenceSource[] }) {
                 </div>
                 <h2 className="text-base font-semibold text-foreground">{source.title}</h2>
                 <p className="mt-2 text-sm leading-6 text-muted">{source.summary}</p>
+                {source.legalReference ? (
+                  <p className="mt-2 text-sm font-medium text-foreground">
+                    Référence : {source.legalReference}
+                  </p>
+                ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {source.linkedRuleIds.map((ruleId) => (
                     <Badge key={ruleId}>{ruleId}</Badge>
@@ -75,6 +85,11 @@ export function EvidenceWorkspace({ sources }: { sources: EvidenceSource[] }) {
                 <p className="mt-3 font-mono text-xs text-muted">
                   Version {source.sourceVersion} - verifiee {source.checkedAt} - hash {source.contentHash}
                 </p>
+                {source.archivedSnapshotLabel ? (
+                  <p className="mt-1 font-mono text-xs text-muted">
+                    Archive : {source.archivedSnapshotLabel}
+                  </p>
+                ) : null}
               </div>
               <a
                 href={source.url}

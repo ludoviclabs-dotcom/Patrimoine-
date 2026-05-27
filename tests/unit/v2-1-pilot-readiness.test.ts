@@ -66,8 +66,9 @@ describe("V2.1 pilot readiness without external connectors", () => {
     const runs = getV2TaxRuns();
     const cases = getGoldenCases();
 
-    expect(cases).toHaveLength(runs.length);
+    expect(cases.length).toBeGreaterThanOrEqual(runs.length);
     expect(cases.every((goldenCase) => goldenCase.validationStatus === "pending_professional_review")).toBe(true);
+    expect(cases.every((goldenCase) => goldenCase.actual && goldenCase.executionStatus)).toBe(true);
     expect(runs.every((run) => assertSimulationHasProof(run))).toBe(true);
     expect(reviewGoldenCase(cases[0].id, "professionally_reviewed").validationStatus).toBe(
       "professionally_reviewed",

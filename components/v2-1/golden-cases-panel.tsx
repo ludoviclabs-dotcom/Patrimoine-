@@ -4,6 +4,18 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { getV2TaxRuns } from "@/lib/tax/v2-engines";
 import { assertSimulationHasProof, getGoldenCases } from "@/lib/validation/golden-cases";
 
+const statusTone = {
+  pass: "success",
+  fail: "danger",
+  needs_professional_review: "warning",
+} as const;
+
+const coverageLabel = {
+  covered: "Couvert",
+  partially_covered: "Partiellement couvert",
+  not_covered_v1: "Non couvert V1",
+} as const;
+
 export function GoldenCasesPanel() {
   const goldenCases = getGoldenCases();
   const proofReady = getV2TaxRuns().every((run) => assertSimulationHasProof(run));
@@ -14,8 +26,8 @@ export function GoldenCasesPanel() {
         <div>
           <h2 className="text-xl font-bold text-foreground">Golden cases fiscaux</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            Jeux de contrôle figés pour chaque moteur V2 : entrée, résultat attendu, sources,
-            versions de règles et revue professionnelle simulée.
+            Jeux de contrôle exécutés en live : attendu, calculé, pass/fail, sources,
+            versions de règles et cas adverses à revue professionnelle.
           </p>
         </div>
         <Badge tone={proofReady ? "success" : "danger"}>
@@ -39,27 +51,50 @@ export function GoldenCasesPanel() {
                   <p className="text-sm font-semibold text-foreground">{goldenCase.title}</p>
                   <p className="mt-2 font-mono text-xs text-muted">{goldenCase.inputSnapshotId}</p>
                 </div>
-                <Badge tone="warning">{goldenCase.validationStatus}</Badge>
+                <Badge tone={statusTone[goldenCase.executionStatus]}>{goldenCase.executionStatus}</Badge>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Badge>{goldenCase.module}</Badge>
                 <Badge>{goldenCase.reviewer ?? "reviewer à assigner"}</Badge>
+                <Badge tone={goldenCase.coverageBadge === "covered" ? "success" : "warning"}>
+                  {coverageLabel[goldenCase.coverageBadge]}
+                </Badge>
                 <Badge>{goldenCase.ruleVersionIds.length} règles</Badge>
                 <Badge>{goldenCase.sourceVersionIds.length} sources</Badge>
               </div>
-              <div className="mt-4 rounded-lg bg-[var(--surface-soft)] p-3">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
-                  <BadgeCheck className="h-4 w-4" aria-hidden="true" />
-                  Résultat attendu
-                </div>
-                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-mono text-xs leading-5 text-foreground">
-                  {JSON.stringify(goldenCase.expected, null, 2)}
-                </pre>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <GoldenPayload title="Attendu" payload={goldenCase.expected} />
+                <GoldenPayload title="Calculé" payload={goldenCase.actual} />
               </div>
+              {goldenCase.failureReason ? (
+                <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+                  {goldenCase.failureReason}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>
       </Card>
     </section>
+  );
+}
+
+function GoldenPayload({
+  title,
+  payload,
+}: {
+  title: string;
+  payload: Record<string, number | string | boolean | null>;
+}) {
+  return (
+    <div className="rounded-lg bg-[var(--surface-soft)] p-3">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+        {title}
+      </div>
+      <pre className="mt-2 overflow-x-auto whitespace-pre-wrap font-mono text-xs leading-5 text-foreground">
+        {JSON.stringify(payload, null, 2)}
+      </pre>
+    </div>
   );
 }

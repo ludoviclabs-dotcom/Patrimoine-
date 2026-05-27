@@ -1,6 +1,10 @@
 import { ArrowRight, FileText, FolderPlus, Library, UsersRound } from "lucide-react";
 import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { getPfuRegulatoryDiff } from "@/lib/evidence/pfu-rule-diff";
+import { formatEuro } from "@/lib/format";
+import { getCompletenessScore } from "@/lib/quality/completeness";
 
 const actions = [
   {
@@ -30,6 +34,9 @@ const actions = [
 ];
 
 export function CabinetHero() {
+  const completeness = getCompletenessScore();
+  const pfuDiff = getPfuRegulatoryDiff();
+
   return (
     <section className="grid gap-6 xl:grid-cols-[1fr_420px]">
       <div className="rounded-lg border border-border bg-white p-6 shadow-[var(--shadow)]">
@@ -59,6 +66,11 @@ export function CabinetHero() {
             Voir les preuves
           </Link>
         </div>
+        <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <HeroMetric label="Complétude" value={`${completeness.score}%`} detail="Dossier prêt pour simulation indicative" />
+          <HeroMetric label="Alerte source" value="PFU 31,4 %" detail={`Impact ${formatEuro(pfuDiff.delta)} à recalculer`} />
+          <HeroMetric label="Prochaine action" value="Revue expert" detail="Valider règle PFU avant rapport signé" />
+        </div>
       </div>
 
       <Card>
@@ -84,5 +96,18 @@ export function CabinetHero() {
         </div>
       </Card>
     </section>
+  );
+}
+
+function HeroMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-[var(--surface-soft)] p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="font-mono text-base font-semibold text-foreground">{value}</span>
+        {label === "Alerte source" ? <Badge tone="warning">review_required</Badge> : null}
+      </div>
+      <p className="mt-1 text-sm leading-5 text-muted">{detail}</p>
+    </div>
   );
 }

@@ -10,7 +10,10 @@ const tones = {
 } as const;
 
 export function SourceWatchPanel() {
-  const results = runDemoSourceWatch();
+  const results = [...runDemoSourceWatch()].sort((a, b) => {
+    if (a.status === b.status) return a.sourceId.localeCompare(b.sourceId);
+    return a.status === "changed" ? -1 : 1;
+  });
 
   return (
     <Card>

@@ -9,6 +9,11 @@ test("core V2 cabinet workflow", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Créer un dossier", exact: true })).toBeVisible();
   await expect(page.getByText("V2.1 sans connecteurs externes")).toBeVisible();
   await expect(page.getByText("Contrat repository")).toBeVisible();
+  await expect(page.getByText("PFU 31,4 %", { exact: true })).toBeVisible();
+  await expect(page.getByText("Revue expert", { exact: true })).toBeVisible();
+  await expect(page.getByText("Matrice de maturité")).toBeVisible();
+  await expect(page.getByText("Assurance-vie PEL CEL")).toBeVisible();
+  await expect(page.getByText("Calculé", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("link", { name: "Dossiers" }).click();
   await expect(page.getByRole("heading", { name: "Dossiers cabinet" })).toBeVisible();
@@ -37,15 +42,29 @@ test("core V2 cabinet workflow", async ({ page }) => {
 
   await page.getByRole("link", { name: "Preuves" }).click();
   await expect(page.getByRole("heading", { name: "Preuves & conformité" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Diff réglementaire PFU" })).toBeVisible();
+  await expect(page.getByText("PFU-2025.12 : taux global 30 %")).toBeVisible();
+  await expect(page.getByText("Impact dossier : Claire et Marc")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Piste d'audit métier" })).toBeVisible();
+  await expect(page.getByText("simulation.recalculation_required")).toBeVisible();
   await expect(page.getByRole("heading", { name: /LF 2026 art\. 7 : taxe holding/ })).toBeVisible();
   await expect(page.getByText("IR, PFU 30/31,4 % et CDHR")).toBeVisible();
   await expect(page.getByText("Snapshots offline contrôlés")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Matrice de maturité" })).toBeVisible();
+
+  await page.getByRole("link", { name: "Voir conformité RGPD / IA" }).click();
+  await expect(page.getByRole("heading", { name: "Registre RGPD pilote" })).toBeVisible();
+  await expect(page.getByText("Destinataires : cabinet, professionnel habilite")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AIPD / DPIA" })).toBeVisible();
 
   await page.getByRole("link", { name: "Rapports" }).click();
   await expect(page.getByRole("heading", { name: "Rapport cabinet V2" })).toBeVisible();
   await expect(page.getByText("Rapport cabinet fiscal evidence-first")).toBeVisible();
+  await expect(page.getByText("Indicatif non validé")).toBeVisible();
   await expect(page.getByText("Hypothèses saisies par le conseiller")).toBeVisible();
   await expect(page.getByText("Cas non couverts / revue obligatoire")).toBeVisible();
+  await expect(page.getByText("Résumé audit PFU")).toBeVisible();
+  await expect(page.getByText("Bloc validation et signature future")).toBeVisible();
   await expect(page.getByText("Documents cabinet préparés")).toBeVisible();
   await expect(page.getByText(/Aucun conseil fiscal ou juridique définitif/i)).toBeVisible();
 });

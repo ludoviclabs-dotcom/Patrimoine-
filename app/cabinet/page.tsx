@@ -15,6 +15,7 @@ import { CabinetHero } from "@/components/v2/cabinet-hero";
 import { GoToMarketPanel } from "@/components/v2/go-to-market-panel";
 import { ProfessionalDocumentsPanel } from "@/components/v2/professional-documents-panel";
 import { TaxRunsPanel } from "@/components/v2/tax-runs-panel";
+import { MaturityMatrixPanel } from "@/components/v2-2/maturity-matrix-panel";
 import { demoPersonas } from "@/lib/demo-data/personas";
 import { patrimonialTimeline, riskRadarItems } from "@/lib/scenario-comparisons/comparisons";
 import { generateProfessionalDocuments, getV2TaxRuns } from "@/lib/tax/v2-engines";
@@ -40,6 +41,7 @@ export default function CabinetPage() {
         <CompletenessScorePanel />
         <SecurityBoard />
         <PilotReadinessPanel />
+        <MaturityMatrixPanel />
         <V1StatusBoard />
 
         <section className="grid gap-6 xl:grid-cols-[1fr_420px]">

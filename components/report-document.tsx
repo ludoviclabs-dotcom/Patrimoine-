@@ -1,8 +1,10 @@
 import { CalculationSteps } from "@/components/calculation-steps";
+import { LegalNotice } from "@/components/legal-notice";
 import { Badge } from "@/components/ui/badge";
 import { CoverageLimitsPanel } from "@/components/v1-1/coverage-limits-panel";
 import { MeetingBrief } from "@/components/v1-1/meeting-brief";
 import { evidenceSources } from "@/lib/evidence/sources";
+import { getPfuDiffAuditEvents } from "@/lib/evidence/pfu-rule-diff";
 import { formatEuro } from "@/lib/format";
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
 import {
@@ -43,6 +45,7 @@ export function ReportDocument({
 }) {
   const taxRuns = getV2TaxRuns();
   const documents = generateProfessionalDocuments();
+  const auditEvents = getPfuDiffAuditEvents();
   const adviserHypotheses = [
     {
       label: "Plus-value immobilière",
@@ -74,7 +77,10 @@ export function ReportDocument({
   ];
 
   return (
-    <div className="print-page space-y-6 rounded-lg border border-border bg-white p-6 shadow-[var(--shadow)]">
+    <div className="print-page relative space-y-6 overflow-hidden rounded-lg border border-border bg-white p-6 shadow-[var(--shadow)]">
+      <div className="pointer-events-none absolute left-1/2 top-20 -translate-x-1/2 rotate-[-10deg] text-center text-4xl font-bold uppercase tracking-[0.18em] text-red-100 md:text-6xl">
+        Indicatif non validé
+      </div>
       <div className="flex flex-col justify-between gap-4 border-b border-border pb-6 md:flex-row md:items-start">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
@@ -93,6 +99,7 @@ export function ReportDocument({
           <Badge tone="danger">Non validé</Badge>
         </div>
       </div>
+      <LegalNotice compact />
 
       <section>
         <h2 className="text-lg font-semibold text-foreground">Sommaire</h2>
@@ -252,7 +259,20 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">11. Questions professionnel</h2>
+        <h2 className="text-lg font-semibold text-foreground">11. Résumé audit PFU</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {auditEvents.map((event) => (
+            <div key={event.id} className="rounded-lg border border-border p-4">
+              <p className="text-sm font-semibold text-foreground">{event.action}</p>
+              <p className="mt-2 text-sm leading-6 text-muted">{event.summary}</p>
+              <p className="mt-2 font-mono text-xs text-muted">{event.createdAt}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold text-foreground">12. Questions professionnel</h2>
         <ul className="mt-3 grid gap-2 text-sm leading-6 text-muted">
           {summary.openQuestions.map((question) => (
             <li key={question}>{question}</li>
@@ -263,7 +283,16 @@ export function ReportDocument({
       <MeetingBrief briefs={meetingBriefs.slice(0, 2)} />
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">12. Documents cabinet préparés</h2>
+        <h2 className="text-lg font-semibold text-foreground">13. Bloc validation et signature future</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <Metric label="Validation" value="Non signée" />
+          <Metric label="Relecteur attendu" value="Avocat / notaire / CGP" />
+          <Metric label="Statut rapport" value="Émis pour revue" />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-lg font-semibold text-foreground">14. Documents cabinet préparés</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {documents.map((document) => (
             <div key={document.id} className="rounded-lg border border-border p-4">

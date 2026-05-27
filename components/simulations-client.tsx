@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { CheckCircle2, PlayCircle } from "lucide-react";
 import { AuditTrail, type AuditEvent } from "@/components/audit-trail";
 import { CalculationSteps } from "@/components/calculation-steps";
+import { LegalNotice } from "@/components/legal-notice";
 import { EInvoicingPanel, IfiSummaryPanel, TransmissionPanel } from "@/components/scenario-panels";
 import { Button } from "@/components/ui/button";
 import { CoverageLimitsPanel } from "@/components/v1-1/coverage-limits-panel";
@@ -73,6 +74,7 @@ export function SimulationsClient({
         {showWhy ? <WhyThisResultPanel step={ifiRun.steps[0]} /> : null}
         <CalculationSteps steps={ifiRun.steps} />
         <CoverageLimitsPanel module="ifi" />
+        <LegalNotice compact />
       </div>
     );
   }, [active, ifiRun, showWhy]);

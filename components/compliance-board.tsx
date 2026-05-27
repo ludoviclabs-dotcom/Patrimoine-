@@ -21,6 +21,19 @@ export function ComplianceBoard() {
               <article key={item.id} className="rounded-lg border border-border p-4">
                 <h3 className="text-sm font-semibold text-foreground">{item.purpose}</h3>
                 <p className="mt-2 text-sm leading-6 text-muted">{item.legalBasis}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {item.dataCategories.map((category) => (
+                    <Badge key={category}>{category}</Badge>
+                  ))}
+                </div>
+                <p className="mt-3 text-sm leading-6 text-muted">
+                  Destinataires : {item.recipients.join(", ")}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {item.securityMeasures.map((measure) => (
+                    <Badge key={measure} tone="teal">{measure}</Badge>
+                  ))}
+                </div>
                 <p className="mt-2 font-mono text-xs text-muted">{item.retention}</p>
               </article>
             ))}
@@ -37,6 +50,10 @@ export function ComplianceBoard() {
           </CardHeader>
           <Badge tone="warning">{dpiaSummary.status}</Badge>
           <h3 className="mt-4 text-base font-semibold text-foreground">{dpiaSummary.title}</h3>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Reliée à la source CNIL AIPD et au registre art. 30 RGPD. Statut pilote : revue
+            obligatoire avant tout traitement réel.
+          </p>
           <ul className="mt-4 space-y-3 text-sm leading-6 text-muted">
             {dpiaSummary.mitigations.map((mitigation) => (
               <li key={mitigation}>{mitigation}</li>

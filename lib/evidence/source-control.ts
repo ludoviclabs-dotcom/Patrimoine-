@@ -125,14 +125,34 @@ export async function controlAllEvidenceSources({
 
 export function buildRuleDiffImpact(result: EvidenceControlResult): RuleDiffImpact {
   const source = evidenceSources.find((candidate) => candidate.id === result.sourceId);
+  const impactedCaseIds = result.status === "changed" ? demoCases.map((clientCase) => clientCase.id) : [];
 
   return {
     id: `rule-diff-impact-${result.sourceId}`,
     ruleVersionId: source?.linkedRuleIds[0] ?? "unknown-rule",
     sourceId: result.sourceId,
+    fromRule: "Version source précédente",
+    toRule: "Version source contrôlée",
+    effectiveFrom: source?.checkedAt ?? new Date().toISOString().slice(0, 10),
+    legalBasisUrl: source?.url ?? "unknown-source-url",
     fromHash: result.previousHash,
     toHash: result.currentHash,
-    impactedCaseIds: result.status === "changed" ? demoCases.map((clientCase) => clientCase.id) : [],
+    impactedCaseIds,
+    impactedRuns: impactedCaseIds.map((caseId) => ({
+      runId: `recalc-${result.sourceId}-${caseId}`,
+      caseId,
+      caseLabel: "Dossier démo",
+      module: source?.legalScope === "ir-pfu-cdhr" ? "ir-pfu-cdhr" : "ifi",
+      metric: "Source réglementaire liée",
+      amountBefore: 0,
+      amountAfter: 0,
+      delta: 0,
+      recalculationRequired: result.status === "changed",
+    })),
+    amountBefore: 0,
+    amountAfter: 0,
+    delta: 0,
+    auditEventIds: result.status === "changed" ? [`audit-${result.sourceId}-changed`] : [],
     recommendedAction:
       result.status === "changed"
         ? "Revue humaine et recalcul des dossiers impactes avant publication."
