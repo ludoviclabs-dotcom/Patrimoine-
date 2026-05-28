@@ -4,6 +4,11 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { getPfuRegulatoryDiff } from "@/lib/evidence/pfu-rule-diff";
 import { formatEuro } from "@/lib/format";
 
+const statusLabel: Record<string, string> = {
+  review_required: "Revue requise",
+  no_action: "Aucune action",
+};
+
 export function RuleDiffPanel() {
   const diff = getPfuRegulatoryDiff();
   const impactedRun = diff.impactedRuns[0];
@@ -48,7 +53,7 @@ export function RuleDiffPanel() {
                 {" "}({formatEuro(diff.delta)} d&apos;écart). Recalcul requis avant rapport validé.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Badge tone="warning">{diff.status}</Badge>
+                <Badge tone="warning">{statusLabel[diff.status] ?? diff.status}</Badge>
                 <Badge>{diff.auditEventIds.length} événements audit</Badge>
                 <Badge>{diff.impactedCaseIds.length} dossier impacté</Badge>
               </div>

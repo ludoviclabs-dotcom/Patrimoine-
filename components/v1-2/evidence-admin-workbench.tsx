@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import type { EvidenceControlResult, RuleDiffImpact } from "@/lib/types";
 
+const ruleDiffStatusLabel: Record<RuleDiffImpact["status"], string> = {
+  review_required: "Revue requise",
+  no_action: "Aucune action",
+};
+
 export function EvidenceAdminWorkbench() {
   const [results, setResults] = useState<EvidenceControlResult[]>([]);
   const [diffs, setDiffs] = useState<RuleDiffImpact[]>([]);
@@ -86,7 +91,7 @@ export function EvidenceAdminWorkbench() {
           {diffs.map((diff) => (
             <div key={diff.id} className="rounded-lg border border-border p-4">
               <Badge tone={diff.status === "review_required" ? "warning" : "success"}>
-                {diff.status}
+                {ruleDiffStatusLabel[diff.status]}
               </Badge>
               <p className="mt-3 text-sm font-semibold text-foreground">{diff.ruleVersionId}</p>
               <p className="mt-2 text-sm leading-6 text-muted">{diff.recommendedAction}</p>

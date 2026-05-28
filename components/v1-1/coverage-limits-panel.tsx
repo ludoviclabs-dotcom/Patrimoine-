@@ -7,7 +7,7 @@ import type { CoverageStatus } from "@/lib/types";
 const statusLabels: Record<CoverageStatus, string> = {
   covered: "Couvert",
   partially_covered: "Partiel",
-  not_covered_v1: "Non couvert V2",
+  not_covered_v1: "Non couvert V1",
 };
 
 const statusTones: Record<CoverageStatus, Parameters<typeof Badge>[0]["tone"]> = {

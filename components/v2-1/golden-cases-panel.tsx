@@ -10,6 +10,12 @@ const statusTone = {
   needs_professional_review: "warning",
 } as const;
 
+const statusLabel = {
+  pass: "Réussi",
+  fail: "Écart détecté",
+  needs_professional_review: "Revue professionnelle",
+} as const;
+
 const coverageLabel = {
   covered: "Couvert",
   partially_covered: "Partiellement couvert",
@@ -51,7 +57,9 @@ export function GoldenCasesPanel() {
                   <p className="text-sm font-semibold text-foreground">{goldenCase.title}</p>
                   <p className="mt-2 font-mono text-xs text-muted">{goldenCase.inputSnapshotId}</p>
                 </div>
-                <Badge tone={statusTone[goldenCase.executionStatus]}>{goldenCase.executionStatus}</Badge>
+                <Badge tone={statusTone[goldenCase.executionStatus]}>
+                  {statusLabel[goldenCase.executionStatus]}
+                </Badge>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Badge>{goldenCase.module}</Badge>

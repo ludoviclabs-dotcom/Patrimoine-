@@ -28,6 +28,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen lg:flex">
+      <a
+        href="#main-content"
+        className="sr-only fixed left-4 top-4 z-50 rounded-lg bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-white focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+      >
+        Aller au contenu principal
+      </a>
       <aside className="no-print border-b border-border bg-white/90 backdrop-blur lg:fixed lg:inset-y-0 lg:left-0 lg:w-72 lg:border-b-0 lg:border-r">
         <div className="flex h-full flex-col gap-6 px-4 py-4 lg:px-5 lg:py-6">
           <Link href="/cabinet" className="flex items-center gap-3">
@@ -55,6 +61,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
                     "flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)]",
                     active
@@ -81,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <main className="lg:ml-72 lg:min-h-screen lg:flex-1">
+      <main id="main-content" tabIndex={-1} className="lg:ml-72 lg:min-h-screen lg:flex-1">
         <header className="no-print sticky top-0 z-20 border-b border-border bg-[rgba(247,248,245,0.88)] px-5 py-4 backdrop-blur">
           <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
             <div>

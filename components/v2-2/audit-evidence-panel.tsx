@@ -3,6 +3,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { getPfuDiffAuditEvents } from "@/lib/evidence/pfu-rule-diff";
 
+const actionLabel: Record<string, string> = {
+  "source.changed": "Source modifiée",
+  "rule.updated": "Règle mise à jour",
+  "simulation.recalculation_required": "Recalcul requis",
+};
+
 export function AuditEvidencePanel() {
   const events = getPfuDiffAuditEvents();
 
@@ -28,7 +34,7 @@ export function AuditEvidencePanel() {
                 </p>
               </div>
               <Badge tone={event.action === "simulation.recalculation_required" ? "warning" : "teal"}>
-                {event.action}
+                {actionLabel[event.action] ?? event.action}
               </Badge>
             </div>
             <p className="mt-3 font-mono text-xs text-muted">

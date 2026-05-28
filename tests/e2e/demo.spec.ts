@@ -4,23 +4,30 @@ test("core V2 cabinet workflow", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Claire et Marc" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Cockpit cabinet V2" })).toBeVisible();
-  await expect(page.getByText("Moteur fiscal sourcé pour cabinets")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Créer un dossier", exact: true })).toBeVisible();
-  await expect(page.getByText("PFU 31,4 %", { exact: true })).toBeVisible();
+  await expect(page.getByText("Démo cabinet 7 minutes")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Un dossier fiscal guidé, sourcé et prêt pour revue professionnelle." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Continuer le dossier", exact: true })).toBeVisible();
+  await expect(page.getByText("Qualification → Hypothèses → Simulation → Preuves → Rapport").first()).toBeVisible();
+  await expect(page.getByText("31,4 %", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("1 680 €", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("Revue expert", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Preuve vivante PFU/ })).toBeVisible();
-  await expect(page.getByText("30 % -> 31,4 %").first()).toBeVisible();
-  await expect(page.getByText("Impact dossier").first()).toBeVisible();
-  await expect(page.getByText("source.changed, rule.updated, simulation.recalculation_required")).toBeVisible();
-  await expect(page.getByText("Registre RGPD art. 30")).toBeVisible();
+  await expect(page.getByText("Revue requise").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "1. Qualifier le dossier et les hypothèses" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2. Comprendre l'alerte PFU 2026" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "3. Montrer les limites avant le rapport" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Diff réglementaire PFU" })).toBeVisible();
+  await expect(page.getByText("30 % vers 31,4 %").first()).toBeVisible();
+  await expect(page.getByText("Impact dossier").first()).toBeVisible();
+  await expect(page.getByText("Recalcul requis").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Piste d'audit métier" })).toBeVisible();
+  await expect(page.getByText("review_required")).toHaveCount(0);
+  await expect(page.getByText("needs_professional_review")).toHaveCount(0);
+  await expect(page.getByText("not_covered_v1")).toHaveCount(0);
   await expect(page.getByText("Matrice de maturité")).toBeVisible();
-  await expect(page.getByText("Preuve brute déplacée")).toBeVisible();
-  await expect(page.getByText("Assurance-vie PEL CEL").first()).toBeVisible();
+  await expect(page.getByText("Fondations prêtes").first()).toBeVisible();
+  await expect(page.getByText("Cas pilote ultra propres")).toBeVisible();
 
-  await page.getByRole("link", { name: "Dossiers" }).click();
+  await page.getByRole("link", { name: "Continuer le dossier", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Dossiers cabinet" })).toBeVisible();
   await page.getByRole("button", { name: "Créer le dossier depuis l'onboarding" }).click();
   await expect(page.getByRole("textbox", { name: "Nom du foyer" })).toHaveValue("Famille dirigeante exemple");
@@ -51,7 +58,7 @@ test("core V2 cabinet workflow", async ({ page }) => {
   await expect(page.getByText("PFU-2025.12 : taux global 30 %")).toBeVisible();
   await expect(page.getByText("Impact dossier : Claire et Marc")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Piste d'audit métier" })).toBeVisible();
-  await expect(page.getByText("simulation.recalculation_required")).toBeVisible();
+  await expect(page.getByText("Recalcul requis").first()).toBeVisible();
   await expect(page.getByRole("heading", { name: /LF 2026 art\. 7 : taxe holding/ })).toBeVisible();
   await expect(page.getByText("IR, PFU 30/31,4 % et CDHR")).toBeVisible();
   await expect(page.getByText("Snapshots offline contrôlés")).toBeVisible();
@@ -80,8 +87,11 @@ test("mobile V2 navigation and report stay readable", async ({ page }) => {
 
   await expect(page.getByRole("link", { name: "Cockpit" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Dossiers" })).toBeVisible();
-  await expect(page.getByText("Cockpit cabinet V2")).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Preuve vivante PFU/ })).toBeVisible();
+  await expect(page.getByText("Parcours de rendez-vous")).toBeVisible();
+  await expect(page.getByText("Qualification → Hypothèses → Simulation → Preuves → Rapport").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "2. Comprendre l'alerte PFU 2026" })).toBeVisible();
+  await expect(page.getByText("Revue requise").first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
 
   await page.getByRole("link", { name: "Dossiers" }).click();
   await expect(page.getByText("Onboarding 90 secondes")).toBeVisible();
