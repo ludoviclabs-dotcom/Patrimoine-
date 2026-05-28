@@ -16,6 +16,18 @@ const statusTone = {
   needs_professional_review: "warning",
 } as const;
 
+const executionStatusLabel = {
+  pass: "Réussi",
+  fail: "Écart détecté",
+  needs_professional_review: "Revue professionnelle",
+} as const;
+
+const coverageLabel = {
+  covered: "Couvert",
+  partially_covered: "Partiellement couvert",
+  not_covered_v1: "Non couvert V1",
+} as const;
+
 export function InstitutionalProofOverview() {
   const diff = getPfuRegulatoryDiff();
   const impactedRun = diff.impactedRuns[0];
@@ -74,7 +86,7 @@ export function InstitutionalProofOverview() {
           icon={ScrollText}
           label="Audit déclenché"
           value={`${diff.auditEventIds.length} événements`}
-          detail="source.changed, rule.updated, simulation.recalculation_required"
+          detail="Source modifiée, règle mise à jour, recalcul requis"
           tone="teal"
         />
         <ProofMetric
@@ -124,11 +136,13 @@ export function InstitutionalProofOverview() {
                     <p className="text-sm font-semibold text-foreground">{goldenCase.title}</p>
                     <p className="mt-1 text-sm text-muted">{goldenCase.failureReason}</p>
                   </div>
-                  <Badge tone={statusTone[goldenCase.executionStatus]}>{goldenCase.executionStatus}</Badge>
+                  <Badge tone={statusTone[goldenCase.executionStatus]}>
+                    {executionStatusLabel[goldenCase.executionStatus]}
+                  </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Badge>{goldenCase.module}</Badge>
-                  <Badge tone="warning">{goldenCase.coverageBadge}</Badge>
+                  <Badge tone="warning">{coverageLabel[goldenCase.coverageBadge]}</Badge>
                   <Badge>{goldenCase.reviewer ?? "reviewer à assigner"}</Badge>
                 </div>
               </div>

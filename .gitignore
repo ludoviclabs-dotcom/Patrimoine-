@@ -8,6 +8,8 @@ dist/
 !.env.example
 
 coverage/
+!lib/coverage/
+!lib/coverage/**
 playwright-report/
 test-results/
 
