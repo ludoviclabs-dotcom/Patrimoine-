@@ -8,6 +8,7 @@ import {
   FolderKanban,
   Landmark,
   Library,
+  Map,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/cabinet", label: "Cockpit", icon: BarChart3 },
   { href: "/dossiers", label: "Dossiers", icon: FolderKanban },
   { href: "/simulations", label: "Simulations", icon: Landmark },
+  { href: "/atlas-fiscal", label: "Atlas fiscal", icon: Map },
   { href: "/evidence", label: "Preuves", icon: Library },
   { href: "/report", label: "Rapports", icon: FileText },
 ];

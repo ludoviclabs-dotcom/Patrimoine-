@@ -17,7 +17,7 @@ import {
 } from "@/lib/tax/v2-engines";
 import type { TaxRun } from "@/lib/types";
 
-type LabScenario = "plus-value" | "transmission" | "dutreil" | "holding-tax";
+export type LabScenario = "plus-value" | "transmission" | "dutreil" | "holding-tax";
 
 const scenarioLabels: Record<LabScenario, string> = {
   "plus-value": "Plus-value",
@@ -26,8 +26,8 @@ const scenarioLabels: Record<LabScenario, string> = {
   "holding-tax": "Taxe holding",
 };
 
-export function TaxScenarioLab() {
-  const [activeScenario, setActiveScenario] = useState<LabScenario>("dutreil");
+export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenario?: LabScenario }) {
+  const [activeScenario, setActiveScenario] = useState<LabScenario>(initialScenario);
   const [showWhy, setShowWhy] = useState(true);
   const [runStatus, setRunStatus] = useState("Prêt à recalculer");
 
