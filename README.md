@@ -52,6 +52,7 @@ npm run e2e
 - `/client` : collecte documentaire, completude, data quality, consentements et droits client.
 - `/workflow` : dossier, saisie actifs/passifs, simulation persistable, replay, revue et rapport versionne.
 - `/simulations` : moteurs fiscaux cabinet V2, IFI, IR/PFU/CDHR, plus-value, transmission, Dutreil, apport-cession, taxe holding.
+- `/atlas-fiscal` : atlas visuel statique, cartes de frictions fiscales et ventilation de 1 000 EUR de prelevements publics.
 - `/scenarios` : comparateur 5 scenarios, radar de vigilance, timeline et checklist rendez-vous.
 - `/evidence` : Preuves & conformite, sources officielles enrichies, snapshots, regles versionnees, diff de regles et watcher.
 - `/admin/evidence` : controle des sources, hash, alertes et impact dossiers.

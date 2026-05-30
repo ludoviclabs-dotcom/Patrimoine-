@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/app-shell";
+import { AtlasCockpitEntry } from "@/components/atlas-fiscal/atlas-cockpit-entry";
 import { CompletenessScorePanel } from "@/components/v1-1/completeness-score-panel";
 import { CoverageLimitsPanel } from "@/components/v1-1/coverage-limits-panel";
 import { DataQualityPanel } from "@/components/v1-1/data-quality-panel";
@@ -19,6 +20,7 @@ export default function CabinetPage() {
     <AppShell>
       <div className="space-y-8">
         <CabinetHero />
+        <AtlasCockpitEntry />
 
         <section aria-labelledby="guided-flow-title" className="space-y-4">
           <div>
