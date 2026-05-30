@@ -35,7 +35,7 @@ export function AtlasMapCard({ map }: { map: FiscalAtlasMap }) {
   const rest = map.nodes.slice(1);
 
   return (
-    <Card className="h-full">
+    <Card className="h-full" data-atlas-card={map.id}>
       <CardHeader className="items-start">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -73,6 +73,8 @@ export function AtlasMapCard({ map }: { map: FiscalAtlasMap }) {
         </p>
         <Link
           href={map.actionHref}
+          data-atlas-event="atlas-action"
+          data-atlas-label={map.id}
           className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[var(--surface-strong)] px-4 text-sm font-semibold text-white transition hover:bg-[#223029] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
         >
           {map.actionLabel}

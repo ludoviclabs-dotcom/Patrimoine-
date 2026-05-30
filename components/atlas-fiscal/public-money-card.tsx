@@ -121,6 +121,8 @@ export function PublicMoneyCard({ breakdown }: { breakdown: PublicSpendingBreakd
                   <button
                     key={item.id}
                     type="button"
+                    data-atlas-event="spending-select"
+                    data-atlas-label={item.id}
                     className={cn(
                       "h-full min-w-[4px] transition hover:brightness-95 focus:z-10 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]",
                       classes.bar,
@@ -142,6 +144,8 @@ export function PublicMoneyCard({ breakdown }: { breakdown: PublicSpendingBreakd
                   <button
                     key={item.id}
                     type="button"
+                    data-atlas-event="spending-select"
+                    data-atlas-label={item.id}
                     className={cn(
                       "flex min-h-14 items-center justify-between gap-3 rounded-lg border px-3 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-[var(--accent)]",
                       active
@@ -189,6 +193,8 @@ export function PublicMoneyCard({ breakdown }: { breakdown: PublicSpendingBreakd
             </div>
             <Link
               href={selected.actionHref}
+              data-atlas-event="spending-action"
+              data-atlas-label={selected.id}
               className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-foreground shadow-sm transition hover:bg-white/80 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             >
               {selected.actionLabel}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   atlasSources,
+  atlasCaseStudies,
   fiscalAtlasMaps,
   publicMoneyFlows,
   publicSpendingBreakdown,
@@ -10,6 +11,15 @@ const sourceIds = new Set(atlasSources.map((source) => source.id));
 const allowedCertainties = new Set(["fait établi", "analyse", "hypothèse", "débat"]);
 
 describe("fiscal atlas fixtures", () => {
+  it("keeps audited source metadata complete", () => {
+    for (const source of atlasSources) {
+      expect(source.scope.length).toBeGreaterThan(12);
+      expect(source.shortQuote.split(/\s+/).length).toBeLessThanOrEqual(25);
+      expect(source.auditWarning.length).toBeGreaterThan(12);
+      expect(source.url).toMatch(/^https:\/\//);
+    }
+  });
+
   it("keeps public spending close to 1000 euros after rounding", () => {
     const total = publicSpendingBreakdown.reduce((sum, item) => sum + item.amountPer1000, 0);
 
@@ -70,6 +80,24 @@ describe("fiscal atlas fixtures", () => {
       for (const [from, to] of map.edges) {
         expect(nodeIds.has(from)).toBe(true);
         expect(nodeIds.has(to)).toBe(true);
+      }
+    }
+  });
+
+  it("keeps case studies actionable and sourced", () => {
+    expect(atlasCaseStudies.length).toBeGreaterThanOrEqual(3);
+
+    for (const study of atlasCaseStudies) {
+      expect(study.actionHref).toMatch(/^\//);
+      expect(study.steps.length).toBeGreaterThanOrEqual(4);
+      expect(study.sourceIds.length).toBeGreaterThan(0);
+
+      for (const sourceId of study.sourceIds) {
+        expect(sourceIds.has(sourceId)).toBe(true);
+      }
+
+      for (const step of study.steps) {
+        expect(allowedCertainties.has(step.certainty)).toBe(true);
       }
     }
   });

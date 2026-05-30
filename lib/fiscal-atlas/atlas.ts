@@ -6,6 +6,10 @@ export type AtlasSource = {
   publisher: string;
   url: string;
   checkedAt: string;
+  scope: string;
+  evidenceLevel: "source officielle" | "source institutionnelle" | "donnée pédagogique";
+  shortQuote: string;
+  auditWarning: string;
   description: string;
 };
 
@@ -29,6 +33,23 @@ export type FiscalAtlasMap = {
   nodes: FiscalAtlasNode[];
   edges: Array<[string, string]>;
   takeaway: string;
+  actionLabel: string;
+  actionHref: string;
+};
+
+export type AtlasCaseStudy = {
+  id: string;
+  title: string;
+  persona: string;
+  summary: string;
+  certainty: AtlasCertainty;
+  sourceIds: string[];
+  steps: Array<{
+    label: string;
+    value: string;
+    detail: string;
+    certainty: AtlasCertainty;
+  }>;
   actionLabel: string;
   actionHref: string;
 };
@@ -60,6 +81,11 @@ export const atlasSources: AtlasSource[] = [
     publisher: "Ministère de l'Économie, des Finances et de la Souveraineté industrielle et numérique",
     url: "https://www.economie.gouv.fr/aqsmi/comment-sont-utilises-mes-impots",
     checkedAt: "2026-05-30",
+    scope: "Ventilation 2024 de 1 000 € d'impôts et cotisations, périmètre administrations publiques.",
+    evidenceLevel: "donnée pédagogique",
+    shortQuote: "Voici comment sont utilisés 1000 € d'impôts",
+    auditWarning:
+      "Répartition arrondie et pédagogique : elle explique les ordres de grandeur, pas un budget individuel opposable.",
     description:
       "Répartition pédagogique de 1 000 € d'impôts et de cotisations selon les principales missions publiques.",
   },
@@ -69,6 +95,11 @@ export const atlasSources: AtlasSource[] = [
     publisher: "Direction du budget",
     url: "https://www.budget.gouv.fr/budget-etat",
     checkedAt: "2026-05-30",
+    scope: "Budget de l'État, recettes et dépenses de l'État hors périmètre complet des APU.",
+    evidenceLevel: "source officielle",
+    shortQuote: "Les recettes de l'État sont l'ensemble des ressources",
+    auditWarning:
+      "Ne pas confondre budget de l'État et dépense publique totale : Sécurité sociale et collectivités sont hors budget général.",
     description:
       "Point d'entrée officiel pour distinguer le budget de l'État du périmètre plus large des administrations publiques.",
   },
@@ -78,6 +109,11 @@ export const atlasSources: AtlasSource[] = [
     publisher: "Insee",
     url: "https://www.insee.fr/fr/statistiques/8574705",
     checkedAt: "2026-05-30",
+    scope: "Comptes nationaux 2024 des administrations publiques et sous-secteurs.",
+    evidenceLevel: "source officielle",
+    shortQuote: "Dépenses et recettes des administrations publiques",
+    auditWarning:
+      "Cadre macroéconomique : très solide pour les masses, moins parlant pour un cas d'entreprise sans simulation dédiée.",
     description:
       "Cadre de comptabilité nationale pour les recettes, dépenses et soldes des administrations publiques.",
   },
@@ -189,7 +225,7 @@ export const fiscalAtlasMaps: FiscalAtlasMap[] = [
     takeaway:
       "La pédagogie devient crédible quand l'utilisateur voit immédiatement le niveau de preuve derrière chaque affirmation.",
     actionLabel: "Ouvrir les sources",
-    actionHref: "/evidence",
+    actionHref: "/atlas-fiscal#source-audit",
   },
   {
     id: "frictions-fiscalite-francaise",
@@ -260,7 +296,7 @@ export const fiscalAtlasMaps: FiscalAtlasMap[] = [
     takeaway:
       "Le bon diagnostic sépare le niveau mesuré, le ressenti de complexité et les effets économiques discutés.",
     actionLabel: "Explorer les preuves",
-    actionHref: "/evidence",
+    actionHref: "/atlas-fiscal#source-audit",
   },
   {
     id: "ca-vers-cash-net",
@@ -331,7 +367,7 @@ export const fiscalAtlasMaps: FiscalAtlasMap[] = [
     takeaway:
       "La question utile n'est pas seulement le taux d'IS, mais le chemin complet entre activité et liquidité finale.",
     actionLabel: "Lancer une simulation",
-    actionHref: "/simulations",
+    actionHref: "/simulations?scenario=entreprise-cash&from=atlas",
   },
   {
     id: "six-goulots-entreprise",
@@ -411,7 +447,7 @@ export const fiscalAtlasMaps: FiscalAtlasMap[] = [
     takeaway:
       "Cette carte sert de diagnostic d'entretien : elle évite de réduire le sujet à un seul impôt.",
     actionLabel: "Voir les dossiers",
-    actionHref: "/dossiers",
+    actionHref: "/atlas-fiscal#cas-pratiques",
   },
   {
     id: "tpe-pme-vs-groupes",
@@ -455,7 +491,7 @@ export const fiscalAtlasMaps: FiscalAtlasMap[] = [
     takeaway:
       "L'interface doit parler de cas concrets, pas de l'entreprise comme bloc homogène.",
     actionLabel: "Ouvrir le cockpit",
-    actionHref: "/cabinet",
+    actionHref: "/atlas-fiscal#case-dirigeant-holding",
   },
   {
     id: "scenarios-reforme",
@@ -517,7 +553,7 @@ export const fiscalAtlasMaps: FiscalAtlasMap[] = [
     takeaway:
       "La réforme fiscale est un portefeuille d'arbitrages, pas une manette unique.",
     actionLabel: "Comparer les scénarios",
-    actionHref: "/scenarios",
+    actionHref: "/scenarios?stress=dette&from=atlas",
   },
 ];
 
@@ -567,7 +603,7 @@ export const publicSpendingBreakdown: PublicSpendingBreakdown[] = [
     certainty: "fait établi",
     sourceIds: ["src-bercy-aqsmi-2024"],
     actionLabel: "Relier aux services publics",
-    actionHref: "/atlas-fiscal#public-money",
+    actionHref: "/atlas-fiscal#case-foyer-contribuable",
   },
   {
     id: "education",
@@ -579,7 +615,7 @@ export const publicSpendingBreakdown: PublicSpendingBreakdown[] = [
     certainty: "fait établi",
     sourceIds: ["src-bercy-aqsmi-2024"],
     actionLabel: "Voir le périmètre",
-    actionHref: "/atlas-fiscal#scope-note",
+    actionHref: "/atlas-fiscal#source-audit",
   },
   {
     id: "fonctionnement",
@@ -591,7 +627,7 @@ export const publicSpendingBreakdown: PublicSpendingBreakdown[] = [
     certainty: "fait établi",
     sourceIds: ["src-bercy-aqsmi-2024"],
     actionLabel: "Tester un scénario",
-    actionHref: "/scenarios",
+    actionHref: "/scenarios?stress=administration&from=atlas",
   },
   {
     id: "affaires-economiques",
@@ -603,7 +639,7 @@ export const publicSpendingBreakdown: PublicSpendingBreakdown[] = [
     certainty: "fait établi",
     sourceIds: ["src-bercy-aqsmi-2024"],
     actionLabel: "Tester un scénario",
-    actionHref: "/scenarios",
+    actionHref: "/atlas-fiscal#case-pme-industrielle",
   },
   {
     id: "transports",
@@ -615,7 +651,7 @@ export const publicSpendingBreakdown: PublicSpendingBreakdown[] = [
     certainty: "fait établi",
     sourceIds: ["src-bercy-aqsmi-2024"],
     actionLabel: "Lire la ventilation",
-    actionHref: "/atlas-fiscal#public-money",
+    actionHref: "/atlas-fiscal#case-foyer-contribuable",
   },
   {
     id: "dette",
@@ -627,7 +663,7 @@ export const publicSpendingBreakdown: PublicSpendingBreakdown[] = [
     certainty: "fait établi",
     sourceIds: ["src-bercy-aqsmi-2024", "src-budget-gouv-etat"],
     actionLabel: "Voir scénario stress",
-    actionHref: "/scenarios",
+    actionHref: "/scenarios?stress=dette&from=atlas",
   },
   {
     id: "defense",
@@ -687,7 +723,7 @@ export const publicSpendingBreakdown: PublicSpendingBreakdown[] = [
     certainty: "fait établi",
     sourceIds: ["src-bercy-aqsmi-2024"],
     actionLabel: "Comparer les scénarios",
-    actionHref: "/scenarios",
+    actionHref: "/scenarios?stress=transition&from=atlas",
   },
   {
     id: "infrastructures",
@@ -712,6 +748,120 @@ export const publicSpendingBreakdown: PublicSpendingBreakdown[] = [
     sourceIds: ["src-bercy-aqsmi-2024"],
     actionLabel: "Voir les sources",
     actionHref: "/atlas-fiscal#sources",
+  },
+];
+
+export const atlasCaseStudies: AtlasCaseStudy[] = [
+  {
+    id: "case-pme-industrielle",
+    title: "PME industrielle : du CA au cash net",
+    persona: "Dirigeant de PME industrielle",
+    summary:
+      "Le cas montre comment valeur ajoutée, salaires, cotisations, taxes de production et résultat imposable se transforment en trésorerie réellement disponible.",
+    certainty: "analyse",
+    sourceIds: ["src-insee-apu-2024", "src-bercy-aqsmi-2024"],
+    steps: [
+      {
+        label: "Chiffre d'affaires",
+        value: "2,4 M€",
+        detail: "Activité annuelle fictive avant achats, salaires, taxes et investissements.",
+        certainty: "hypothèse",
+      },
+      {
+        label: "Coût du travail",
+        value: "Salaires + cotisations",
+        detail: "La lecture doit porter sur le coût complet, pas seulement le salaire net.",
+        certainty: "analyse",
+      },
+      {
+        label: "Taxes avant bénéfice",
+        value: "Friction de marge",
+        detail: "Certaines assiettes ne suivent pas parfaitement la rentabilité finale.",
+        certainty: "analyse",
+      },
+      {
+        label: "Cash disponible",
+        value: "Décision",
+        detail: "Arbitrage entre investissement, embauche, dette, réserve ou distribution.",
+        certainty: "analyse",
+      },
+    ],
+    actionLabel: "Ouvrir le contexte simulation",
+    actionHref: "/simulations?scenario=entreprise-cash&from=atlas",
+  },
+  {
+    id: "case-dirigeant-holding",
+    title: "Dirigeant holding : dividendes, PFU et patrimoine",
+    persona: "Dirigeant patrimonial",
+    summary:
+      "Le cas relie rémunération, distribution, PFU/CDHR, holding patrimoniale et validation professionnelle.",
+    certainty: "analyse",
+    sourceIds: ["src-budget-gouv-etat", "src-insee-apu-2024"],
+    steps: [
+      {
+        label: "Résultat distribuable",
+        value: "Après société",
+        detail: "La décision démarre dans l'entreprise, avant fiscalité personnelle.",
+        certainty: "analyse",
+      },
+      {
+        label: "Dividendes",
+        value: "PFU / CDHR",
+        detail: "Les revenus mobiliers peuvent déclencher plusieurs couches à vérifier.",
+        certainty: "analyse",
+      },
+      {
+        label: "Holding",
+        value: "Actifs passifs",
+        detail: "La qualification patrimoniale ou opérationnelle doit être documentée.",
+        certainty: "analyse",
+      },
+      {
+        label: "Revue",
+        value: "Expert requis",
+        detail: "Le livrable reste indicatif sans validation fiscale ou comptable.",
+        certainty: "fait établi",
+      },
+    ],
+    actionLabel: "Simuler la holding",
+    actionHref: "/simulations?scenario=holding-tax&from=atlas",
+  },
+  {
+    id: "case-foyer-contribuable",
+    title: "Foyer contribuable : 1 000 € prélevés, usages publics",
+    persona: "Foyer fiscal",
+    summary:
+      "Le cas rend concret le passage entre prélèvement, ventilation publique et services utilisés directement ou indirectement.",
+    certainty: "fait établi",
+    sourceIds: ["src-bercy-aqsmi-2024", "src-insee-apu-2024"],
+    steps: [
+      {
+        label: "Prélèvements",
+        value: "1 000 €",
+        detail: "Montant pédagogique pour lire les proportions entre grandes fonctions publiques.",
+        certainty: "fait établi",
+      },
+      {
+        label: "Protection sociale",
+        value: "561 €",
+        detail: "Premier poste de la ventilation Bercy 2024.",
+        certainty: "fait établi",
+      },
+      {
+        label: "Services publics",
+        value: "École, transport, sécurité",
+        detail: "Une partie revient sous forme de services non individualisés.",
+        certainty: "fait établi",
+      },
+      {
+        label: "Dette et futur",
+        value: "Arbitrages",
+        detail: "Charge de la dette, recherche, environnement et infrastructures rendent visibles les choix de long terme.",
+        certainty: "analyse",
+      },
+    ],
+    actionLabel: "Voir la ventilation",
+    actionHref: "/atlas-fiscal#public-money",
   },
 ];
 
