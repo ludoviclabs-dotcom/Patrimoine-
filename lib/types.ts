@@ -6,6 +6,8 @@ export type EvidenceAuthority =
   | "cnil"
   | "eurlex"
   | "banque-france"
+  | "acpr"
+  | "anssi"
   | "aife"
   | "amf"
   | "cnb"
@@ -15,6 +17,7 @@ export type EvidenceAuthority =
 export type LegalScope =
   | "IFI"
   | "transmission"
+  | "succession"
   | "facturation-electronique"
   | "rgpd"
   | "donation"
@@ -29,8 +32,13 @@ export type LegalScope =
   | "pea"
   | "per"
   | "open-banking"
+  | "dsp2"
   | "lcb-ft"
-  | "dac6-dac7";
+  | "dac6-dac7"
+  | "cif-orias"
+  | "dora"
+  | "cyber"
+  | "atad";
 
 export type EvidenceSource = {
   id: string;
@@ -87,7 +95,14 @@ export type CoverageLimit = {
     | "per"
     | "bank-import"
     | "lcb-ft"
-    | "dac6-dac7";
+    | "dac6-dac7"
+    | "succession"
+    | "per-exit"
+    | "liquidity-stress"
+    | "product-adequacy"
+    | "cif-orias"
+    | "dora"
+    | "cyber";
   label: string;
   status: CoverageStatus;
   explanation: string;
@@ -134,7 +149,11 @@ export type SimulationRun = {
     | "holding-tax"
     | "pea-withdrawal"
     | "per-deduction"
-    | "bank-import";
+    | "bank-import"
+    | "succession-checklist"
+    | "per-early-exit"
+    | "succession-liquidity-stress"
+    | "product-adequacy";
   householdId: string;
   status: "indicative" | "needs_review";
   steps: CalculationStep[];
@@ -224,7 +243,14 @@ export type RuleVersion = {
     | "per"
     | "bank-import"
     | "lcb-ft"
-    | "dac6-dac7";
+    | "dac6-dac7"
+    | "succession"
+    | "per-exit"
+    | "liquidity-stress"
+    | "product-adequacy"
+    | "cif-orias"
+    | "dora"
+    | "cyber";
   version: string;
   title: string;
   effectiveFrom: string;
@@ -543,7 +569,11 @@ export type TaxModule =
   | "holding-tax"
   | "pea"
   | "per"
-  | "bank-import";
+  | "bank-import"
+  | "succession"
+  | "per-exit"
+  | "liquidity-stress"
+  | "product-adequacy";
 
 export type DossierSnapshot = {
   id: string;

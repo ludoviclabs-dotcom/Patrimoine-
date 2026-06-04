@@ -155,7 +155,7 @@ function taxRun({
   computedResult: TaxRun["computedResult"];
 }): TaxRun {
   return {
-    id: `taxrun-${module}-claire-marc-v2`,
+    id: `taxrun-${scenario}-claire-marc-v2`,
     module,
     scenario,
     tenantId,
@@ -910,6 +910,405 @@ export function simulateBankImportV2() {
   });
 }
 
+export function simulateSuccessionChecklistV24({
+  grossEstate = 1_150_000,
+  children = 2,
+  priorDonations = 80_000,
+  hasRealEstate = true,
+  hasWill = true,
+  spousePresent = true,
+  documentsReceived = 4,
+  documentsExpected = 7,
+}: {
+  grossEstate?: number;
+  children?: number;
+  priorDonations?: number;
+  hasRealEstate?: boolean;
+  hasWill?: boolean;
+  spousePresent?: boolean;
+  documentsReceived?: number;
+  documentsExpected?: number;
+} = {}) {
+  const missingDocuments = Math.max(0, documentsExpected - documentsReceived);
+  const notaryRequired = hasRealEstate || hasWill || grossEstate > 50_000;
+  const reviewItems = [
+    priorDonations > 0 ? "Donations anterieures a rappeler" : null,
+    hasRealEstate ? "Actif immobilier a qualifier par acte" : null,
+    hasWill ? "Testament ou disposition a relire" : null,
+    spousePresent ? "Droits du conjoint a documenter" : null,
+    missingDocuments > 0 ? `${missingDocuments} justificatifs manquants` : null,
+  ].filter(Boolean);
+
+  const steps = [
+    makeStep({
+      id: "succession-step-active-brut",
+      order: 1,
+      label: "Actif brut declare",
+      inputValue: grossEstate,
+      formula: "actifs declares avant liquidation notariale",
+      outputValue: grossEstate,
+      ruleVersionId: "rule-succession-checklist-2026-v1",
+      evidenceSourceId: "src-service-public-succession-declaration-2025",
+      coverageLimitIds: ["coverage-succession-simple-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Rattacher titres, relevés et dettes avant toute estimation partageable.",
+    }),
+    makeStep({
+      id: "succession-step-notary",
+      order: 2,
+      label: "Intervention notaire",
+      inputValue: `${hasRealEstate} / ${hasWill} / ${grossEstate}`,
+      formula: "immobilier ou disposition particuliere ou actif significatif = revue notaire",
+      outputValue: notaryRequired ? "Notaire attendu" : "A verifier",
+      ruleVersionId: "rule-succession-checklist-2026-v1",
+      evidenceSourceId: "src-service-public-succession-declaration-2025",
+      coverageLimitIds: ["coverage-succession-simple-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Préparer le rendez-vous notaire et la liste de pièces.",
+    }),
+    makeStep({
+      id: "succession-step-donations",
+      order: 3,
+      label: "Donations anterieures",
+      inputValue: priorDonations,
+      formula: "donations anterieures a rapprocher du dossier familial",
+      outputValue: priorDonations > 0 ? "Rappel fiscal a verifier" : "Aucun rappel declare",
+      ruleVersionId: "rule-succession-checklist-2026-v1",
+      evidenceSourceId: "src-service-public-rapport-fiscal-succession-2025",
+      coverageLimitIds: ["coverage-succession-simple-v24"],
+      confidenceStatus: priorDonations > 0 ? "needs_review" : "indicative",
+      nextAction: "Demander actes de donation et calendrier des transmissions.",
+    }),
+    makeStep({
+      id: "succession-step-documents",
+      order: 4,
+      label: "Checklist documentaire",
+      inputValue: `${documentsReceived}/${documentsExpected}`,
+      formula: "documents attendus - documents recus",
+      outputValue: missingDocuments,
+      ruleVersionId: "rule-succession-checklist-2026-v1",
+      evidenceSourceId: "src-service-public-succession-declaration-2025",
+      coverageLimitIds: ["coverage-succession-simple-v24"],
+      confidenceStatus: missingDocuments > 0 ? "needs_review" : "indicative",
+      nextAction: "Bloquer le rapport valide tant que les justificatifs clés manquent.",
+    }),
+  ];
+
+  return taxRun({
+    module: "succession",
+    scenario: "succession-checklist",
+    steps,
+    resultLabel: `${reviewItems.length} points de revue succession`,
+    resultAmount: reviewItems.length,
+    evidenceSourceIds: [
+      "src-service-public-succession-declaration-2025",
+      "src-service-public-succession-rights-2024",
+      "src-service-public-rapport-fiscal-succession-2025",
+    ],
+    reviewerRequired: "notaire",
+    computedResult: {
+      grossEstate,
+      children,
+      priorDonations,
+      hasRealEstate,
+      hasWill,
+      spousePresent,
+      notaryRequired,
+      missingDocuments,
+      reviewItems: reviewItems.join(" | "),
+      definitiveRecommendation: false,
+    },
+  });
+}
+
+export function simulatePerEarlyExitV24({
+  capitalReleased = 80_000,
+  voluntaryPayments = 62_000,
+  gainPortion = 18_000,
+  usedDeductionAtEntry = true,
+  primaryResidencePurpose = true,
+}: {
+  capitalReleased?: number;
+  voluntaryPayments?: number;
+  gainPortion?: number;
+  usedDeductionAtEntry?: boolean;
+  primaryResidencePurpose?: boolean;
+} = {}) {
+  const amountReconciled = voluntaryPayments + gainPortion;
+  const reconciliationGap = capitalReleased - amountReconciled;
+  const taxablePaymentsToReview = usedDeductionAtEntry ? voluntaryPayments : 0;
+  const reviewRequired = primaryResidencePurpose && (reconciliationGap !== 0 || taxablePaymentsToReview > 0 || gainPortion > 0);
+
+  const steps = [
+    makeStep({
+      id: "per-exit-step-purpose",
+      order: 1,
+      label: "Motif de sortie anticipee",
+      inputValue: primaryResidencePurpose ? "Residence principale" : "Autre motif",
+      formula: "motif declare = cas de deblocage a verifier",
+      outputValue: primaryResidencePurpose ? "Cas residence principale" : "Hors cas demo",
+      ruleVersionId: "rule-per-early-exit-primary-home-2026-v1",
+      evidenceSourceId: "src-service-public-per-release-2025",
+      coverageLimitIds: ["coverage-per-early-exit-primary-home-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Verifier le justificatif d'acquisition de residence principale.",
+    }),
+    makeStep({
+      id: "per-exit-step-reconcile",
+      order: 2,
+      label: "Ventilation versements / gains",
+      inputValue: `${voluntaryPayments} + ${gainPortion}`,
+      formula: "versements + gains = capital debloque",
+      outputValue: reconciliationGap === 0 ? "Ventilation coherente" : `Ecart ${reconciliationGap}`,
+      ruleVersionId: "rule-per-early-exit-primary-home-2026-v1",
+      evidenceSourceId: "src-bofip-per-fiscal-regime-2026",
+      coverageLimitIds: ["coverage-per-early-exit-primary-home-v24"],
+      confidenceStatus: reconciliationGap === 0 ? "indicative" : "needs_review",
+      nextAction: "Demander le decompte de l'etablissement gestionnaire.",
+    }),
+    makeStep({
+      id: "per-exit-step-payments",
+      order: 3,
+      label: "Versements a traiter fiscalement",
+      inputValue: voluntaryPayments,
+      formula: usedDeductionAtEntry ? "versements deduits a l'entree = IR a revoir" : "versements non deduits = traitement distinct",
+      outputValue: taxablePaymentsToReview,
+      ruleVersionId: "rule-per-early-exit-primary-home-2026-v1",
+      evidenceSourceId: "src-service-public-per-release-2025",
+      coverageLimitIds: ["coverage-per-early-exit-primary-home-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Valider l'historique de deduction sur les avis d'impot.",
+    }),
+    makeStep({
+      id: "per-exit-step-gains",
+      order: 4,
+      label: "Gains et prelevements",
+      inputValue: gainPortion,
+      formula: "produits du PER = traitement fiscal et social a controler",
+      outputValue: gainPortion,
+      ruleVersionId: "rule-per-early-exit-primary-home-2026-v1",
+      evidenceSourceId: "src-bofip-per-fiscal-regime-2026",
+      coverageLimitIds: ["coverage-per-early-exit-primary-home-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Ne pas chiffrer definitivement sans decompte fiscal et source a jour.",
+    }),
+  ];
+
+  return taxRun({
+    module: "per-exit",
+    scenario: "per-early-exit",
+    steps,
+    resultLabel: reviewRequired
+      ? "Sortie PER residence principale a revoir"
+      : "Ventilation PER pedagogique",
+    resultAmount: capitalReleased,
+    evidenceSourceIds: ["src-service-public-per-release-2025", "src-bofip-per-fiscal-regime-2026"],
+    reviewerRequired: "cgp",
+    computedResult: {
+      capitalReleased,
+      voluntaryPayments,
+      gainPortion,
+      usedDeductionAtEntry,
+      primaryResidencePurpose,
+      amountReconciled,
+      reconciliationGap,
+      taxablePaymentsToReview,
+      reviewRequired,
+      definitiveRecommendation: false,
+    },
+  });
+}
+
+export function simulateSuccessionLiquidityStressV24({
+  estimatedDuties = 145_000,
+  cashAvailable = 90_000,
+  reservedExpenses = 20_000,
+  saleDelayMonths = 9,
+}: {
+  estimatedDuties?: number;
+  cashAvailable?: number;
+  reservedExpenses?: number;
+  saleDelayMonths?: number;
+} = {}) {
+  const usableCash = Math.max(0, cashAvailable - reservedExpenses);
+  const liquidityGap = Math.max(0, estimatedDuties - usableCash);
+  const stressStatus = liquidityGap > 0 ? "Deficit de liquidite" : "Liquidite suffisante dans l'hypothese";
+
+  const steps = [
+    makeStep({
+      id: "liquidity-step-usable-cash",
+      order: 1,
+      label: "Cash disponible apres reserve",
+      inputValue: `${cashAvailable} - ${reservedExpenses}`,
+      formula: "liquidites - reserve prudente",
+      outputValue: usableCash,
+      ruleVersionId: "rule-succession-liquidity-stress-2026-v1",
+      evidenceSourceId: "src-service-public-succession-declaration-2025",
+      coverageLimitIds: ["coverage-succession-liquidity-stress-v24"],
+      confidenceStatus: "indicative",
+      nextAction: "Verifier comptes, assurance-vie et delais de mobilisation.",
+    }),
+    makeStep({
+      id: "liquidity-step-duties",
+      order: 2,
+      label: "Droits estimes a financer",
+      inputValue: estimatedDuties,
+      formula: "montant declare par le conseiller, non liquide par la demo",
+      outputValue: estimatedDuties,
+      ruleVersionId: "rule-succession-liquidity-stress-2026-v1",
+      evidenceSourceId: "src-service-public-succession-rights-2024",
+      coverageLimitIds: ["coverage-succession-liquidity-stress-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Faire liquider les droits par le notaire.",
+    }),
+    makeStep({
+      id: "liquidity-step-gap",
+      order: 3,
+      label: "Alerte deficit de liquidite",
+      inputValue: `${estimatedDuties} / ${usableCash}`,
+      formula: "max(0, droits estimes - cash utilisable)",
+      outputValue: liquidityGap,
+      ruleVersionId: "rule-succession-liquidity-stress-2026-v1",
+      evidenceSourceId: "src-service-public-succession-declaration-2025",
+      coverageLimitIds: ["coverage-succession-liquidity-stress-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Etudier paiement fractionne/differe, cession ou avance de liquidite avec professionnel.",
+    }),
+    makeStep({
+      id: "liquidity-step-sale-delay",
+      order: 4,
+      label: "Delai de cession sous stress",
+      inputValue: `${saleDelayMonths} mois`,
+      formula: "actifs non liquides = delai avant cash",
+      outputValue: saleDelayMonths > 6 ? "Delai defavorable" : "Delai court",
+      ruleVersionId: "rule-succession-liquidity-stress-2026-v1",
+      evidenceSourceId: "src-service-public-succession-declaration-2025",
+      coverageLimitIds: ["coverage-succession-liquidity-stress-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Documenter actifs mobilisables et calendrier réaliste.",
+    }),
+  ];
+
+  return taxRun({
+    module: "liquidity-stress",
+    scenario: "succession-liquidity-stress",
+    steps,
+    resultLabel: stressStatus,
+    resultAmount: liquidityGap,
+    evidenceSourceIds: ["src-service-public-succession-declaration-2025", "src-service-public-succession-rights-2024"],
+    reviewerRequired: "notaire",
+    computedResult: {
+      estimatedDuties,
+      cashAvailable,
+      reservedExpenses,
+      usableCash,
+      liquidityGap,
+      saleDelayMonths,
+      stressStatus,
+      definitiveRecommendation: false,
+    },
+  });
+}
+
+export function simulateProductAdequacyV24({
+  horizonYears = 6,
+  riskTolerance = 3,
+  productRisk = 4,
+  sustainabilityPreference = true,
+  sustainabilityDocumented = false,
+  targetMarketAligned = false,
+}: {
+  horizonYears?: number;
+  riskTolerance?: number;
+  productRisk?: number;
+  sustainabilityPreference?: boolean;
+  sustainabilityDocumented?: boolean;
+  targetMarketAligned?: boolean;
+} = {}) {
+  const riskMismatch = productRisk > riskTolerance;
+  const horizonMismatch = horizonYears < 5;
+  const durabilityGap = sustainabilityPreference && !sustainabilityDocumented;
+  const mismatchCount = [riskMismatch, horizonMismatch, durabilityGap, !targetMarketAligned].filter(Boolean).length;
+
+  const steps = [
+    makeStep({
+      id: "adequacy-step-horizon",
+      order: 1,
+      label: "Horizon client",
+      inputValue: `${horizonYears} ans`,
+      formula: "horizon declare compare au besoin produit",
+      outputValue: horizonMismatch ? "Horizon court" : "Horizon compatible en demo",
+      ruleVersionId: "rule-product-adequacy-demo-2026-v1",
+      evidenceSourceId: "src-amf-mif2-adequation",
+      coverageLimitIds: ["coverage-product-adequacy-demo-v24"],
+      confidenceStatus: horizonMismatch ? "needs_review" : "indicative",
+      nextAction: "Revoir l'horizon et le besoin de liquidite avec le client.",
+    }),
+    makeStep({
+      id: "adequacy-step-risk",
+      order: 2,
+      label: "Risque produit vs profil",
+      inputValue: `${productRisk}/${riskTolerance}`,
+      formula: "risque produit > tolerance client = alerte",
+      outputValue: riskMismatch ? "Risque superieur au profil" : "Risque coherent en demo",
+      ruleVersionId: "rule-product-adequacy-demo-2026-v1",
+      evidenceSourceId: "src-amf-mif2-adequation",
+      coverageLimitIds: ["coverage-product-adequacy-demo-v24"],
+      confidenceStatus: riskMismatch ? "needs_review" : "indicative",
+      nextAction: "Ne pas recommander sans justification et revue d'adequation.",
+    }),
+    makeStep({
+      id: "adequacy-step-durability",
+      order: 3,
+      label: "Durabilite documentee",
+      inputValue: sustainabilityPreference ? "Preference exprimee" : "Pas de preference",
+      formula: "preference ESG + absence de preuve = question ouverte",
+      outputValue: durabilityGap ? "Preference non documentee" : "Pas d'alerte durabilite",
+      ruleVersionId: "rule-product-adequacy-demo-2026-v1",
+      evidenceSourceId: "src-amf-durabilite-2022",
+      coverageLimitIds: ["coverage-product-adequacy-demo-v24"],
+      confidenceStatus: durabilityGap ? "needs_review" : "indicative",
+      nextAction: "Completer le questionnaire de durabilite avant rapport d'adequation.",
+    }),
+    makeStep({
+      id: "adequacy-step-no-recommendation",
+      order: 4,
+      label: "Absence de recommandation automatique",
+      inputValue: mismatchCount,
+      formula: "mismatches > 0 ou marche cible non prouve = revue humaine",
+      outputValue: "Revue humaine obligatoire",
+      ruleVersionId: "rule-product-adequacy-demo-2026-v1",
+      evidenceSourceId: "src-cnil-profiling-automated-decision",
+      coverageLimitIds: ["coverage-product-adequacy-demo-v24"],
+      confidenceStatus: "needs_review",
+      nextAction: "Transformer ce résultat en question conseiller, pas en conseil automatisé.",
+    }),
+  ];
+
+  return taxRun({
+    module: "product-adequacy",
+    scenario: "product-adequacy",
+    steps,
+    resultLabel: mismatchCount > 0 ? `${mismatchCount} alertes adequation` : "Profil coherent en demo",
+    resultAmount: mismatchCount,
+    evidenceSourceIds: ["src-amf-mif2-adequation", "src-amf-durabilite-2022", "src-cnil-profiling-automated-decision"],
+    reviewerRequired: "cgp",
+    computedResult: {
+      horizonYears,
+      riskTolerance,
+      productRisk,
+      sustainabilityPreference,
+      sustainabilityDocumented,
+      targetMarketAligned,
+      riskMismatch,
+      horizonMismatch,
+      durabilityGap,
+      mismatchCount,
+      definitiveRecommendation: false,
+    },
+  });
+}
+
 export const v2TaxRuns = [
   simulateIrPfuCdhr(),
   simulateRealEstateGainV2(),
@@ -920,6 +1319,10 @@ export const v2TaxRuns = [
   simulatePeaWithdrawalV2(),
   simulatePerDeductionV2(),
   simulateBankImportV2(),
+  simulateSuccessionChecklistV24(),
+  simulatePerEarlyExitV24(),
+  simulateSuccessionLiquidityStressV24(),
+  simulateProductAdequacyV24(),
 ];
 
 export function getV2TaxRuns() {

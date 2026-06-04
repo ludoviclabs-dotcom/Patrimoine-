@@ -180,6 +180,69 @@ export const coverageLimits: CoverageLimit[] = [
       "Aucun connecteur réel : le parcours illustre consentement, SCA, normalisation et alertes avec fixtures.",
     requiredProfessional: "cgp",
   },
+  {
+    id: "coverage-succession-simple-v24",
+    module: "succession",
+    label: "Succession simple et checklist notaire",
+    status: "partially_covered",
+    explanation:
+      "La V2.4 structure actif brut, documents, notaire et paiement, sans liquider definitivement les droits.",
+    requiredProfessional: "notaire",
+  },
+  {
+    id: "coverage-per-early-exit-primary-home-v24",
+    module: "per-exit",
+    label: "PER sortie anticipee residence principale",
+    status: "partially_covered",
+    explanation:
+      "Le moteur separe versements et gains mais impose revue fiscale avant conclusion sur le traitement exact.",
+    requiredProfessional: "cgp",
+  },
+  {
+    id: "coverage-succession-liquidity-stress-v24",
+    module: "liquidity-stress",
+    label: "Stress test liquidite succession",
+    status: "partially_covered",
+    explanation:
+      "Stress test pedagogique : droits estimes et cash disponible, sans liquidation notariale ni echeancier opposable.",
+    requiredProfessional: "notaire",
+  },
+  {
+    id: "coverage-product-adequacy-demo-v24",
+    module: "product-adequacy",
+    label: "Adequation produit simulee",
+    status: "not_covered_v1",
+    explanation:
+      "Aucune recommandation automatique : horizon, risque et durabilite servent seulement a declencher la revue.",
+    requiredProfessional: "cgp",
+  },
+  {
+    id: "coverage-regulatory-native-v24",
+    module: "cif-orias",
+    label: "Qualification reglementaire native",
+    status: "partially_covered",
+    explanation:
+      "Information, simulation et conseil personnalise sont distingues dans l'interface, mais les habilitations restent a controler.",
+    requiredProfessional: "cgp",
+  },
+  {
+    id: "coverage-dora-dsp2-demo-v24",
+    module: "dora",
+    label: "DORA / DSP2 en simulation",
+    status: "not_covered_v1",
+    explanation:
+      "Pas de connecteur ni d'exploitation operationnelle : les obligations sont listees comme prerequis produit.",
+    requiredProfessional: "cgp",
+  },
+  {
+    id: "coverage-cyber-storage-demo-v24",
+    module: "cyber",
+    label: "Cybersecurite et stockage documentaire",
+    status: "not_covered_v1",
+    explanation:
+      "La demo n'active aucun stockage sensible reel ; la securite est presentee comme exigence de roadmap.",
+    requiredProfessional: "cgp",
+  },
 ];
 
 export function getCoverageLimit(id: string) {

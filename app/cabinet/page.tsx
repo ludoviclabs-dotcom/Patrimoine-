@@ -12,6 +12,8 @@ import { CabinetHero } from "@/components/v2/cabinet-hero";
 import { GoToMarketPanel } from "@/components/v2/go-to-market-panel";
 import { PatrimonialActionPlan } from "@/components/v2-3/patrimonial-action-plan";
 import { PatrimonialModelPanels } from "@/components/v2-3/patrimonial-model-panels";
+import { Cabinet360Panels } from "@/components/v2-4/cabinet-360-panels";
+import { ReportCoverageMatrix } from "@/components/v2-4/report-coverage-matrix";
 import { AuditEvidencePanel } from "@/components/v2-2/audit-evidence-panel";
 import { MaturityMatrixPanel } from "@/components/v2-2/maturity-matrix-panel";
 import { demoPersonas } from "@/lib/demo-data/personas";
@@ -23,7 +25,9 @@ export default function CabinetPage() {
       <div className="space-y-8">
         <CabinetHero />
         <PatrimonialActionPlan />
+        <ReportCoverageMatrix />
         <PatrimonialModelPanels />
+        <Cabinet360Panels />
         <AtlasCockpitEntry />
 
         <section aria-labelledby="guided-flow-title" className="space-y-4">

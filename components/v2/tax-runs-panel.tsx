@@ -21,6 +21,10 @@ const moduleLabels: Record<TaxRun["module"], string> = {
   pea: "PEA",
   per: "PER",
   "bank-import": "Import simulé",
+  succession: "Succession simple",
+  "per-exit": "PER sortie anticipée",
+  "liquidity-stress": "Stress liquidité",
+  "product-adequacy": "Adéquation produit",
 };
 
 export function TaxRunsPanel({ runs }: { runs: TaxRun[] }) {
@@ -101,7 +105,7 @@ export function TaxRunsPanel({ runs }: { runs: TaxRun[] }) {
 }
 
 function formatRunResult(run: TaxRun) {
-  if (run.module === "bank-import") return run.resultLabel;
+  if (["bank-import", "succession", "product-adequacy"].includes(run.module)) return run.resultLabel;
   return typeof run.resultAmount === "number" ? formatEuro(run.resultAmount) : run.resultLabel;
 }
 

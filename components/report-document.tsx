@@ -6,14 +6,23 @@ import { MeetingBrief } from "@/components/v1-1/meeting-brief";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { getPfuDiffAuditEvents } from "@/lib/evidence/pfu-rule-diff";
 import { formatEuro } from "@/lib/format";
-import { manualReviewFlags, reportMethodItems } from "@/lib/patrimonial-model/model";
+import {
+  clientAdvisorReportSections,
+  manualReviewFlags,
+  regulatoryRiskControls,
+  reportMethodItems,
+} from "@/lib/patrimonial-model/model";
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
 import {
   generateProfessionalDocuments,
   getV2TaxRuns,
   simulateDutreilV2,
   simulateHoldingTaxV2,
+  simulatePerEarlyExitV24,
+  simulateProductAdequacyV24,
   simulateRealEstateGainV2,
+  simulateSuccessionChecklistV24,
+  simulateSuccessionLiquidityStressV24,
   simulateTransmissionV2,
 } from "@/lib/tax/v2-engines";
 import type { AllocationItem } from "@/lib/demo-data/metrics";
@@ -67,6 +76,26 @@ export function ReportDocument({
       label: "Taxe holding",
       assumptions: "5,4 M€ d'actifs, revenus passifs 56 %, contrôle 72 %, inventaire taxable 420 000 €",
       run: simulateHoldingTaxV2(),
+    },
+    {
+      label: "Succession simple",
+      assumptions: "actif brut, donations antérieures, notaire, documents et points de revue",
+      run: simulateSuccessionChecklistV24(),
+    },
+    {
+      label: "PER sortie résidence principale",
+      assumptions: "capital débloqué, versements, gains et déduction à l'entrée à contrôler",
+      run: simulatePerEarlyExitV24(),
+    },
+    {
+      label: "Stress liquidité succession",
+      assumptions: "droits estimés, cash disponible, réserve prudente et délai de cession",
+      run: simulateSuccessionLiquidityStressV24(),
+    },
+    {
+      label: "Adéquation produit simulée",
+      assumptions: "horizon, risque, durabilité et marché cible, sans recommandation automatique",
+      run: simulateProductAdequacyV24(),
     },
   ];
 
@@ -133,6 +162,25 @@ export function ReportDocument({
       </section>
 
       <section>
+        <h2 className="text-lg font-semibold text-foreground">1 bis. Deux lectures du rapport</h2>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {clientAdvisorReportSections.map((section) => (
+            <div key={section.id} className="rounded-lg border border-border p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={section.audience === "client" ? "teal" : "warning"}>{section.audience}</Badge>
+                <p className="text-sm font-semibold text-foreground">{section.label}</p>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted">{section.userFacingExplanation}</p>
+              <p className="mt-3 text-xs uppercase tracking-[0.12em] text-muted">
+                {section.contentBlocks.join(" · ")}
+              </p>
+              <p className="mt-3 text-sm font-medium text-foreground">{section.proofExpectation}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
         <h2 className="text-lg font-semibold text-foreground">2. Profil foyer</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <Metric label="Foyer" value={household.name} />
@@ -184,7 +232,11 @@ export function ReportDocument({
               <p className="text-sm font-semibold text-foreground">{item.label}</p>
               <p className="mt-2 text-sm leading-6 text-muted">{item.assumptions}</p>
               <p className="mt-2 font-mono text-sm font-semibold text-foreground">
-                {typeof item.run.resultAmount === "number" ? formatEuro(item.run.resultAmount) : item.run.resultLabel}
+                {["bank-import", "succession", "product-adequacy"].includes(item.run.module)
+                  ? item.run.resultLabel
+                  : typeof item.run.resultAmount === "number"
+                    ? formatEuro(item.run.resultAmount)
+                    : item.run.resultLabel}
               </p>
               <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted">
                 Statut : revue {item.run.reviewerRequired}
@@ -205,7 +257,7 @@ export function ReportDocument({
               <div key={run.id} className="rounded-lg border border-border p-4">
                 <p className="text-sm font-semibold text-foreground">{run.module}</p>
                 <p className="mt-2 font-mono text-base font-semibold text-foreground">
-                  {run.module === "bank-import"
+                  {["bank-import", "succession", "product-adequacy"].includes(run.module)
                     ? run.resultLabel
                     : typeof run.resultAmount === "number"
                       ? formatEuro(run.resultAmount)
@@ -297,9 +349,28 @@ export function ReportDocument({
 
       <CoverageLimitsPanel module="ifi" />
 
+      <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-base font-semibold text-amber-950">Pourquoi le produit ne conclut pas seul</h2>
+          <Badge tone="warning">Garde-fou</Badge>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-amber-900">
+          Les simulations restent des aides à la préparation : conseil personnalisé, RGPD, profilage,
+          LCB-FT, international, holding, trust et démembrement sophistiqué imposent une revue humaine.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {regulatoryRiskControls.slice(0, 6).map((control) => (
+            <div key={control.id} className="rounded-lg border border-amber-200 bg-white/70 p-3">
+              <p className="text-sm font-semibold text-amber-950">{control.label}</p>
+              <p className="mt-2 text-sm leading-6 text-amber-900">{control.mitigation}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="rounded-lg border border-red-200 bg-red-50 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold text-red-950">10. Points de revue professionnelle V2.3</h2>
+          <h2 className="text-base font-semibold text-red-950">10. Points de revue professionnelle V2.4</h2>
           <Badge tone="warning">Revue professionnelle</Badge>
         </div>
         <ul className="mt-3 grid gap-2 text-sm leading-6 text-red-900">

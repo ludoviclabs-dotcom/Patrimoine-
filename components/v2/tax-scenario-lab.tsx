@@ -15,7 +15,11 @@ import {
   simulateHoldingTaxV2,
   simulatePeaWithdrawalV2,
   simulatePerDeductionV2,
+  simulatePerEarlyExitV24,
+  simulateProductAdequacyV24,
   simulateRealEstateGainV2,
+  simulateSuccessionChecklistV24,
+  simulateSuccessionLiquidityStressV24,
   simulateTransmissionV2,
 } from "@/lib/tax/v2-engines";
 import { demoConnectorImport } from "@/lib/patrimonial-model/model";
@@ -28,7 +32,11 @@ export type LabScenario =
   | "holding-tax"
   | "pea"
   | "per"
-  | "bank-import";
+  | "bank-import"
+  | "succession-checklist"
+  | "per-early-exit"
+  | "succession-liquidity-stress"
+  | "product-adequacy";
 
 const scenarioLabels: Record<LabScenario, string> = {
   "plus-value": "Plus-value",
@@ -38,12 +46,16 @@ const scenarioLabels: Record<LabScenario, string> = {
   pea: "PEA retrait après 5 ans",
   per: "PER déduction à l’entrée",
   "bank-import": "Import bancaire simulé",
+  "succession-checklist": "Succession simple",
+  "per-early-exit": "PER sortie anticipée",
+  "succession-liquidity-stress": "Stress liquidité succession",
+  "product-adequacy": "Adéquation produit",
 };
 
 export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenario?: LabScenario }) {
   const [activeScenario, setActiveScenario] = useState<LabScenario>(initialScenario);
   const [showWhy, setShowWhy] = useState(true);
-  const [runStatus, setRunStatus] = useState("Prêt à recalculer");
+  const [runStatus, setRunStatus] = useState("Prêt");
 
   const [realEstate, setRealEstate] = useState({
     salePrice: 720_000,
@@ -94,6 +106,37 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     unusedCeilingN3: 1_600,
     spouseMutualization: 4_000,
   });
+  const [successionChecklist, setSuccessionChecklist] = useState({
+    grossEstate: 1_150_000,
+    children: 2,
+    priorDonations: 80_000,
+    hasRealEstate: true,
+    hasWill: true,
+    spousePresent: true,
+    documentsReceived: 4,
+    documentsExpected: 7,
+  });
+  const [perExit, setPerExit] = useState({
+    capitalReleased: 80_000,
+    voluntaryPayments: 62_000,
+    gainPortion: 18_000,
+    usedDeductionAtEntry: true,
+    primaryResidencePurpose: true,
+  });
+  const [liquidityStress, setLiquidityStress] = useState({
+    estimatedDuties: 145_000,
+    cashAvailable: 90_000,
+    reservedExpenses: 20_000,
+    saleDelayMonths: 9,
+  });
+  const [adequacy, setAdequacy] = useState({
+    horizonYears: 6,
+    riskTolerance: 3,
+    productRisk: 4,
+    sustainabilityPreference: true,
+    sustainabilityDocumented: false,
+    targetMarketAligned: false,
+  });
 
   const activeRun = useMemo<TaxRun>(() => {
     if (activeScenario === "plus-value") return simulateRealEstateGainV2(realEstate);
@@ -114,8 +157,24 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
       unusedCeilings: [per.unusedCeilingN1, per.unusedCeilingN2, per.unusedCeilingN3],
       spouseMutualization: per.spouseMutualization,
     });
+    if (activeScenario === "succession-checklist") return simulateSuccessionChecklistV24(successionChecklist);
+    if (activeScenario === "per-early-exit") return simulatePerEarlyExitV24(perExit);
+    if (activeScenario === "succession-liquidity-stress") return simulateSuccessionLiquidityStressV24(liquidityStress);
+    if (activeScenario === "product-adequacy") return simulateProductAdequacyV24(adequacy);
     return simulateBankImportV2();
-  }, [activeScenario, dutreil, holding, pea, per, realEstate, transmission]);
+  }, [
+    activeScenario,
+    adequacy,
+    dutreil,
+    holding,
+    liquidityStress,
+    pea,
+    per,
+    perExit,
+    realEstate,
+    successionChecklist,
+    transmission,
+  ]);
 
   const firstStep = activeRun.steps[0];
 
@@ -141,7 +200,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
                 type="button"
                 onClick={() => {
                   setActiveScenario(scenario);
-                  setRunStatus("Prêt à recalculer");
+                  setRunStatus("Prêt");
                 }}
                 className={`min-h-10 rounded-lg border px-3 text-sm font-semibold transition ${
                   activeScenario === scenario
@@ -241,10 +300,53 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
             </div>
           ) : null}
 
+          {activeScenario === "succession-checklist" ? (
+            <div className="grid gap-3">
+              <NumberInput label="Actif brut déclaré" value={successionChecklist.grossEstate} onChange={(value) => setSuccessionChecklist((item) => ({ ...item, grossEstate: value }))} />
+              <NumberInput label="Enfants" value={successionChecklist.children} onChange={(value) => setSuccessionChecklist((item) => ({ ...item, children: value }))} />
+              <NumberInput label="Donations antérieures" value={successionChecklist.priorDonations} onChange={(value) => setSuccessionChecklist((item) => ({ ...item, priorDonations: value }))} />
+              <NumberInput label="Documents reçus" value={successionChecklist.documentsReceived} onChange={(value) => setSuccessionChecklist((item) => ({ ...item, documentsReceived: value }))} />
+              <NumberInput label="Documents attendus" value={successionChecklist.documentsExpected} onChange={(value) => setSuccessionChecklist((item) => ({ ...item, documentsExpected: value }))} />
+              <CheckboxInput label="Actif immobilier" checked={successionChecklist.hasRealEstate} onChange={(checked) => setSuccessionChecklist((item) => ({ ...item, hasRealEstate: checked }))} />
+              <CheckboxInput label="Testament ou disposition" checked={successionChecklist.hasWill} onChange={(checked) => setSuccessionChecklist((item) => ({ ...item, hasWill: checked }))} />
+              <CheckboxInput label="Conjoint survivant" checked={successionChecklist.spousePresent} onChange={(checked) => setSuccessionChecklist((item) => ({ ...item, spousePresent: checked }))} />
+            </div>
+          ) : null}
+
+          {activeScenario === "per-early-exit" ? (
+            <div className="grid gap-3">
+              <NumberInput label="Capital débloqué" value={perExit.capitalReleased} onChange={(value) => setPerExit((item) => ({ ...item, capitalReleased: value }))} />
+              <NumberInput label="Versements" value={perExit.voluntaryPayments} onChange={(value) => setPerExit((item) => ({ ...item, voluntaryPayments: value }))} />
+              <NumberInput label="Gains" value={perExit.gainPortion} onChange={(value) => setPerExit((item) => ({ ...item, gainPortion: value }))} />
+              <CheckboxInput label="Versements déduits à l'entrée" checked={perExit.usedDeductionAtEntry} onChange={(checked) => setPerExit((item) => ({ ...item, usedDeductionAtEntry: checked }))} />
+              <CheckboxInput label="Acquisition résidence principale" checked={perExit.primaryResidencePurpose} onChange={(checked) => setPerExit((item) => ({ ...item, primaryResidencePurpose: checked }))} />
+            </div>
+          ) : null}
+
+          {activeScenario === "succession-liquidity-stress" ? (
+            <div className="grid gap-3">
+              <NumberInput label="Droits estimés" value={liquidityStress.estimatedDuties} onChange={(value) => setLiquidityStress((item) => ({ ...item, estimatedDuties: value }))} />
+              <NumberInput label="Cash disponible" value={liquidityStress.cashAvailable} onChange={(value) => setLiquidityStress((item) => ({ ...item, cashAvailable: value }))} />
+              <NumberInput label="Réserve prudente" value={liquidityStress.reservedExpenses} onChange={(value) => setLiquidityStress((item) => ({ ...item, reservedExpenses: value }))} />
+              <NumberInput label="Délai de cession (mois)" value={liquidityStress.saleDelayMonths} onChange={(value) => setLiquidityStress((item) => ({ ...item, saleDelayMonths: value }))} />
+            </div>
+          ) : null}
+
+          {activeScenario === "product-adequacy" ? (
+            <div className="grid gap-3">
+              <NumberInput label="Horizon client (années)" value={adequacy.horizonYears} onChange={(value) => setAdequacy((item) => ({ ...item, horizonYears: value }))} />
+              <NumberInput label="Tolérance risque (1-7)" value={adequacy.riskTolerance} onChange={(value) => setAdequacy((item) => ({ ...item, riskTolerance: value }))} />
+              <NumberInput label="Risque produit (1-7)" value={adequacy.productRisk} onChange={(value) => setAdequacy((item) => ({ ...item, productRisk: value }))} />
+              <CheckboxInput label="Préférence durabilité" checked={adequacy.sustainabilityPreference} onChange={(checked) => setAdequacy((item) => ({ ...item, sustainabilityPreference: checked }))} />
+              <CheckboxInput label="Durabilité documentée" checked={adequacy.sustainabilityDocumented} onChange={(checked) => setAdequacy((item) => ({ ...item, sustainabilityDocumented: checked }))} />
+              <CheckboxInput label="Marché cible aligné" checked={adequacy.targetMarketAligned} onChange={(checked) => setAdequacy((item) => ({ ...item, targetMarketAligned: checked }))} />
+            </div>
+          ) : null}
+
           <div className="mt-5 flex flex-wrap gap-3">
             <Button
               type="button"
-              onClick={() => setRunStatus(`Scénario recalculé depuis les hypothèses saisies`)}
+              onClick={() => setRunStatus("Recalculé")}
             >
               <Play className="h-4 w-4" aria-hidden="true" />
               Lancer avec ces hypothèses
@@ -338,6 +440,6 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function formatRunResult(run: TaxRun) {
-  if (run.module === "bank-import") return run.resultLabel;
+  if (["bank-import", "succession", "product-adequacy"].includes(run.module)) return run.resultLabel;
   return typeof run.resultAmount === "number" ? formatEuro(run.resultAmount) : run.resultLabel;
 }
