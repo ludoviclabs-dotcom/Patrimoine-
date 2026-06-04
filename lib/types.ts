@@ -5,6 +5,7 @@ export type EvidenceAuthority =
   | "legifrance"
   | "cnil"
   | "eurlex"
+  | "banque-france"
   | "aife"
   | "amf"
   | "cnb"
@@ -24,7 +25,12 @@ export type LegalScope =
   | "dutreil"
   | "apport-cession"
   | "holding-tax"
-  | "mif2-dda";
+  | "mif2-dda"
+  | "pea"
+  | "per"
+  | "open-banking"
+  | "lcb-ft"
+  | "dac6-dac7";
 
 export type EvidenceSource = {
   id: string;
@@ -76,7 +82,12 @@ export type CoverageLimit = {
     | "dutreil"
     | "apport-cession"
     | "holding-tax"
-    | "documents-cabinet";
+    | "documents-cabinet"
+    | "pea"
+    | "per"
+    | "bank-import"
+    | "lcb-ft"
+    | "dac6-dac7";
   label: string;
   status: CoverageStatus;
   explanation: string;
@@ -120,7 +131,10 @@ export type SimulationRun = {
     | "ir-pfu-cdhr"
     | "dutreil"
     | "apport-cession"
-    | "holding-tax";
+    | "holding-tax"
+    | "pea-withdrawal"
+    | "per-deduction"
+    | "bank-import";
   householdId: string;
   status: "indicative" | "needs_review";
   steps: CalculationStep[];
@@ -205,7 +219,12 @@ export type RuleVersion = {
     | "dutreil"
     | "apport-cession"
     | "holding-tax"
-    | "documents-cabinet";
+    | "documents-cabinet"
+    | "pea"
+    | "per"
+    | "bank-import"
+    | "lcb-ft"
+    | "dac6-dac7";
   version: string;
   title: string;
   effectiveFrom: string;
@@ -521,7 +540,10 @@ export type TaxModule =
   | "transmission"
   | "dutreil"
   | "apport-cession"
-  | "holding-tax";
+  | "holding-tax"
+  | "pea"
+  | "per"
+  | "bank-import";
 
 export type DossierSnapshot = {
   id: string;

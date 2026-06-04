@@ -10,6 +10,7 @@ const authorityLabels: Record<EvidenceSource["authority"], string> = {
   legifrance: "Légifrance",
   cnil: "CNIL",
   eurlex: "EUR-Lex",
+  "banque-france": "Banque de France",
   aife: "AIFE",
   amf: "AMF",
   cnb: "CNB",
@@ -31,6 +32,11 @@ const scopeLabels: Record<EvidenceSource["legalScope"], string> = {
   "apport-cession": "Apport-cession",
   "holding-tax": "Taxe holding",
   "mif2-dda": "MIF II / DDA",
+  pea: "PEA",
+  per: "PER",
+  "open-banking": "Open banking",
+  "lcb-ft": "LCB-FT",
+  "dac6-dac7": "DAC6/DAC7",
 };
 
 export function EvidenceList({ sources }: { sources: EvidenceSource[] }) {

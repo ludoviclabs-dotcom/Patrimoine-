@@ -18,6 +18,9 @@ const moduleLabels: Record<TaxRun["module"], string> = {
   dutreil: "Pacte Dutreil",
   "apport-cession": "Apport-cession",
   "holding-tax": "Taxe holding",
+  pea: "PEA",
+  per: "PER",
+  "bank-import": "Import simulé",
 };
 
 export function TaxRunsPanel({ runs }: { runs: TaxRun[] }) {
@@ -54,7 +57,7 @@ export function TaxRunsPanel({ runs }: { runs: TaxRun[] }) {
                   {moduleLabels[run.module]}
                 </span>
                 <span className="mt-1 block text-sm text-muted">
-                  {typeof run.resultAmount === "number" ? formatEuro(run.resultAmount) : run.resultLabel}
+                  {formatRunResult(run)}
                 </span>
               </span>
               <ChevronDown className="h-4 w-4 shrink-0 text-muted" aria-hidden="true" />
@@ -95,6 +98,11 @@ export function TaxRunsPanel({ runs }: { runs: TaxRun[] }) {
       ) : null}
     </div>
   );
+}
+
+function formatRunResult(run: TaxRun) {
+  if (run.module === "bank-import") return run.resultLabel;
+  return typeof run.resultAmount === "number" ? formatEuro(run.resultAmount) : run.resultLabel;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

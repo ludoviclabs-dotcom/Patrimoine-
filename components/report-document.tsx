@@ -6,6 +6,7 @@ import { MeetingBrief } from "@/components/v1-1/meeting-brief";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { getPfuDiffAuditEvents } from "@/lib/evidence/pfu-rule-diff";
 import { formatEuro } from "@/lib/format";
+import { manualReviewFlags, reportMethodItems } from "@/lib/patrimonial-model/model";
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
 import {
   generateProfessionalDocuments,
@@ -68,13 +69,6 @@ export function ReportDocument({
       run: simulateHoldingTaxV2(),
     },
   ];
-  const mandatoryReviewItems = [
-    "Dettes IFI complexes, prêts familiaux et passifs non directement rattachés à un actif immobilier.",
-    "Non-résidents, trusts, holdings atypiques et sociétés interposées avec actifs mixtes.",
-    "Donation-partage, donations antérieures non documentées et clauses matrimoniales spécifiques.",
-    "Valorisation de titres, actifs somptuaires, biens non affectés à l'exploitation et qualification Dutreil.",
-    "Résidence principale, travaux, frais et surtaxe dans les dossiers de plus-value immobilière.",
-  ];
 
   return (
     <div className="print-page relative space-y-6 overflow-hidden rounded-lg border border-border bg-white p-6 shadow-[var(--shadow)]">
@@ -109,6 +103,7 @@ export function ReportDocument({
             "Profil foyer",
             "Cartographie patrimoniale",
             "Hypothèses",
+            "Méthode et limites",
             "Résultats fiscaux comparés",
             "Sources officielles",
             "Limites de couverture",
@@ -164,6 +159,24 @@ export function ReportDocument({
       </section>
 
       <section>
+        <h2 className="text-lg font-semibold text-foreground">4 bis. Méthode et limites V2.3</h2>
+        <p className="mt-3 text-sm leading-6 text-muted">
+          Le rapport sépare ce qui est déclaré, ce qui est simulé, ce qui vient d&apos;une règle
+          sourcée et ce qui relève d&apos;une action professionnelle. Cette séparation évite de
+          transformer une hypothèse en conseil validé.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {reportMethodItems.map((item) => (
+            <div key={item.id} className="rounded-lg border border-border bg-[var(--surface-soft)] p-4">
+              <p className="text-sm font-semibold text-foreground">{item.label}</p>
+              <p className="mt-2 text-sm leading-6 text-muted">{item.meaning}</p>
+              <p className="mt-3 text-sm font-medium text-foreground">{item.reportRule}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
         <h2 className="text-lg font-semibold text-foreground">5. Hypothèses saisies par le conseiller</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {adviserHypotheses.map((item) => (
@@ -184,17 +197,52 @@ export function ReportDocument({
       <section>
         <h2 className="text-lg font-semibold text-foreground">6. Résultats fiscaux V2</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {taxRuns.map((run) => (
-            <div key={run.id} className="rounded-lg border border-border p-4">
-              <p className="text-sm font-semibold text-foreground">{run.module}</p>
-              <p className="mt-2 font-mono text-base font-semibold text-foreground">
-                {typeof run.resultAmount === "number" ? formatEuro(run.resultAmount) : run.resultLabel}
-              </p>
-              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-muted">
-                Validation : {run.reviewerRequired}
-              </p>
-            </div>
-          ))}
+          {taxRuns.map((run) => {
+            const firstSource = evidenceSources.find((source) => source.id === run.evidenceSourceIds[0]);
+            const firstStep = run.steps[0];
+
+            return (
+              <div key={run.id} className="rounded-lg border border-border p-4">
+                <p className="text-sm font-semibold text-foreground">{run.module}</p>
+                <p className="mt-2 font-mono text-base font-semibold text-foreground">
+                  {run.module === "bank-import"
+                    ? run.resultLabel
+                    : typeof run.resultAmount === "number"
+                      ? formatEuro(run.resultAmount)
+                      : run.resultLabel}
+                </p>
+                <div className="mt-3 grid gap-2 text-sm leading-6 text-muted">
+                  <p>
+                    <span className="font-semibold text-foreground">Source :</span>{" "}
+                    {firstSource?.title ?? run.evidenceSourceIds[0]}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Date :</span>{" "}
+                    {firstSource?.checkedAt ?? run.createdAt}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Règle :</span>{" "}
+                    {firstStep?.ruleVersionId ?? run.ruleSnapshotId}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Statut :</span>{" "}
+                    {firstStep?.confidenceStatus ?? run.status}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Limite :</span>{" "}
+                    {(run.coverageLimitIds ?? []).join(", ")}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-foreground">Action :</span>{" "}
+                    {firstStep?.nextAction ?? "Revue professionnelle requise."}
+                  </p>
+                </div>
+                <p className="mt-3 text-xs uppercase tracking-[0.12em] text-muted">
+                  Validation : {run.reviewerRequired}
+                </p>
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -250,10 +298,16 @@ export function ReportDocument({
       <CoverageLimitsPanel module="ifi" />
 
       <section className="rounded-lg border border-red-200 bg-red-50 p-4">
-        <h2 className="text-base font-semibold text-red-950">10. Cas non couverts / revue obligatoire</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-base font-semibold text-red-950">10. Points de revue professionnelle V2.3</h2>
+          <Badge tone="warning">Revue professionnelle</Badge>
+        </div>
         <ul className="mt-3 grid gap-2 text-sm leading-6 text-red-900">
-          {mandatoryReviewItems.map((item) => (
-            <li key={item}>{item}</li>
+          {manualReviewFlags.map((flag) => (
+            <li key={flag.id}>
+              <span className="font-semibold">{flag.label} :</span> {flag.whyNoAutomation} Revue{" "}
+              {flag.requiredProfessional}.
+            </li>
           ))}
         </ul>
       </section>

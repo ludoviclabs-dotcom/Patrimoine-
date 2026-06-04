@@ -1,5 +1,6 @@
 import { demoHousehold } from "../demo-data/household";
 import { demoTenant } from "../demo-data/v1";
+import { calculatePerDeduction, demoConnectorImport } from "../patrimonial-model/model";
 import type {
   CalculationStep,
   Household,
@@ -698,6 +699,217 @@ export function simulateHoldingTaxV2({
   });
 }
 
+export function simulatePeaWithdrawalV2({
+  yearsHeld = 7,
+  withdrawnGains = 42_000,
+  socialContributionRate = 0.172,
+  partialWithdrawal = true,
+}: {
+  yearsHeld?: number;
+  withdrawnGains?: number;
+  socialContributionRate?: number;
+  partialWithdrawal?: boolean;
+} = {}) {
+  const afterFiveYears = yearsHeld >= 5;
+  const incomeTax = afterFiveYears ? 0 : Math.round(withdrawnGains * 0.128);
+  const socialContributions = Math.round(withdrawnGains * socialContributionRate);
+  const estimatedTax = incomeTax + socialContributions;
+  const closesPlan = afterFiveYears ? !partialWithdrawal : true;
+
+  const steps = [
+    makeStep({
+      id: "pea-step-age",
+      order: 1,
+      label: "Âge fiscal du PEA",
+      inputValue: `${yearsHeld} ans`,
+      formula: "date retrait - date ouverture",
+      outputValue: afterFiveYears ? "Après 5 ans" : "Avant 5 ans",
+      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      evidenceSourceId: "src-service-public-pea-2026",
+      coverageLimitIds: ["coverage-pea-withdrawal-simple"],
+      confidenceStatus: "indicative",
+    }),
+    makeStep({
+      id: "pea-step-income-tax",
+      order: 2,
+      label: "IR indicatif sur les gains",
+      inputValue: withdrawnGains,
+      formula: afterFiveYears ? "gains x 0 % après 5 ans" : "régime anticipé à vérifier",
+      outputValue: incomeTax,
+      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      evidenceSourceId: "src-service-public-pea-2026",
+      coverageLimitIds: ["coverage-pea-withdrawal-simple"],
+      confidenceStatus: afterFiveYears ? "indicative" : "needs_review",
+      nextAction: "Valider date d'ouverture, nature du retrait et cas d'exception.",
+    }),
+    makeStep({
+      id: "pea-step-social-contributions",
+      order: 3,
+      label: "Prélèvements sociaux à contrôler",
+      inputValue: withdrawnGains,
+      formula: `gains retirés x ${(socialContributionRate * 100).toFixed(1)} %`,
+      outputValue: socialContributions,
+      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      evidenceSourceId: "src-service-public-pea-2026",
+      coverageLimitIds: ["coverage-pea-withdrawal-simple"],
+      confidenceStatus: "needs_review",
+      nextAction: "Contrôler le taux applicable et le calcul bancaire avant remise client.",
+    }),
+    makeStep({
+      id: "pea-step-closure",
+      order: 4,
+      label: "Effet sur clôture du plan",
+      inputValue: partialWithdrawal ? "Retrait partiel" : "Retrait total",
+      formula: "après 5 ans + retrait partiel = pas de clôture",
+      outputValue: closesPlan ? "Clôture à prévoir" : "Plan maintenu",
+      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      evidenceSourceId: "src-service-public-pea-2026",
+      coverageLimitIds: ["coverage-pea-withdrawal-simple"],
+      confidenceStatus: "needs_review",
+      nextAction: "Confirmer retrait partiel ou total avec l'établissement teneur de compte.",
+    }),
+  ];
+
+  return taxRun({
+    module: "pea",
+    scenario: "pea-withdrawal",
+    steps,
+    resultLabel: afterFiveYears
+      ? "IR indicatif à 0, prélèvements sociaux à contrôler"
+      : "Retrait anticipé à revoir",
+    resultAmount: estimatedTax,
+    evidenceSourceIds: ["src-service-public-pea-2026"],
+    reviewerRequired: "cgp",
+    computedResult: {
+      yearsHeld,
+      withdrawnGains,
+      afterFiveYears,
+      partialWithdrawal,
+      closesPlan,
+      incomeTax,
+      socialContributionRate,
+      socialContributions,
+      estimatedTax,
+    },
+  });
+}
+
+export function simulatePerDeductionV2({
+  voluntaryPayments = 18_000,
+  annualCeiling = 12_000,
+  unusedCeilings = [3_000, 2_400, 1_600],
+  spouseMutualization = 4_000,
+}: {
+  voluntaryPayments?: number;
+  annualCeiling?: number;
+  unusedCeilings?: number[];
+  spouseMutualization?: number;
+} = {}) {
+  const result = calculatePerDeduction({
+    voluntaryPayments,
+    annualCeiling,
+    unusedCeilings,
+    spouseMutualization,
+  });
+
+  const steps = [
+    makeStep({
+      id: "per-step-ceiling",
+      order: 1,
+      label: "Plafond PER disponible",
+      inputValue: `${annualCeiling} + ${unusedCeilings.join(" + ")} + ${spouseMutualization}`,
+      formula: "plafond annuel + reliquats + mutualisation",
+      outputValue: result.availableCeiling,
+      ruleVersionId: "rule-per-deduction-2026-v1",
+      evidenceSourceId: "src-service-public-per-deduction-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: "needs_review",
+      nextAction: "Comparer avec l'avis d'impôt et les plafonds réellement disponibles.",
+    }),
+    makeStep({
+      id: "per-step-deduction",
+      order: 2,
+      label: "Déduction utilisée",
+      inputValue: voluntaryPayments,
+      formula: "min(versements volontaires, plafond disponible)",
+      outputValue: result.deductionUsed,
+      ruleVersionId: "rule-per-deduction-2026-v1",
+      evidenceSourceId: "src-impots-epargne-retraite-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: "indicative",
+    }),
+    makeStep({
+      id: "per-step-excess",
+      order: 3,
+      label: "Versement non déduit",
+      inputValue: voluntaryPayments,
+      formula: "max(0, versements - déduction utilisée)",
+      outputValue: result.excessPayment,
+      ruleVersionId: "rule-per-deduction-2026-v1",
+      evidenceSourceId: "src-impots-epargne-retraite-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: "indicative",
+      nextAction: "Documenter sortie future capital/rente avant arbitrage patrimonial.",
+    }),
+  ];
+
+  return taxRun({
+    module: "per",
+    scenario: "per-deduction",
+    steps,
+    resultLabel: "Déduction PER indicative",
+    resultAmount: result.deductionUsed,
+    evidenceSourceIds: ["src-service-public-per-deduction-2026", "src-impots-epargne-retraite-2026"],
+    reviewerRequired: "cgp",
+    computedResult: {
+      voluntaryPayments,
+      annualCeiling,
+      unusedCeilingsTotal: unusedCeilings.reduce((sum, amount) => sum + amount, 0),
+      spouseMutualization,
+      ...result,
+    },
+  });
+}
+
+export function simulateBankImportV2() {
+  const alertsCount = demoConnectorImport.alerts.length;
+  const steps = demoConnectorImport.steps.map((step, index) =>
+    makeStep({
+      id: `bank-import-step-${index + 1}`,
+      order: index + 1,
+      label: step.label,
+      inputValue: step.status,
+      formula: "fixture démo sans connecteur externe",
+      outputValue: step.detail,
+      ruleVersionId: "rule-bank-import-demo-2026-v1",
+      evidenceSourceId:
+        index === 1 ? "src-eurlex-sca-2018-389" : index === 3 ? "src-eurlex-aml-2015-849" : "src-banque-france-sca-2022",
+      coverageLimitIds: ["coverage-bank-import-demo"],
+      confidenceStatus: step.status === "revue requise" ? "needs_review" : "indicative",
+      nextAction:
+        step.status === "revue requise"
+          ? "Escalader les alertes avant toute simulation patrimoniale partageable."
+          : "Conserver le statut simulé tant que le connecteur réel n'est pas branché.",
+    }),
+  );
+
+  return taxRun({
+    module: "bank-import",
+    scenario: "bank-import",
+    steps,
+    resultLabel: `${demoConnectorImport.detectedEnvelopes.length} enveloppes détectées, ${alertsCount} alertes`,
+    resultAmount: alertsCount,
+    evidenceSourceIds: ["src-eurlex-sca-2018-389", "src-banque-france-sca-2022", "src-eurlex-aml-2015-849"],
+    reviewerRequired: "cgp",
+    computedResult: {
+      detectedEnvelopes: demoConnectorImport.detectedEnvelopes.length,
+      alertsCount,
+      connectorStatus: "demo-only",
+      storesBankSecret: false,
+    },
+  });
+}
+
 export const v2TaxRuns = [
   simulateIrPfuCdhr(),
   simulateRealEstateGainV2(),
@@ -705,6 +917,9 @@ export const v2TaxRuns = [
   simulateDutreilV2(),
   simulateApportCessionV2(),
   simulateHoldingTaxV2(),
+  simulatePeaWithdrawalV2(),
+  simulatePerDeductionV2(),
+  simulateBankImportV2(),
 ];
 
 export function getV2TaxRuns() {

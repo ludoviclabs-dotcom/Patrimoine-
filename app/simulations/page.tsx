@@ -22,6 +22,7 @@ const atlasSimulationContexts: Record<
     title: string;
     description: string;
     initialScenario: LabScenario;
+    badge: string;
   }
 > = {
   "entreprise-cash": {
@@ -29,24 +30,48 @@ const atlasSimulationContexts: Record<
     description:
       "Le simulateur démarre sur Dutreil faute de moteur cash entreprise dédié en V1 ; le bandeau garde le fil CA → charges → impôts → trésorerie.",
     initialScenario: "dutreil",
+    badge: "Depuis l'Atlas",
   },
   "holding-tax": {
     title: "Contexte Atlas : dirigeant holding",
     description:
       "Le laboratoire ouvre directement la taxe holding pour relier dividendes, actifs passifs et revue professionnelle.",
     initialScenario: "holding-tax",
+    badge: "Depuis l'Atlas",
   },
   transmission: {
     title: "Contexte Atlas : transmission",
     description:
       "Le laboratoire cible la transmission pour passer du mécanisme patrimonial aux étapes de calcul documentées.",
     initialScenario: "transmission",
+    badge: "Depuis l'Atlas",
+  },
+  "pea-withdrawal": {
+    title: "Contexte V2.3 : retrait PEA",
+    description:
+      "Le laboratoire distingue impôt sur le revenu, prélèvements sociaux et effet de clôture dans un cas PEA après cinq ans.",
+    initialScenario: "pea",
+    badge: "Parcours V2.3",
+  },
+  "per-deduction": {
+    title: "Contexte V2.3 : déduction PER",
+    description:
+      "Le laboratoire calcule la déduction utilisée à partir du plafond disponible, des reliquats et de la mutualisation.",
+    initialScenario: "per",
+    badge: "Parcours V2.3",
+  },
+  "bank-import": {
+    title: "Contexte V2.3 : import bancaire simulé",
+    description:
+      "Aucun connecteur réel n'est branché : le scénario illustre consentement, SCA, détection d'enveloppes et alertes.",
+    initialScenario: "bank-import",
+    badge: "Parcours V2.3",
   },
 };
 
 export default async function SimulationsPage({ searchParams }: SimulationsPageProps) {
   const params = (await searchParams) ?? {};
-  const atlasContext = params.from === "atlas" && params.scenario ? atlasSimulationContexts[params.scenario] : null;
+  const atlasContext = params.scenario ? atlasSimulationContexts[params.scenario] : null;
   const ifiRun = calculateIfi(demoHousehold);
   const taxRuns = getV2TaxRuns();
 
@@ -73,16 +98,18 @@ export default async function SimulationsPage({ searchParams }: SimulationsPageP
 function AtlasSimulationContext({
   title,
   description,
+  badge,
 }: {
   title: string;
   description: string;
+  badge: string;
 }) {
   return (
     <Card>
       <CardHeader className="mb-0">
         <div>
           <div className="mb-3 flex flex-wrap gap-2">
-            <Badge tone="teal">Depuis l&apos;Atlas</Badge>
+            <Badge tone="teal">{badge}</Badge>
             <Badge tone="warning">Simulation indicative</Badge>
           </div>
           <CardTitle>{title}</CardTitle>
