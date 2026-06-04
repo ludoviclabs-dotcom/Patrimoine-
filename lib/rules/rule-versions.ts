@@ -127,6 +127,42 @@ export const ruleVersions: RuleVersion[] = [
     status: "active",
     evidenceSourceIds: ["src-amf-mif2-adequation", "src-cnil-aipd"],
   },
+  {
+    id: "rule-pea-withdrawal-2026-v1",
+    ruleSet: "pea",
+    version: "PEA-2026.06-V1",
+    title: "PEA : retrait après cinq ans, IR et prélèvements sociaux à distinguer",
+    effectiveFrom: "2026-06-04",
+    status: "draft",
+    evidenceSourceIds: ["src-service-public-pea-2026"],
+  },
+  {
+    id: "rule-per-deduction-2026-v1",
+    ruleSet: "per",
+    version: "PER-2026.06-V1",
+    title: "PER : plafond disponible, reliquats et déduction utilisée",
+    effectiveFrom: "2026-06-04",
+    status: "draft",
+    evidenceSourceIds: ["src-service-public-per-deduction-2026", "src-impots-epargne-retraite-2026"],
+  },
+  {
+    id: "rule-bank-import-demo-2026-v1",
+    ruleSet: "bank-import",
+    version: "BANK-IMPORT-DEMO-2026.06-V1",
+    title: "Import bancaire simulé : consentement, SCA, normalisation et alertes",
+    effectiveFrom: "2026-06-04",
+    status: "draft",
+    evidenceSourceIds: ["src-eurlex-sca-2018-389", "src-banque-france-sca-2022", "src-eurlex-aml-2015-849"],
+  },
+  {
+    id: "rule-manual-review-complexity-2026-v1",
+    ruleSet: "dac6-dac7",
+    version: "MANUAL-REVIEW-2026.06-V1",
+    title: "Revue manuelle : structures étrangères, flux transfrontières et bénéficiaires effectifs",
+    effectiveFrom: "2026-06-04",
+    status: "draft",
+    evidenceSourceIds: ["src-eurlex-dac6-2018-822", "src-eurlex-dac7-2021-514", "src-eurlex-aml-2015-849"],
+  },
 ];
 
 export function getRuleVersion(id: string) {

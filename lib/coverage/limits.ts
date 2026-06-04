@@ -153,6 +153,33 @@ export const coverageLimits: CoverageLimit[] = [
     explanation: "Génération de modèles de travail non signés, à relire avant remise client.",
     requiredProfessional: "cgp",
   },
+  {
+    id: "coverage-pea-withdrawal-simple",
+    module: "pea",
+    label: "Retrait PEA après cinq ans",
+    status: "partially_covered",
+    explanation:
+      "Cas pédagogique limité au retrait partiel après cinq ans : l'IR est distingué des prélèvements sociaux à contrôler.",
+    requiredProfessional: "cgp",
+  },
+  {
+    id: "coverage-per-deduction-simple",
+    module: "per",
+    label: "Déduction PER à l'entrée",
+    status: "partially_covered",
+    explanation:
+      "Plafond disponible, reliquats et mutualisation simulés, sans liquidation complète de la déclaration fiscale.",
+    requiredProfessional: "cgp",
+  },
+  {
+    id: "coverage-bank-import-demo",
+    module: "bank-import",
+    label: "Import bancaire simulé",
+    status: "not_covered_v1",
+    explanation:
+      "Aucun connecteur réel : le parcours illustre consentement, SCA, normalisation et alertes avec fixtures.",
+    requiredProfessional: "cgp",
+  },
 ];
 
 export function getCoverageLimit(id: string) {

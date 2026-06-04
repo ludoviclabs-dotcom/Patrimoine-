@@ -10,6 +10,8 @@ import { RiskRadar } from "@/components/v1-1/risk-radar";
 import { SecurityBoard } from "@/components/v1-2/security-board";
 import { CabinetHero } from "@/components/v2/cabinet-hero";
 import { GoToMarketPanel } from "@/components/v2/go-to-market-panel";
+import { PatrimonialActionPlan } from "@/components/v2-3/patrimonial-action-plan";
+import { PatrimonialModelPanels } from "@/components/v2-3/patrimonial-model-panels";
 import { AuditEvidencePanel } from "@/components/v2-2/audit-evidence-panel";
 import { MaturityMatrixPanel } from "@/components/v2-2/maturity-matrix-panel";
 import { demoPersonas } from "@/lib/demo-data/personas";
@@ -20,6 +22,8 @@ export default function CabinetPage() {
     <AppShell>
       <div className="space-y-8">
         <CabinetHero />
+        <PatrimonialActionPlan />
+        <PatrimonialModelPanels />
         <AtlasCockpitEntry />
 
         <section aria-labelledby="guided-flow-title" className="space-y-4">

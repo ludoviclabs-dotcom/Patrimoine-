@@ -109,6 +109,9 @@ const baseGoldenCases = getV2TaxRuns().map((run) => {
     dutreil: "notaire",
     "apport-cession": "avocat",
     "holding-tax": "avocat",
+    pea: "cgp",
+    per: "cgp",
+    "bank-import": "cgp",
   };
 
   return caseFromRun({

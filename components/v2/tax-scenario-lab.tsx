@@ -11,19 +11,33 @@ import { WhyThisResultPanel } from "@/components/v1-1/why-this-result-panel";
 import { formatEuro } from "@/lib/format";
 import {
   simulateDutreilV2,
+  simulateBankImportV2,
   simulateHoldingTaxV2,
+  simulatePeaWithdrawalV2,
+  simulatePerDeductionV2,
   simulateRealEstateGainV2,
   simulateTransmissionV2,
 } from "@/lib/tax/v2-engines";
+import { demoConnectorImport } from "@/lib/patrimonial-model/model";
 import type { TaxRun } from "@/lib/types";
 
-export type LabScenario = "plus-value" | "transmission" | "dutreil" | "holding-tax";
+export type LabScenario =
+  | "plus-value"
+  | "transmission"
+  | "dutreil"
+  | "holding-tax"
+  | "pea"
+  | "per"
+  | "bank-import";
 
 const scenarioLabels: Record<LabScenario, string> = {
   "plus-value": "Plus-value",
   transmission: "Transmission",
   dutreil: "Dutreil",
   "holding-tax": "Taxe holding",
+  pea: "PEA retrait après 5 ans",
+  per: "PER déduction à l’entrée",
+  "bank-import": "Import bancaire simulé",
 };
 
 export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenario?: LabScenario }) {
@@ -66,17 +80,42 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     realEstateLuxuryValue: 0,
     cashAndReceivablesValue: 0,
   });
+  const [pea, setPea] = useState({
+    yearsHeld: 7,
+    withdrawnGains: 42_000,
+    socialContributionRate: 17.2,
+    partialWithdrawal: true,
+  });
+  const [per, setPer] = useState({
+    voluntaryPayments: 18_000,
+    annualCeiling: 12_000,
+    unusedCeilingN1: 3_000,
+    unusedCeilingN2: 2_400,
+    unusedCeilingN3: 1_600,
+    spouseMutualization: 4_000,
+  });
 
   const activeRun = useMemo<TaxRun>(() => {
     if (activeScenario === "plus-value") return simulateRealEstateGainV2(realEstate);
     if (activeScenario === "transmission") return simulateTransmissionV2(transmission);
     if (activeScenario === "dutreil") return simulateDutreilV2(dutreil);
-    return simulateHoldingTaxV2({
+    if (activeScenario === "holding-tax") return simulateHoldingTaxV2({
       ...holding,
       passiveIncomeRatio: holding.passiveIncomePercent / 100,
       individualControlRatio: holding.individualControlPercent / 100,
     });
-  }, [activeScenario, dutreil, holding, realEstate, transmission]);
+    if (activeScenario === "pea") return simulatePeaWithdrawalV2({
+      ...pea,
+      socialContributionRate: pea.socialContributionRate / 100,
+    });
+    if (activeScenario === "per") return simulatePerDeductionV2({
+      voluntaryPayments: per.voluntaryPayments,
+      annualCeiling: per.annualCeiling,
+      unusedCeilings: [per.unusedCeilingN1, per.unusedCeilingN2, per.unusedCeilingN3],
+      spouseMutualization: per.spouseMutualization,
+    });
+    return simulateBankImportV2();
+  }, [activeScenario, dutreil, holding, pea, per, realEstate, transmission]);
 
   const firstStep = activeRun.steps[0];
 
@@ -162,6 +201,46 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
             </div>
           ) : null}
 
+          {activeScenario === "pea" ? (
+            <div className="grid gap-3">
+              <NumberInput label="Durée de détention" value={pea.yearsHeld} onChange={(value) => setPea((item) => ({ ...item, yearsHeld: value }))} />
+              <NumberInput label="Gains retirés" value={pea.withdrawnGains} onChange={(value) => setPea((item) => ({ ...item, withdrawnGains: value }))} />
+              <NumberInput label="Prélèvements sociaux (%)" value={pea.socialContributionRate} onChange={(value) => setPea((item) => ({ ...item, socialContributionRate: value }))} />
+              <CheckboxInput label="Retrait partiel" checked={pea.partialWithdrawal} onChange={(checked) => setPea((item) => ({ ...item, partialWithdrawal: checked }))} />
+            </div>
+          ) : null}
+
+          {activeScenario === "per" ? (
+            <div className="grid gap-3">
+              <NumberInput label="Versement volontaire" value={per.voluntaryPayments} onChange={(value) => setPer((item) => ({ ...item, voluntaryPayments: value }))} />
+              <NumberInput label="Plafond disponible" value={per.annualCeiling} onChange={(value) => setPer((item) => ({ ...item, annualCeiling: value }))} />
+              <NumberInput label="Reliquat N-1" value={per.unusedCeilingN1} onChange={(value) => setPer((item) => ({ ...item, unusedCeilingN1: value }))} />
+              <NumberInput label="Reliquat N-2" value={per.unusedCeilingN2} onChange={(value) => setPer((item) => ({ ...item, unusedCeilingN2: value }))} />
+              <NumberInput label="Reliquat N-3" value={per.unusedCeilingN3} onChange={(value) => setPer((item) => ({ ...item, unusedCeilingN3: value }))} />
+              <NumberInput label="Mutualisation conjoint" value={per.spouseMutualization} onChange={(value) => setPer((item) => ({ ...item, spouseMutualization: value }))} />
+            </div>
+          ) : null}
+
+          {activeScenario === "bank-import" ? (
+            <div className="grid gap-3">
+              <div className="rounded-lg border border-border bg-[var(--surface-soft)] p-3">
+                <p className="text-sm font-semibold text-foreground">Démo sans connecteur externe</p>
+                <p className="mt-1 text-sm leading-6 text-muted">{demoConnectorImport.userFacingExplanation}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge>Consentement pédagogique</Badge>
+                  <Badge>Aucun secret bancaire</Badge>
+                </div>
+              </div>
+              {demoConnectorImport.steps.map((step) => (
+                <div key={step.label} className="rounded-lg border border-border p-3">
+                  <p className="text-sm font-semibold text-foreground">{step.label}</p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.12em] text-muted">{step.status}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted">{step.detail}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           <div className="mt-5 flex flex-wrap gap-3">
             <Button
               type="button"
@@ -187,7 +266,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
               <Badge tone="warning">Revue {activeRun.reviewerRequired}</Badge>
             </CardHeader>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Metric label="Résultat indicatif" value={typeof activeRun.resultAmount === "number" ? formatEuro(activeRun.resultAmount) : activeRun.resultLabel} />
+              <Metric label="Résultat indicatif" value={formatRunResult(activeRun)} />
               <Metric label="Statut" value={runStatus} />
               <Metric label="Sources" value={`${activeRun.evidenceSourceIds.length}`} />
               <Metric label="Limites" value={`${activeRun.coverageLimitIds?.length ?? 0}`} />
@@ -256,4 +335,9 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="mt-2 break-words text-base font-semibold text-foreground">{value}</p>
     </div>
   );
+}
+
+function formatRunResult(run: TaxRun) {
+  if (run.module === "bank-import") return run.resultLabel;
+  return typeof run.resultAmount === "number" ? formatEuro(run.resultAmount) : run.resultLabel;
 }

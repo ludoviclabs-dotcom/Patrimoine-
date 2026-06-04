@@ -79,6 +79,9 @@ describe("V2 cabinet fiscal product layer", () => {
         "dutreil",
         "apport-cession",
         "holding-tax",
+        "pea",
+        "per",
+        "bank-import",
       ]),
     );
     for (const run of runs) {
