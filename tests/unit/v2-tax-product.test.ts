@@ -82,6 +82,10 @@ describe("V2 cabinet fiscal product layer", () => {
         "pea",
         "per",
         "bank-import",
+        "succession",
+        "per-exit",
+        "liquidity-stress",
+        "product-adequacy",
       ]),
     );
     for (const run of runs) {

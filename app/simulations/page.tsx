@@ -67,6 +67,34 @@ const atlasSimulationContexts: Record<
     initialScenario: "bank-import",
     badge: "Parcours V2.3",
   },
+  "succession-checklist": {
+    title: "Contexte V2.4 : succession simple",
+    description:
+      "Le laboratoire ouvre la checklist succession : actif brut, notaire, donations antérieures, documents et points de revue.",
+    initialScenario: "succession-checklist",
+    badge: "Parcours V2.4",
+  },
+  "per-early-exit": {
+    title: "Contexte V2.4 : PER sortie anticipée",
+    description:
+      "Le scénario sépare versements et gains lors d'une sortie résidence principale, sans liquidation fiscale définitive.",
+    initialScenario: "per-early-exit",
+    badge: "Parcours V2.4",
+  },
+  "succession-liquidity-stress": {
+    title: "Contexte V2.4 : stress liquidité succession",
+    description:
+      "Le stress test compare droits estimés, cash disponible, réserve prudente et délai de cession.",
+    initialScenario: "succession-liquidity-stress",
+    badge: "Parcours V2.4",
+  },
+  "product-adequacy": {
+    title: "Contexte V2.4 : adéquation produit simulée",
+    description:
+      "Le laboratoire vérifie horizon, risque, durabilité et marché cible, puis impose une revue humaine.",
+    initialScenario: "product-adequacy",
+    badge: "Parcours V2.4",
+  },
 };
 
 export default async function SimulationsPage({ searchParams }: SimulationsPageProps) {

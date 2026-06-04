@@ -2,6 +2,7 @@ import { AppShell } from "@/components/app-shell";
 import { LivingDossierPanel } from "@/components/v2/living-dossier";
 import { OnboardingPanel } from "@/components/v2/onboarding-panel";
 import { PersonaInstantiationPanel } from "@/components/v2/persona-instantiation-panel";
+import { Dossier360Map, LifeEventPlaybooks } from "@/components/v2-4/life-event-playbooks";
 import { demoPersonas } from "@/lib/demo-data/personas";
 import { getLivingDossier } from "@/lib/dossiers/v2-dossiers";
 
@@ -19,6 +20,8 @@ export default function DossiersPage() {
           </p>
         </section>
 
+        <LifeEventPlaybooks />
+        <Dossier360Map />
         <OnboardingPanel />
         <PersonaInstantiationPanel personas={demoPersonas} />
         <LivingDossierPanel dossier={dossier} />

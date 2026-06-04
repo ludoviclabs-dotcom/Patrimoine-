@@ -112,6 +112,10 @@ const baseGoldenCases = getV2TaxRuns().map((run) => {
     pea: "cgp",
     per: "cgp",
     "bank-import": "cgp",
+    succession: "notaire",
+    "per-exit": "cgp",
+    "liquidity-stress": "notaire",
+    "product-adequacy": "cgp",
   };
 
   return caseFromRun({
