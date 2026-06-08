@@ -12,6 +12,8 @@ coverage/
 !lib/coverage/**
 playwright-report/
 test-results/
+.playwright-mcp/
+tsconfig.tsbuildinfo
 
 .codex-dev*.log
 .codex-dev*.job.log

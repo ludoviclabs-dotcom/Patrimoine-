@@ -1,7 +1,15 @@
 import { AppShell } from "@/components/app-shell";
+import { Reveal } from "@/components/motion";
 import { SimulationsClient } from "@/components/simulations-client";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardEyebrow, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHero } from "@/components/ui/page-hero";
 import { TaxScenarioLab, type LabScenario } from "@/components/v2/tax-scenario-lab";
 import { TaxRunsPanel } from "@/components/v2/tax-runs-panel";
 import {
@@ -67,30 +75,37 @@ export default async function SimulationsPage({ searchParams }: SimulationsPageP
   return (
     <AppShell>
       <div className="space-y-8">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">Simuler</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            Catalogue de scénarios déterministes, moteur paramétrable et preuves affichées avant
-            toute conclusion. Chaque simulation reste indicative et revue par un professionnel.
-          </p>
-        </div>
+        <PageHero
+          as="h1"
+          eyebrow="Moteur déterministe"
+          title="Simuler"
+          lead="Catalogue de scénarios déterministes, moteur paramétrable et preuves affichées avant toute conclusion. Chaque simulation reste indicative et revue par un professionnel."
+        />
 
         <SimulationCatalog activeScenario={activeScenario} />
 
         {catalogItem ? <SimulationContext {...catalogItem} /> : null}
         <SimulationAuditSummary item={catalogItem} />
-        <TaxScenarioLab initialScenario={activeScenario} />
+        <Reveal>
+          <TaxScenarioLab initialScenario={activeScenario} />
+        </Reveal>
         {activeTaxRun ? <CalculationBreakdown run={activeTaxRun} /> : null}
 
-        <details className="rounded-lg border border-border bg-white p-5">
-          <summary className="cursor-pointer text-base font-semibold text-foreground">
-            Voir les autres moteurs et historiques
-          </summary>
-          <div className="mt-5 space-y-6">
-            <TaxRunsPanel runs={taxRuns} />
-            <SimulationsClient ifiRun={ifiRun} initialAudit={demoAuditTrail} />
-          </div>
-        </details>
+        <Reveal>
+          <Card elevated>
+            <Accordion type="single" collapsible>
+              <AccordionItem value="more">
+                <AccordionTrigger>Voir les autres moteurs et historiques</AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-6 pt-2">
+                    <TaxRunsPanel runs={taxRuns} />
+                    <SimulationsClient ifiRun={ifiRun} initialAudit={demoAuditTrail} />
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </Card>
+        </Reveal>
       </div>
     </AppShell>
   );
@@ -103,18 +118,23 @@ function SimulationContext({
   reviewGate,
 }: NonNullable<ReturnType<typeof getSimulationByParam>>) {
   return (
-    <Card>
-      <CardHeader className="mb-0">
-        <div>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <Badge tone="teal">Scénario actif</Badge>
-            <Badge tone="warning">{status}</Badge>
+    <Reveal>
+      <Card accent elevated>
+        <CardHeader className="mb-0">
+          <div>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Badge tone="teal" dot>
+                Scénario actif
+              </Badge>
+              <Badge tone="warning">{status}</Badge>
+            </div>
+            <CardEyebrow>Contexte chargé</CardEyebrow>
+            <CardTitle className="mt-1">{label}</CardTitle>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{userFacingExplanation}</p>
+            <p className="mt-3 text-sm font-medium text-foreground">{reviewGate}</p>
           </div>
-          <CardTitle>{label}</CardTitle>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{userFacingExplanation}</p>
-          <p className="mt-3 text-sm font-medium text-foreground">{reviewGate}</p>
-        </div>
-      </CardHeader>
-    </Card>
+        </CardHeader>
+      </Card>
+    </Reveal>
   );
 }
