@@ -1,32 +1,122 @@
 @import "tailwindcss";
 
+/* Mode sombre piloté par classe (.dark sur <html>, via next-themes) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* =========================================================================
+   TOKENS — Direction « Private banking feutré »
+   On conserve les NOMS de tokens historiques (--foreground, --surface-soft,
+   --border, --accent…) et on ne change que leurs VALEURS : tout le code
+   existant adopte la nouvelle palette sans réécriture, et le thème sombre
+   fonctionne en redéfinissant les mêmes variables sous .dark.
+   ========================================================================= */
 :root {
-  --background: #f7f8f5;
-  --foreground: #17201d;
-  --muted: #66736d;
-  --muted-2: #8a958f;
-  --border: #dde3dd;
-  --surface: #ffffff;
-  --surface-soft: #eef4ef;
-  --surface-strong: #17201d;
-  --accent: #0f766e;
-  --accent-strong: #115e59;
-  --accent-soft: #dff3ef;
-  --warning: #b7791f;
-  --warning-soft: #fff4d8;
-  --danger: #b42318;
-  --success: #166534;
-  --shadow: 0 18px 45px rgba(23, 32, 29, 0.08);
+  /* Fonds — ivoire chaud / velin */
+  --background: #f4eee2;
+  --bg-tint: #fbf7ef;
+  --surface: #fcfaf4;        /* carte : blanc chaud, jamais pur */
+  --surface-soft: #f2ebdc;   /* surface enfoncée */
+  --surface-2: #f6f0e4;
+  --surface-strong: #14463a; /* vert forêt — remplissages de marque */
+
+  /* Encre */
+  --foreground: #1a2b22;     /* vert-noir */
+  --ink-soft: #3d4a43;
+  --muted: #6b7068;          /* taupe chaud */
+  --muted-2: #8a8e84;
+
+  /* Marque / interactif — vert (excellent contraste pour texte & liens) */
+  --accent: #14463a;
+  --accent-strong: #0e3329;
+  --accent-soft: #e4ede7;
+
+  /* Or / laiton — décoratif uniquement (contraste insuffisant pour petit texte) */
+  --gold: #b08d57;
+  --gold-strong: #8c6d3e;
+  --gold-soft: #f1e7d4;
+
+  /* Sémantique (désaturée, chaude) */
+  --warning: #b0823c;
+  --warning-soft: #f6ecd7;
+  --danger: #a23b2d;
+  --danger-soft: #f4e2dc;
+  --success: #2f7d5b;
+  --success-soft: #e2efe7;
+
+  /* Lignes + élévation (ombres teintées chaud) */
+  --border: #e5dccb;
+  --line-strong: #d9cdb6;
+  --shadow-sm: 0 1px 2px rgba(26, 43, 34, 0.06);
+  --shadow: 0 14px 38px rgba(26, 43, 34, 0.09);
+  --shadow-lg: 0 28px 64px rgba(26, 43, 34, 0.14);
+  --ring: rgba(176, 141, 87, 0.5);
+
+  /* Rayons — échelle (fin du rounded-lg unique) */
+  --r-sm: 0.5rem;
+  --r-md: 0.75rem;
+  --r-lg: 1rem;
+  --r-xl: 1.5rem;
+
+  /* Halo héros */
+  --spotlight: rgba(176, 141, 87, 0.18);
 }
 
+.dark {
+  --background: #0e1512;
+  --bg-tint: #121a16;
+  --surface: #16201b;
+  --surface-soft: #1c2721;
+  --surface-2: #1a241e;
+  --surface-strong: #1f5a49;
+
+  --foreground: #ece7da;
+  --ink-soft: #c8cfc6;
+  --muted: #9aa69c;
+  --muted-2: #7e8a80;
+
+  --accent: #5fbf9c;          /* vert clair, lisible sur fond sombre */
+  --accent-strong: #7ed0b0;
+  --accent-soft: #16241d;
+
+  --gold: #c8a86a;
+  --gold-strong: #d8bc84;
+  --gold-soft: #23291e;
+
+  --warning: #cb9a52;
+  --warning-soft: #2a2417;
+  --danger: #d27c6b;
+  --danger-soft: #2c1c18;
+  --success: #46a878;
+  --success-soft: #16241d;
+
+  --border: #26332b;
+  --line-strong: #32413a;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 14px 38px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 28px 64px rgba(0, 0, 0, 0.62);
+  --ring: rgba(200, 168, 106, 0.55);
+
+  --spotlight: rgba(200, 168, 106, 0.13);
+}
+
+/* Mapping Tailwind v4 → génère les utilitaires (text-foreground, bg-surface…) */
 @theme inline {
-  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-sans: var(--font-geist-sans), "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
   --color-white: #ffffff;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-surface: var(--surface);
+  --color-ink: var(--foreground);
+  --color-ink-soft: var(--ink-soft);
+  --color-brand: var(--accent);
+  --color-brand-soft: var(--accent-soft);
+  --color-gold: var(--gold);
+  --color-line: var(--border);
 }
 
 * {
@@ -38,17 +128,36 @@ html {
   color: var(--foreground);
   scroll-behavior: smooth;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    linear-gradient(180deg, rgba(247, 248, 245, 0.9) 0%, rgba(247, 248, 245, 1) 36%),
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.08), transparent 34rem);
   color: var(--foreground);
   font-family: var(--font-sans);
   overflow-x: hidden;
+  background:
+    radial-gradient(1200px 620px at 100% -8%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 58%),
+    radial-gradient(900px 520px at -8% 2%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 54%),
+    var(--background);
+}
+
+/* Grain « papier velin » très subtil, derrière le contenu (AppShell est en z-10) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+.dark body::before {
+  mix-blend-mode: screen;
+  opacity: 0.045;
 }
 
 a {
@@ -64,27 +173,159 @@ textarea {
 }
 
 ::selection {
-  background: rgba(15, 118, 110, 0.22);
+  background: color-mix(in srgb, var(--gold) 32%, transparent);
 }
 
+/* Helpers — tokenisés pour suivre le thème.
+   bg-white devient la surface chaude (et bascule en sombre) ; text-white reste blanc. */
 .text-white {
   color: #ffffff !important;
 }
-
 .text-muted {
   color: var(--muted) !important;
 }
-
 .text-foreground {
   color: var(--foreground) !important;
 }
-
 .border-border {
   border-color: var(--border) !important;
 }
-
 .bg-white {
-  background-color: #ffffff !important;
+  background-color: var(--surface) !important;
+}
+
+/* ---- Animations utilitaires (Radix accordion / slide-over) ---- */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+.animate-accordion-down {
+  animation: accordion-down 0.24s ease-out;
+}
+.animate-accordion-up {
+  animation: accordion-up 0.2s ease-out;
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes panel-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.animate-overlay-in {
+  animation: overlay-in 0.2s ease-out;
+}
+.animate-panel-in {
+  animation: panel-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.animate-drawer-in {
+  animation: drawer-in 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---- Palette de commandes ⌘K (cmdk) ---- */
+[cmdk-overlay] {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(18, 26, 22, 0.5);
+  backdrop-filter: blur(4px);
+  animation: overlay-in 0.18s ease-out;
+}
+[cmdk-dialog] {
+  position: fixed;
+  z-index: 61;
+  top: 16vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, 92vw);
+}
+[cmdk-root] {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+[cmdk-input] {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: 1rem 1.15rem;
+  font-size: 0.95rem;
+  color: var(--foreground);
+  outline: none;
+}
+[cmdk-input]::placeholder {
+  color: var(--muted);
+}
+[cmdk-list] {
+  max-height: 340px;
+  overflow: auto;
+  padding: 0.5rem;
+  scroll-padding-block: 0.5rem;
+}
+[cmdk-item] {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--r-sm);
+  font-size: 0.875rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+[cmdk-item][data-selected="true"] {
+  background: var(--surface-soft);
+}
+[cmdk-item] svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--muted);
+}
+[cmdk-group-heading] {
+  padding: 0.6rem 0.7rem 0.25rem;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+[cmdk-empty] {
+  padding: 1.25rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: center;
 }
 
 .print-only {
@@ -95,18 +336,35 @@ textarea {
   body {
     background: #ffffff;
   }
-
+  body::before {
+    display: none;
+  }
   .no-print {
     display: none !important;
   }
-
   .print-only {
     display: block;
   }
-
   .print-page {
     box-shadow: none !important;
     border: 0 !important;
     padding: 0 !important;
+  }
+  /* Jamais masquer le contenu animé à l'impression */
+  * {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

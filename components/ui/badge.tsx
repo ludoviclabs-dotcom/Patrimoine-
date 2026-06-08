@@ -4,26 +4,44 @@ import { cn } from "@/lib/utils";
 type BadgeTone = "neutral" | "success" | "warning" | "danger" | "teal";
 
 const toneClasses: Record<BadgeTone, string> = {
-  neutral: "border-border bg-white text-muted",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  warning: "border-amber-200 bg-amber-50 text-amber-900",
-  danger: "border-red-200 bg-red-50 text-red-800",
-  teal: "border-teal-200 bg-teal-50 text-teal-900",
+  neutral: "border-border bg-[var(--surface-soft)] text-muted",
+  success: "border-transparent bg-[var(--success-soft)] text-[var(--success)]",
+  warning: "border-transparent bg-[var(--warning-soft)] text-[var(--warning)]",
+  danger: "border-transparent bg-[var(--danger-soft)] text-[var(--danger)]",
+  teal: "border-transparent bg-[var(--accent-soft)] text-[var(--accent)]",
+};
+
+const dotClasses: Record<BadgeTone, string> = {
+  neutral: "bg-[var(--muted-2)]",
+  success: "bg-[var(--success)]",
+  warning: "bg-[var(--warning)]",
+  danger: "bg-[var(--danger)]",
+  teal: "bg-[var(--accent)]",
 };
 
 export function Badge({
   className,
   tone = "neutral",
+  dot = false,
+  children,
   ...props
-}: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone }) {
+}: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone; dot?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex min-h-7 items-center rounded-full border px-3 py-1 text-xs font-medium leading-none",
+        "inline-flex min-h-7 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium leading-none",
         toneClasses[tone],
         className,
       )}
       {...props}
-    />
+    >
+      {dot && (
+        <span
+          aria-hidden
+          className={cn("h-1.5 w-1.5 rounded-full", dotClasses[tone])}
+        />
+      )}
+      {children}
+    </span>
   );
 }
