@@ -12,7 +12,7 @@ const statusTone = {
 } as const;
 
 const statusLabel = {
-  ready: "Prêt",
+  ready: "Simulation prête à lancer",
   partial: "Partiel",
   missing: "Manquant",
   needs_review: "À revoir",

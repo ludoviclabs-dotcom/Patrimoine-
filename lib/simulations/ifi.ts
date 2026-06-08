@@ -150,7 +150,7 @@ export function calculateIfi(
       4,
       "Parts SCI immobilière",
       sci,
-      "Valeur immobiliere a controler",
+      "Valeur immobilière à contrôler",
       sci,
       "needs_review",
       {

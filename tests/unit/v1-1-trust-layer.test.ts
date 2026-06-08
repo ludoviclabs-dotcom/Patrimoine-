@@ -17,8 +17,8 @@ describe("V1.1 trust layer", () => {
     expect(completeness.score).toBe(72);
     expect(completeness.missingItems).toEqual(
       expect.arrayContaining([
-        "Regime matrimonial",
-        "Beneficiaires assurance-vie",
+        "Régime matrimonial",
+        "Bénéficiaires assurance-vie",
         "Repartition des parts SCI",
         "Capital restant du detaille",
         "Valorisation societe",

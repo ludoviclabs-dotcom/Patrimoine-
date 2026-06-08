@@ -6,7 +6,7 @@ import type { MaturityItem } from "@/lib/types";
 
 const statusLabel: Record<MaturityItem["status"], string> = {
   fixtures_demo: "Fixtures démonstrateur",
-  production_ready_without_connector: "Prêt-prod sans connecteur",
+  production_ready_without_connector: "Validé cabinet sans connecteur",
   not_built: "Non construit",
   external_connector_required: "Connecteur externe requis",
 };

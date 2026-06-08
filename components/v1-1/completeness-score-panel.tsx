@@ -10,7 +10,7 @@ export function CompletenessScorePanel() {
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>Completude du dossier</CardTitle>
+          <CardTitle>Complétude du dossier</CardTitle>
           <p className="mt-1 text-sm text-muted">Score demo V1.1, avant revue professionnelle.</p>
         </div>
         <ClipboardList className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
