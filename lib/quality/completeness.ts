@@ -2,8 +2,8 @@ import { demoHousehold } from "../demo-data/household";
 import type { CompletenessScore, DataQualityProfile, Household } from "../types";
 
 export const claireMarcMissingItems = [
-  "Regime matrimonial",
-  "Beneficiaires assurance-vie",
+  "Régime matrimonial",
+  "Bénéficiaires assurance-vie",
   "Repartition des parts SCI",
   "Capital restant du detaille",
   "Valorisation societe",

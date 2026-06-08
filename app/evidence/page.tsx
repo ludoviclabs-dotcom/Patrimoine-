@@ -7,6 +7,7 @@ import { SourceWatchPanel } from "@/components/v1-1/source-watch-panel";
 import { OfflineEvidenceControlPanel } from "@/components/v2-1/offline-evidence-control-panel";
 import { AuditEvidencePanel } from "@/components/v2-2/audit-evidence-panel";
 import { MaturityMatrixPanel } from "@/components/v2-2/maturity-matrix-panel";
+import { EvidenceAuditTable } from "@/components/v2-6/cabinet-refonte";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { ruleVersions } from "@/lib/rules/rule-versions";
 
@@ -15,10 +16,10 @@ export default function EvidencePage() {
     <AppShell>
       <div className="space-y-6">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Preuves & conformité</h2>
+          <h2 className="text-2xl font-bold text-foreground">Preuves & règles</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            Sources officielles versionnées, snapshots, règles liées, statut de contrôle,
-            diff de règles, AIPD et gouvernance IA désactivée par défaut.
+            Sources officielles versionnées, dates de contrôle, périmètres, règles liées,
+            limites de couverture et preuves nécessaires à la revue cabinet.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
@@ -31,10 +32,12 @@ export default function EvidencePage() {
               href="/compliance"
               className="inline-flex h-10 items-center rounded-lg border border-border bg-white px-4 text-sm font-semibold text-foreground"
             >
-              Voir conformité RGPD / IA
+              Voir administration RGPD / IA
             </Link>
           </div>
         </div>
+
+        <EvidenceAuditTable />
 
         <section className="grid min-w-0 gap-6 xl:grid-cols-[1fr_380px]">
           <EvidenceWorkspace sources={evidenceSources} />

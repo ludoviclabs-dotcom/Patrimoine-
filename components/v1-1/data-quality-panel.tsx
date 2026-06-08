@@ -46,7 +46,7 @@ export function DataQualityPanel() {
                 {getDataQualityLabel(item.dataQuality)}
               </Badge>
               <Badge tone={item.dataQuality.validationStatus === "validated" ? "success" : "warning"}>
-                {item.dataQuality.validationStatus === "validated" ? "Valide" : "A controler"}
+                {item.dataQuality.validationStatus === "validated" ? "Validé cabinet" : "À contrôler"}
               </Badge>
             </div>
           </div>

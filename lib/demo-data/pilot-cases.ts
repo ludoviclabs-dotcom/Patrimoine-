@@ -5,7 +5,7 @@ export const pilotDemoCases = [
     audience: "Cabinet CGP / avocat fiscaliste",
     promise: "Chaque chiffre IFI est explicable, source et borne.",
     demoPath: ["Cabinet", "Simulation IFI", "Pourquoi ce resultat", "Rapport"],
-    proofPoints: ["Base IFI 1,11 M EUR", "Completude 72 %", "Limites non couvertes visibles"],
+    proofPoints: ["Base IFI 1,11 M EUR", "Complétude 72 %", "Limites non couvertes visibles"],
   },
   {
     id: "pilot-tpe-2026",

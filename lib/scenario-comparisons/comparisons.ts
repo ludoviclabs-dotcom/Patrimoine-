@@ -184,7 +184,7 @@ export const meetingBriefs: MeetingBrief[] = [
     audience: "avocat-fiscaliste",
     title: "Rendez-vous avocat fiscaliste",
     dossierSummary:
-      "Simulation IFI sous seuil indicatif avec dettes et SCI a controler, plus-value eventuelle.",
+      "Simulation IFI sous seuil indicatif avec dettes et SCI à contrôler, plus-value éventuelle.",
     questions: [
       "Les dettes immobilieres sont-elles deductibles ?",
       "La SCI presente-t-elle des cas particuliers ?",

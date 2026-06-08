@@ -29,7 +29,7 @@ const moduleLabels: Record<TaxRun["module"], string> = {
 
 export function TaxRunsPanel({ runs }: { runs: TaxRun[] }) {
   const [activeId, setActiveId] = useState(runs[0]?.id);
-  const [status, setStatus] = useState("Prêt à lancer");
+  const [status, setStatus] = useState("Simulation prête à lancer");
   const active = runs.find((run) => run.id === activeId) ?? runs[0];
 
   return (

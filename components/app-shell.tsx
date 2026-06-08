@@ -8,21 +8,23 @@ import {
   FolderKanban,
   Landmark,
   Library,
-  Map,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
+  UserCheck,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { href: "/cabinet", label: "Cockpit", icon: BarChart3 },
+  { href: "/cabinet", label: "Accueil cabinet", icon: BarChart3 },
   { href: "/dossiers", label: "Dossiers", icon: FolderKanban },
-  { href: "/simulations", label: "Simulations", icon: Landmark },
-  { href: "/atlas-fiscal", label: "Atlas fiscal", icon: Map },
-  { href: "/evidence", label: "Preuves", icon: Library },
+  { href: "/simulations", label: "Simuler", icon: Landmark },
+  { href: "/evidence", label: "Preuves & règles", icon: Library },
+  { href: "/review", label: "Revue", icon: UserCheck },
   { href: "/report", label: "Rapports", icon: FileText },
+  { href: "/compliance", label: "Administration", icon: SlidersHorizontal },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -56,8 +58,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               const active =
                 pathname === item.href ||
                 (pathname === "/" && item.href === "/cabinet") ||
-                (item.href === "/evidence" && ["/admin/evidence", "/compliance"].includes(pathname)) ||
-                (item.href === "/dossiers" && ["/workflow", "/client", "/review"].includes(pathname));
+                (item.href === "/evidence" && pathname === "/admin/evidence") ||
+                (item.href === "/dossiers" && ["/workflow", "/client"].includes(pathname));
 
               return (
                 <Link

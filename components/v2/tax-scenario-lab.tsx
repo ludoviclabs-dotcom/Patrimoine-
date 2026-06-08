@@ -55,7 +55,7 @@ const scenarioLabels: Record<LabScenario, string> = {
 export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenario?: LabScenario }) {
   const [activeScenario, setActiveScenario] = useState<LabScenario>(initialScenario);
   const [showWhy, setShowWhy] = useState(true);
-  const [runStatus, setRunStatus] = useState("Prêt");
+  const [runStatus, setRunStatus] = useState("Simulation prête à lancer");
 
   const [realEstate, setRealEstate] = useState({
     salePrice: 720_000,
@@ -200,7 +200,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
                 type="button"
                 onClick={() => {
                   setActiveScenario(scenario);
-                  setRunStatus("Prêt");
+                  setRunStatus("Simulation prête à lancer");
                 }}
                 className={`min-h-10 rounded-lg border px-3 text-sm font-semibold transition ${
                   activeScenario === scenario
@@ -346,7 +346,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
           <div className="mt-5 flex flex-wrap gap-3">
             <Button
               type="button"
-              onClick={() => setRunStatus("Recalculé")}
+              onClick={() => setRunStatus("Scénario recalculé depuis les hypothèses")}
             >
               <Play className="h-4 w-4" aria-hidden="true" />
               Lancer avec ces hypothèses

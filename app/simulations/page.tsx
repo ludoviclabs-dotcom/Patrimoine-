@@ -4,10 +4,17 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { TaxScenarioLab, type LabScenario } from "@/components/v2/tax-scenario-lab";
 import { TaxRunsPanel } from "@/components/v2/tax-runs-panel";
+import {
+  CalculationBreakdown,
+  SimulationAuditSummary,
+  SimulationCatalog,
+} from "@/components/v2-6/cabinet-refonte";
+import { getSimulationByParam } from "@/lib/cabinet-refonte/v2-6";
 import { demoAuditTrail } from "@/lib/demo-data/audit";
 import { demoHousehold } from "@/lib/demo-data/household";
 import { calculateIfi } from "@/lib/simulations/ifi";
 import { getV2TaxRuns } from "@/lib/tax/v2-engines";
+import type { TaxRun } from "@/lib/types";
 
 type SimulationsPageProps = {
   searchParams?: Promise<{
@@ -16,132 +23,96 @@ type SimulationsPageProps = {
   }>;
 };
 
-const atlasSimulationContexts: Record<
-  string,
-  {
-    title: string;
-    description: string;
-    initialScenario: LabScenario;
-    badge: string;
-  }
-> = {
-  "entreprise-cash": {
-    title: "Contexte Atlas : PME industrielle",
-    description:
-      "Le simulateur démarre sur Dutreil faute de moteur cash entreprise dédié en V1 ; le bandeau garde le fil CA → charges → impôts → trésorerie.",
-    initialScenario: "dutreil",
-    badge: "Depuis l'Atlas",
-  },
-  "holding-tax": {
-    title: "Contexte Atlas : dirigeant holding",
-    description:
-      "Le laboratoire ouvre directement la taxe holding pour relier dividendes, actifs passifs et revue professionnelle.",
-    initialScenario: "holding-tax",
-    badge: "Depuis l'Atlas",
-  },
-  transmission: {
-    title: "Contexte Atlas : transmission",
-    description:
-      "Le laboratoire cible la transmission pour passer du mécanisme patrimonial aux étapes de calcul documentées.",
-    initialScenario: "transmission",
-    badge: "Depuis l'Atlas",
-  },
-  "pea-withdrawal": {
-    title: "Contexte V2.3 : retrait PEA",
-    description:
-      "Le laboratoire distingue impôt sur le revenu, prélèvements sociaux et effet de clôture dans un cas PEA après cinq ans.",
-    initialScenario: "pea",
-    badge: "Parcours V2.3",
-  },
-  "per-deduction": {
-    title: "Contexte V2.3 : déduction PER",
-    description:
-      "Le laboratoire calcule la déduction utilisée à partir du plafond disponible, des reliquats et de la mutualisation.",
-    initialScenario: "per",
-    badge: "Parcours V2.3",
-  },
-  "bank-import": {
-    title: "Contexte V2.3 : import bancaire simulé",
-    description:
-      "Aucun connecteur réel n'est branché : le scénario illustre consentement, SCA, détection d'enveloppes et alertes.",
-    initialScenario: "bank-import",
-    badge: "Parcours V2.3",
-  },
-  "succession-checklist": {
-    title: "Contexte V2.4 : succession simple",
-    description:
-      "Le laboratoire ouvre la checklist succession : actif brut, notaire, donations antérieures, documents et points de revue.",
-    initialScenario: "succession-checklist",
-    badge: "Parcours V2.4",
-  },
-  "per-early-exit": {
-    title: "Contexte V2.4 : PER sortie anticipée",
-    description:
-      "Le scénario sépare versements et gains lors d'une sortie résidence principale, sans liquidation fiscale définitive.",
-    initialScenario: "per-early-exit",
-    badge: "Parcours V2.4",
-  },
-  "succession-liquidity-stress": {
-    title: "Contexte V2.4 : stress liquidité succession",
-    description:
-      "Le stress test compare droits estimés, cash disponible, réserve prudente et délai de cession.",
-    initialScenario: "succession-liquidity-stress",
-    badge: "Parcours V2.4",
-  },
-  "product-adequacy": {
-    title: "Contexte V2.4 : adéquation produit simulée",
-    description:
-      "Le laboratoire vérifie horizon, risque, durabilité et marché cible, puis impose une revue humaine.",
-    initialScenario: "product-adequacy",
-    badge: "Parcours V2.4",
-  },
+const labScenarios = new Set<LabScenario>([
+  "plus-value",
+  "transmission",
+  "dutreil",
+  "holding-tax",
+  "pea",
+  "per",
+  "bank-import",
+  "succession-checklist",
+  "per-early-exit",
+  "succession-liquidity-stress",
+  "product-adequacy",
+]);
+
+const taxRunScenarioByLab: Record<LabScenario, TaxRun["scenario"]> = {
+  "plus-value": "plus-value",
+  transmission: "transmission",
+  dutreil: "dutreil",
+  "holding-tax": "holding-tax",
+  pea: "pea-withdrawal",
+  per: "per-deduction",
+  "bank-import": "bank-import",
+  "succession-checklist": "succession-checklist",
+  "per-early-exit": "per-early-exit",
+  "succession-liquidity-stress": "succession-liquidity-stress",
+  "product-adequacy": "product-adequacy",
 };
 
 export default async function SimulationsPage({ searchParams }: SimulationsPageProps) {
   const params = (await searchParams) ?? {};
-  const atlasContext = params.scenario ? atlasSimulationContexts[params.scenario] : null;
+  const catalogItem = getSimulationByParam(params.scenario) ?? getSimulationByParam("plus-value");
+  const requestedScenario = catalogItem?.scenarioParam ?? "plus-value";
+  const activeScenario: LabScenario = labScenarios.has(requestedScenario as LabScenario)
+    ? (requestedScenario as LabScenario)
+    : "plus-value";
   const ifiRun = calculateIfi(demoHousehold);
   const taxRuns = getV2TaxRuns();
+  const activeTaxRun =
+    taxRuns.find((run) => run.scenario === taxRunScenarioByLab[activeScenario]) ??
+    taxRuns.find((run) => run.scenario === "plus-value");
 
   return (
     <AppShell>
       <div className="space-y-8">
         <div>
-          <h2 className="text-2xl font-bold text-foreground">Simulations fiscales cabinet</h2>
+          <h2 className="text-2xl font-bold text-foreground">Simuler</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            Moteur déterministe, étapes de calcul, sources officielles et validation
-            professionnelle pour IFI, IR/PFU/CDHR, transmission, Dutreil, apport-cession
-            et taxe holding.
+            Catalogue de scénarios déterministes, moteur paramétrable et preuves affichées avant
+            toute conclusion. Chaque simulation reste indicative et revue par un professionnel.
           </p>
         </div>
-        {atlasContext ? <AtlasSimulationContext {...atlasContext} /> : null}
-        <TaxScenarioLab initialScenario={atlasContext?.initialScenario} />
-        <TaxRunsPanel runs={taxRuns} />
-        <SimulationsClient ifiRun={ifiRun} initialAudit={demoAuditTrail} />
+
+        <SimulationCatalog activeScenario={activeScenario} />
+
+        {catalogItem ? <SimulationContext {...catalogItem} /> : null}
+        <SimulationAuditSummary item={catalogItem} />
+        <TaxScenarioLab initialScenario={activeScenario} />
+        {activeTaxRun ? <CalculationBreakdown run={activeTaxRun} /> : null}
+
+        <details className="rounded-lg border border-border bg-white p-5">
+          <summary className="cursor-pointer text-base font-semibold text-foreground">
+            Voir les autres moteurs et historiques
+          </summary>
+          <div className="mt-5 space-y-6">
+            <TaxRunsPanel runs={taxRuns} />
+            <SimulationsClient ifiRun={ifiRun} initialAudit={demoAuditTrail} />
+          </div>
+        </details>
       </div>
     </AppShell>
   );
 }
 
-function AtlasSimulationContext({
-  title,
-  description,
-  badge,
-}: {
-  title: string;
-  description: string;
-  badge: string;
-}) {
+function SimulationContext({
+  label,
+  userFacingExplanation,
+  status,
+  reviewGate,
+}: NonNullable<ReturnType<typeof getSimulationByParam>>) {
   return (
     <Card>
       <CardHeader className="mb-0">
         <div>
           <div className="mb-3 flex flex-wrap gap-2">
-            <Badge tone="teal">{badge}</Badge>
-            <Badge tone="warning">Simulation indicative</Badge>
+            <Badge tone="teal">Scénario actif</Badge>
+            <Badge tone="warning">{status}</Badge>
           </div>
-          <CardTitle>{title}</CardTitle>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{description}</p>
+          <CardTitle>{label}</CardTitle>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{userFacingExplanation}</p>
+          <p className="mt-3 text-sm font-medium text-foreground">{reviewGate}</p>
         </div>
       </CardHeader>
     </Card>
