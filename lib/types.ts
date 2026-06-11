@@ -396,7 +396,11 @@ export type AuditAction =
   | "rule.updated"
   | "simulation.recalculation_required"
   | "scenario.compared"
-  | "report.exported";
+  | "report.exported"
+  | "recommendation.updated"
+  | "document.signed"
+  | "kyc.captured"
+  | "aml.scored";
 
 export type AuditLogEntry = {
   id: string;
@@ -831,6 +835,50 @@ export type MaturityItem = {
   evidence: string;
   externalDependency?: string;
   nextAction: string;
+};
+
+export type FiscalAlert = {
+  id: string;
+  title: string;
+  severity: "info" | "warning" | "critical";
+  /** Montant chiffré (écart au seuil, plafond inutilisé, taxe estimée…). */
+  amount: number;
+  threshold?: number;
+  computedFromRunId: string;
+  explanation: string;
+  nextAction: string;
+};
+
+export type FiscalDeadline = {
+  id: string;
+  date: string;
+  label: string;
+  scope: "ir" | "is" | "sci" | "ifi" | "cfe" | "dutreil" | "holding-tax";
+  detail: string;
+  ruleVersionId: string;
+};
+
+export type AggregatedAccount = {
+  id: string;
+  provider: "powens-fixture";
+  label: string;
+  type: "checking" | "savings" | "securities" | "life-insurance";
+  iban?: string;
+  balance: number;
+  currency: "EUR";
+  lastSyncedAt: string;
+  consentStatus: "active" | "expired";
+};
+
+export type Recommendation = {
+  id: string;
+  caseId: string;
+  title: string;
+  detail: string;
+  status: "proposee" | "acceptee" | "en-cours" | "realisee";
+  linkedRunId?: string;
+  owner: string;
+  updatedAt: string;
 };
 
 export type TrialBalanceLine = {
