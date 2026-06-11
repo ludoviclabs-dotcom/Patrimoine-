@@ -132,6 +132,19 @@ export const ruleVersions: RuleVersion[] = [
     evidenceSourceIds: ["src-bofip-sci-is-2026", "src-service-public-is-taux-2026"],
   },
   {
+    id: "rule-compta-sci-2026-v1",
+    ruleSet: "sci",
+    version: "COMPTA-SCI-2026.06-V1",
+    title: "Comptabilité SCI : classification 6/7/28/455 vers 2072 (IR) et 2065 (IS)",
+    effectiveFrom: "2026-06-11",
+    status: "draft",
+    evidenceSourceIds: [
+      "src-impots-liasse-2072-2026",
+      "src-impots-liasse-2065-2026",
+      "src-pennylane-api-v2-2026",
+    ],
+  },
+  {
     id: "rule-is-bareme-2026-v1",
     ruleSet: "is",
     version: "IS-2026.06-V1",

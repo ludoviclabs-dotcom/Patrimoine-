@@ -253,6 +253,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                       Workflow démo
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/comptabilite-sci">
+                      <BookOpen className="h-4 w-4 text-muted" aria-hidden />
+                      Comptabilité SCI
+                    </Link>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 

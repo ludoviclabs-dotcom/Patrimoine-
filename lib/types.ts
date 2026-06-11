@@ -12,7 +12,8 @@ export type EvidenceAuthority =
   | "amf"
   | "cnb"
   | "ordre-ec"
-  | "commission-europeenne";
+  | "commission-europeenne"
+  | "editeur-logiciel";
 
 export type LegalScope =
   | "IFI"
@@ -830,6 +831,30 @@ export type MaturityItem = {
   evidence: string;
   externalDependency?: string;
   nextAction: string;
+};
+
+export type TrialBalanceLine = {
+  account: string;
+  label: string;
+  debit: number;
+  credit: number;
+};
+
+export type SciAccountingSnapshot = {
+  caseId: string;
+  fiscalYear: string;
+  source: "pennylane-fixture" | "fec-import-simule";
+  rentalIncome: number;
+  deductibleCharges: number;
+  loanInterest: number;
+  depreciation: number;
+  partnerCurrentAccounts: number;
+  accountingResult: number;
+  rentalResultAtIr: number;
+  form2072Lines: Array<{ code: string; label: string; amount: number }>;
+  form2065: { taxableProfit: number; isAmount: number; effectiveRatePercent: number };
+  flags: { vatOnRents: boolean; crlDue: boolean; cfeDue: boolean };
+  reviewRequired: true;
 };
 
 export type AiAssistanceStatus = "disabled" | "draft_only" | "enabled_with_review";

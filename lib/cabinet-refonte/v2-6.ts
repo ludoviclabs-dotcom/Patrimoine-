@@ -326,6 +326,21 @@ export const dossierWorkspaceTabs: DossierWorkspaceTab[] = [
     blockers: ["valeurs immobilières à contrôler", "holding à qualifier"],
   },
   {
+    id: "tab-compta-sci",
+    label: "Comptabilité SCI",
+    category: "Dossier client",
+    status: "Donnée simulée",
+    certainty: "simulation indicative",
+    sourceIds: ["src-impots-liasse-2072-2026", "src-impots-liasse-2065-2026"],
+    reviewRequired: true,
+    userFacingExplanation:
+      "Balance Pennylane simulée classée vers les liasses 2072 (IR) et 2065 (IS) avec flags TVA, CRL et CFE.",
+    href: "/comptabilite-sci",
+    summary: "Loyers, charges, amortissements et comptes courants d'associés agrégés depuis la balance.",
+    expectedItems: ["balance générale", "classification 2072/2065", "flags TVA/CRL/CFE"],
+    blockers: ["revue expert-comptable obligatoire avant dépôt"],
+  },
+  {
     id: "tab-documents",
     label: "Documents",
     category: "Dossier client",
