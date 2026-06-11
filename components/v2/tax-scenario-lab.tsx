@@ -17,6 +17,13 @@ import {
   defaultDemembrementFormState,
   DemembrementForm,
 } from "@/components/v3-1/forms/demembrement-form";
+import { defaultExitTaxFormState, ExitTaxForm } from "@/components/v3-2/forms/exit-tax-form";
+import { defaultIsFormState, IsForm } from "@/components/v3-2/forms/is-form";
+import {
+  defaultSciFormState,
+  SciComparisonChart,
+  SciForm,
+} from "@/components/v3-2/forms/sci-form";
 import { defaultIrFormState, IrBracketsChart, IrForm } from "@/components/v3/forms/ir-form";
 import { defaultPfuFormState, PfuComparisonChart, PfuForm } from "@/components/v3/forms/pfu-form";
 import {
@@ -27,6 +34,9 @@ import {
 import { formatEuro } from "@/lib/format";
 import { simulateAssuranceVieTransmission } from "@/lib/tax/engines/assurance-vie";
 import { simulateDemembrement } from "@/lib/tax/engines/demembrement";
+import { simulateExitTaxSignal } from "@/lib/tax/engines/exit-tax";
+import { simulateIs } from "@/lib/tax/engines/is";
+import { simulateSciIrVsIs } from "@/lib/tax/engines/sci-arbitrage";
 import { DMTG_RELATIONSHIP_LABELS, type DmtgRelationship } from "@/lib/tax/engines/dmtg";
 import { simulateIrBareme2026 } from "@/lib/tax/engines/ir";
 import { simulatePfuVsBareme } from "@/lib/tax/engines/pfu-arbitrage";
@@ -55,6 +65,9 @@ export type LabScenario =
   | "assurance-vie"
   | "dutreil"
   | "holding-tax"
+  | "is"
+  | "sci-arbitrage"
+  | "exit-tax"
   | "pea"
   | "per"
   | "bank-import"
@@ -72,6 +85,9 @@ const scenarioLabels: Record<LabScenario, string> = {
   "assurance-vie": "Assurance-vie décès",
   dutreil: "Dutreil",
   "holding-tax": "Taxe holding",
+  is: "Impôt sur les sociétés",
+  "sci-arbitrage": "SCI IR vs IS",
+  "exit-tax": "Exit tax",
   pea: "PEA retrait après 5 ans",
   per: "PER déduction à l’entrée",
   "bank-import": "Import bancaire simulé",
@@ -100,6 +116,9 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
   });
   const [demembrement, setDemembrement] = useState(defaultDemembrementFormState);
   const [assuranceVie, setAssuranceVie] = useState(defaultAssuranceVieFormState);
+  const [isState, setIsState] = useState(defaultIsFormState);
+  const [sci, setSci] = useState(defaultSciFormState);
+  const [exitTax, setExitTax] = useState(defaultExitTaxFormState);
   const [dutreil, setDutreil] = useState({
     companyValue: 850_000,
     eligibleOperatingValue: 790_000,
@@ -136,6 +155,10 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     unusedCeilingN2: 2_400,
     unusedCeilingN3: 1_600,
     spouseMutualization: 4_000,
+    status: "manual" as "manual" | "salarie" | "tns",
+    professionalIncome: 60_000,
+    age: 45,
+    tmiPercent: 30,
   });
   const [successionChecklist, setSuccessionChecklist] = useState({
     grossEstate: 1_150_000,
@@ -190,6 +213,14 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     if (activeScenario === "transmission") return simulateTransmissionV2(transmission);
     if (activeScenario === "demembrement") return simulateDemembrement(demembrement);
     if (activeScenario === "assurance-vie") return simulateAssuranceVieTransmission(assuranceVie);
+    if (activeScenario === "is") return simulateIs(isState);
+    if (activeScenario === "sci-arbitrage")
+      return simulateSciIrVsIs({
+        ...sci,
+        depreciationRate: sci.depreciationRatePercent / 100,
+        tmi: sci.tmiPercent / 100,
+      });
+    if (activeScenario === "exit-tax") return simulateExitTaxSignal(exitTax);
     if (activeScenario === "dutreil") return simulateDutreilV2(dutreil);
     if (activeScenario === "holding-tax") return simulateHoldingTaxV2({
       ...holding,
@@ -205,6 +236,10 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
       annualCeiling: per.annualCeiling,
       unusedCeilings: [per.unusedCeilingN1, per.unusedCeilingN2, per.unusedCeilingN3],
       spouseMutualization: per.spouseMutualization,
+      status: per.status,
+      professionalIncome: per.professionalIncome,
+      age: per.age,
+      tmi: per.tmiPercent / 100,
     });
     if (activeScenario === "succession-checklist") return simulateSuccessionChecklistV24(successionChecklist);
     if (activeScenario === "per-early-exit") return simulatePerEarlyExitV24(perExit);
@@ -217,14 +252,17 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     assuranceVie,
     demembrement,
     dutreil,
+    exitTax,
     holding,
     ir,
+    isState,
     liquidityStress,
     pea,
     per,
     perExit,
     pfu,
     realEstate,
+    sci,
     successionChecklist,
     transmission,
   ]);
@@ -301,6 +339,14 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
             <AssuranceVieForm value={assuranceVie} onChange={setAssuranceVie} />
           ) : null}
 
+          {activeScenario === "is" ? <IsForm value={isState} onChange={setIsState} /> : null}
+
+          {activeScenario === "sci-arbitrage" ? <SciForm value={sci} onChange={setSci} /> : null}
+
+          {activeScenario === "exit-tax" ? (
+            <ExitTaxForm value={exitTax} onChange={setExitTax} />
+          ) : null}
+
           {activeScenario === "dutreil" ? (
             <div className="grid gap-3">
               <NumberInput label="Valeur entreprise" value={dutreil.companyValue} onChange={(value) => setDutreil((item) => ({ ...item, companyValue: value }))} />
@@ -342,7 +388,23 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
           {activeScenario === "per" ? (
             <div className="grid gap-3">
               <NumberInput label="Versement volontaire" value={per.voluntaryPayments} onChange={(value) => setPer((item) => ({ ...item, voluntaryPayments: value }))} />
-              <NumberInput label="Plafond disponible" value={per.annualCeiling} onChange={(value) => setPer((item) => ({ ...item, annualCeiling: value }))} />
+              <SelectInput
+                label="Calcul du plafond 2026"
+                value={per.status}
+                options={[
+                  { value: "manual", label: "Plafond saisi (avis d'impôt)" },
+                  { value: "salarie", label: "Salarié — max 37 680 €" },
+                  { value: "tns", label: "TNS — max 88 911 €" },
+                ]}
+                onChange={(status) => setPer((item) => ({ ...item, status }))}
+              />
+              {per.status === "manual" ? (
+                <NumberInput label="Plafond disponible" value={per.annualCeiling} onChange={(value) => setPer((item) => ({ ...item, annualCeiling: value }))} />
+              ) : (
+                <NumberInput label="Revenus professionnels" value={per.professionalIncome} onChange={(value) => setPer((item) => ({ ...item, professionalIncome: value }))} />
+              )}
+              <NumberInput label="Âge au versement" value={per.age} onChange={(value) => setPer((item) => ({ ...item, age: value }))} />
+              <NumberInput label="TMI (%)" value={per.tmiPercent} onChange={(value) => setPer((item) => ({ ...item, tmiPercent: value }))} />
               <NumberInput label="Reliquat N-1" value={per.unusedCeilingN1} onChange={(value) => setPer((item) => ({ ...item, unusedCeilingN1: value }))} />
               <NumberInput label="Reliquat N-2" value={per.unusedCeilingN2} onChange={(value) => setPer((item) => ({ ...item, unusedCeilingN2: value }))} />
               <NumberInput label="Reliquat N-3" value={per.unusedCeilingN3} onChange={(value) => setPer((item) => ({ ...item, unusedCeilingN3: value }))} />
@@ -448,6 +510,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
           {activeScenario === "ir" ? <IrBracketsChart run={activeRun} /> : null}
           {activeScenario === "pfu" ? <PfuComparisonChart run={activeRun} /> : null}
           {activeScenario === "plus-value" ? <PvAllowancesChart /> : null}
+          {activeScenario === "sci-arbitrage" ? <SciComparisonChart run={activeRun} /> : null}
 
           <CalculationSteps steps={activeRun.steps} />
         </div>

@@ -8,6 +8,12 @@ import {
   type DmtgRelationship,
 } from "./engines/dmtg";
 import { computeCdhr } from "./engines/ir";
+import {
+  computePerCeiling2026,
+  PER_CARRY_FORWARD_YEARS,
+  PER_DEDUCTION_AGE_LIMIT,
+  type PerStatus,
+} from "./engines/per";
 import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
 import type { Household, ProfessionalDocument } from "../types";
 
@@ -417,14 +423,21 @@ export function simulateApportCessionV2({
   reinvestedAmount = 860_000,
   reinvestmentMonths = 30,
   conservationYears = 5,
+  deferredGain = 600_000,
 }: {
   saleProceeds?: number;
   reinvestedAmount?: number;
   reinvestmentMonths?: number;
   conservationYears?: number;
+  /** Plus-value en report (assiette de la comparaison cession directe). */
+  deferredGain?: number;
 } = {}) {
   const requiredReinvestment = Math.round(saleProceeds * 0.7);
   const compliant = reinvestedAmount >= requiredReinvestment && reinvestmentMonths <= 36 && conservationYears >= 5;
+  // Comparaison cession directe : PFU 31,4 %, et jusqu'à ~38,4 % avec CEHR 4 %
+  // et CDHR (plancher 20 % du RFR) pour les hauts revenus — chiffrage ir.ts.
+  const directSaleTaxAtPfu = Math.round(deferredGain * 0.314);
+  const directSaleTaxWithCehrCdhr = Math.round(deferredGain * 0.384);
 
   const steps = [
     makeStep({
@@ -450,6 +463,19 @@ export function simulateApportCessionV2({
       coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
       confidenceStatus: "needs_review",
     }),
+    makeStep({
+      id: "apport-step-direct-sale",
+      order: 3,
+      label: "Comparaison cession directe sans report",
+      inputValue: `PV en report ${deferredGain} €`,
+      formula: "PFU 31,4 % — jusqu'à ~38,4 % avec CEHR 4 % et CDHR (plancher 20 %, moteur ir.ts)",
+      outputValue: `${directSaleTaxAtPfu} € à ${directSaleTaxWithCehrCdhr} €`,
+      ruleVersionId: "rule-apport-cession-2026-v2",
+      evidenceSourceId: "src-legifrance-lfss-2026-ps-capital",
+      coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
+      confidenceStatus: "needs_review",
+      nextAction: "Chiffrer CEHR/CDHR sur le RFR réel du foyer avant de comparer au report.",
+    }),
   ];
 
   return taxRun({
@@ -458,9 +484,19 @@ export function simulateApportCessionV2({
     steps,
     resultLabel: compliant ? "Report à documenter" : "Report fragilisé",
     resultAmount: requiredReinvestment,
-    evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
+    evidenceSourceIds: ["src-legifrance-apport-cession-2026", "src-legifrance-lfss-2026-ps-capital"],
     reviewerRequired: "avocat",
-    computedResult: { saleProceeds, reinvestedAmount, requiredReinvestment, reinvestmentMonths, conservationYears, compliant },
+    computedResult: {
+      saleProceeds,
+      reinvestedAmount,
+      requiredReinvestment,
+      reinvestmentMonths,
+      conservationYears,
+      compliant,
+      deferredGain,
+      directSaleTaxAtPfu,
+      directSaleTaxWithCehrCdhr,
+    },
   });
 }
 
@@ -532,6 +568,32 @@ export function simulateHoldingTaxV2({
       coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
       confidenceStatus: "needs_review",
       nextAction: "Qualifier chaque actif et l'articulation IFI avant toute conclusion.",
+    }),
+    makeStep({
+      id: "holding-step-ifi-exoneration",
+      order: 4,
+      label: "Exonération IFI corrélative (art. 975 VII)",
+      inputValue: taxableLuxuryInventory,
+      formula: "les actifs soumis à la taxe holding ouvrent une exonération IFI corrélative",
+      outputValue: conditionsMet ? "Articulation IFI à documenter" : "Sans objet",
+      ruleVersionId: "rule-holding-tax-2026-v2",
+      evidenceSourceId: "src-legifrance-holding-tax-2026",
+      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      confidenceStatus: "needs_review",
+      nextAction: "Faire arbitrer taxe holding vs IFI par l'avocat fiscaliste (pas de double imposition).",
+    }),
+    makeStep({
+      id: "holding-step-deadline",
+      order: 5,
+      label: "Échéance : première taxation",
+      inputValue: "Exercices clos en 2026",
+      formula: "première campagne déclarative attendue au printemps 2027",
+      outputValue: "Printemps 2027",
+      ruleVersionId: "rule-holding-tax-2026-v2",
+      evidenceSourceId: "src-legifrance-holding-tax-2026",
+      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      confidenceStatus: "needs_review",
+      nextAction: "Inscrire l'échéance au calendrier fiscal du dossier et préparer l'inventaire d'actifs.",
     }),
   ];
 
@@ -662,53 +724,118 @@ export function simulatePerDeductionV2({
   annualCeiling = 12_000,
   unusedCeilings = [3_000, 2_400, 1_600],
   spouseMutualization = 4_000,
+  status = "manual",
+  professionalIncome = 0,
+  age = 45,
+  tmi = 0.3,
 }: {
   voluntaryPayments?: number;
   annualCeiling?: number;
   unusedCeilings?: number[];
   spouseMutualization?: number;
+  /** "salarie"/"tns" : plafond 2026 calculé (37 680 / 88 911 €) ; "manual" : plafond saisi. */
+  status?: PerStatus | "manual";
+  professionalIncome?: number;
+  age?: number;
+  tmi?: number;
 } = {}) {
+  const computedCeiling =
+    status === "manual"
+      ? null
+      : computePerCeiling2026({ status, professionalIncome });
+  const effectiveAnnualCeiling = computedCeiling?.ceiling ?? annualCeiling;
+  // Versements à partir de 70 ans : plus de déduction à l'entrée (LF 2026).
+  const ageBlocked = age >= PER_DEDUCTION_AGE_LIMIT;
+  const retainedUnusedCeilings = unusedCeilings.slice(0, PER_CARRY_FORWARD_YEARS);
   const result = calculatePerDeduction({
     voluntaryPayments,
-    annualCeiling,
-    unusedCeilings,
-    spouseMutualization,
+    annualCeiling: ageBlocked ? 0 : effectiveAnnualCeiling,
+    unusedCeilings: ageBlocked ? [] : retainedUnusedCeilings,
+    spouseMutualization: ageBlocked ? 0 : spouseMutualization,
   });
+  const taxSaving = Math.round(result.deductionUsed * tmi);
 
   const steps = [
     makeStep({
-      id: "per-step-ceiling",
+      id: "per-step-computed-ceiling",
       order: 1,
-      label: "Plafond PER disponible",
-      inputValue: `${annualCeiling} + ${unusedCeilings.join(" + ")} + ${spouseMutualization}`,
-      formula: "plafond annuel + reliquats + mutualisation",
+      label: "Plafond annuel 2026",
+      inputValue:
+        status === "manual"
+          ? `${effectiveAnnualCeiling} € (saisi)`
+          : `${status} · revenus ${professionalIncome} €`,
+      formula:
+        status === "tns"
+          ? "10 % du bénéfice (≤ 8 PASS 2026) + 15 % de la fraction 1-8 PASS — max 88 911 €"
+          : status === "salarie"
+            ? "10 % des revenus N-1 plafonnés à 8 PASS 2025 — max 37 680 €"
+            : "plafond saisi par le conseiller (avis d'impôt)",
+      outputValue: effectiveAnnualCeiling,
+      ruleVersionId: "rule-per-deduction-2026-v2",
+      evidenceSourceId: "src-legifrance-pass-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: "needs_review",
+      nextAction: "Comparer avec le plafond figurant sur l'avis d'imposition.",
+    }),
+    makeStep({
+      id: "per-step-ceiling",
+      order: 2,
+      label: `Plafond disponible (reliquats ${PER_CARRY_FORWARD_YEARS} ans)`,
+      inputValue: `${effectiveAnnualCeiling} + ${retainedUnusedCeilings.join(" + ") || "0"} + ${spouseMutualization}`,
+      formula: "plafond annuel + reliquats non utilisés (report 5 ans LF 2026) + mutualisation",
       outputValue: result.availableCeiling,
-      ruleVersionId: "rule-per-deduction-2026-v1",
+      ruleVersionId: "rule-per-deduction-2026-v2",
       evidenceSourceId: "src-service-public-per-deduction-2026",
       coverageLimitIds: ["coverage-per-deduction-simple"],
       confidenceStatus: "needs_review",
       nextAction: "Comparer avec l'avis d'impôt et les plafonds réellement disponibles.",
     }),
     makeStep({
+      id: "per-step-age-limit",
+      order: 3,
+      label: "Limite d'âge de déduction",
+      inputValue: `${age} ans`,
+      formula: "versements à partir de 70 ans non déductibles à l'entrée (LF 2026)",
+      outputValue: ageBlocked ? "Déduction bloquée (≥ 70 ans)" : "Déduction possible",
+      ruleVersionId: "rule-per-deduction-2026-v2",
+      evidenceSourceId: "src-legifrance-pass-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: ageBlocked ? "needs_review" : "indicative",
+      nextAction: "Vérifier l'âge au jour du versement et l'intérêt successoral du PER après 70 ans.",
+    }),
+    makeStep({
       id: "per-step-deduction",
-      order: 2,
+      order: 4,
       label: "Déduction utilisée",
       inputValue: voluntaryPayments,
       formula: "min(versements volontaires, plafond disponible)",
       outputValue: result.deductionUsed,
-      ruleVersionId: "rule-per-deduction-2026-v1",
+      ruleVersionId: "rule-per-deduction-2026-v2",
       evidenceSourceId: "src-impots-epargne-retraite-2026",
       coverageLimitIds: ["coverage-per-deduction-simple"],
       confidenceStatus: "indicative",
     }),
     makeStep({
+      id: "per-step-tax-saving",
+      order: 5,
+      label: "Économie d'impôt indicative",
+      inputValue: `${result.deductionUsed} € × TMI ${Math.round(tmi * 100)} %`,
+      formula: "déduction utilisée × taux marginal d'imposition (barème ir.ts)",
+      outputValue: taxSaving,
+      ruleVersionId: "rule-per-deduction-2026-v2",
+      evidenceSourceId: "src-impots-epargne-retraite-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: "needs_review",
+      nextAction: "Vérifier la TMI réelle du foyer (moteur IR barème) et l'effet sur le RFR.",
+    }),
+    makeStep({
       id: "per-step-excess",
-      order: 3,
+      order: 6,
       label: "Versement non déduit",
       inputValue: voluntaryPayments,
       formula: "max(0, versements - déduction utilisée)",
       outputValue: result.excessPayment,
-      ruleVersionId: "rule-per-deduction-2026-v1",
+      ruleVersionId: "rule-per-deduction-2026-v2",
       evidenceSourceId: "src-impots-epargne-retraite-2026",
       coverageLimitIds: ["coverage-per-deduction-simple"],
       confidenceStatus: "indicative",
@@ -720,15 +847,25 @@ export function simulatePerDeductionV2({
     module: "per",
     scenario: "per-deduction",
     steps,
-    resultLabel: "Déduction PER indicative",
+    resultLabel: ageBlocked ? "Déduction bloquée après 70 ans" : "Déduction PER indicative",
     resultAmount: result.deductionUsed,
-    evidenceSourceIds: ["src-service-public-per-deduction-2026", "src-impots-epargne-retraite-2026"],
+    evidenceSourceIds: [
+      "src-service-public-per-deduction-2026",
+      "src-impots-epargne-retraite-2026",
+      "src-legifrance-pass-2026",
+    ],
     reviewerRequired: "cgp",
     computedResult: {
       voluntaryPayments,
-      annualCeiling,
-      unusedCeilingsTotal: unusedCeilings.reduce((sum, amount) => sum + amount, 0),
+      annualCeiling: effectiveAnnualCeiling,
+      computedCeilingStatus: status,
+      cappedAtMax: computedCeiling?.cappedAtMax ?? false,
+      unusedCeilingsTotal: retainedUnusedCeilings.reduce((sum, amount) => sum + amount, 0),
       spouseMutualization,
+      age,
+      ageBlocked,
+      tmi,
+      taxSaving,
       ...result,
     },
   });

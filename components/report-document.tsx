@@ -21,7 +21,9 @@ import {
   simulateAssuranceVieTransmission,
   simulateDemembrement,
   simulateIrBareme2026,
+  simulateIs,
   simulatePfuVsBareme,
+  simulateSciIrVsIs,
 } from "@/lib/tax/engines";
 import {
   generateProfessionalDocuments,
@@ -110,6 +112,16 @@ export function ReportDocument({
       label: "Taxe holding",
       assumptions: "5,4 M€ d'actifs, revenus passifs 56 %, contrôle 72 %, inventaire taxable 420 000 €",
       run: simulateHoldingTaxV2(),
+    },
+    {
+      label: "Impôt sur les sociétés",
+      assumptions: "bénéfice 120 000 €, CA 900 000 €, capital 100 % personnes physiques",
+      run: simulateIs(),
+    },
+    {
+      label: "SCI IR vs IS",
+      assumptions: "loyers 30 000 €, charges 8 000 €, TMI 30 %, amortissement 2,5 %, sortie à 10 ans",
+      run: simulateSciIrVsIs(),
     },
     {
       label: "Succession simple",

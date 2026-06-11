@@ -1,8 +1,11 @@
 import { getV2TaxRuns } from "../v2-engines";
 import { simulateAssuranceVieTransmission } from "./assurance-vie";
 import { simulateDemembrement } from "./demembrement";
+import { simulateExitTaxSignal } from "./exit-tax";
 import { simulateIrBareme2026 } from "./ir";
+import { simulateIs } from "./is";
 import { simulatePfuVsBareme } from "./pfu-arbitrage";
+import { simulateSciIrVsIs } from "./sci-arbitrage";
 import type { TaxRun } from "../../types";
 
 export {
@@ -37,6 +40,16 @@ export {
   computeAssuranceVieTransmission,
   simulateAssuranceVieTransmission,
 } from "./assurance-vie";
+export { computeIs, simulateIs } from "./is";
+export { computeSciIrVsIs, simulateSciIrVsIs } from "./sci-arbitrage";
+export { computeExitTaxSignal, simulateExitTaxSignal } from "./exit-tax";
+export {
+  computePerCeiling2026,
+  PASS_2025,
+  PASS_2026,
+  PER_SALARIE_MAX_2026,
+  PER_TNS_MAX_2026,
+} from "./per";
 
 /** Runs v3 exécutés avec leurs hypothèses par défaut (catalogue + rapport). */
 export function getV3TaxRuns(): TaxRun[] {
@@ -45,6 +58,9 @@ export function getV3TaxRuns(): TaxRun[] {
     simulatePfuVsBareme(),
     simulateDemembrement(),
     simulateAssuranceVieTransmission(),
+    simulateIs(),
+    simulateSciIrVsIs(),
+    simulateExitTaxSignal(),
   ];
 }
 

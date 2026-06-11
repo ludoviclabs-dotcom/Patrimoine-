@@ -200,6 +200,33 @@ export const coverageLimits: CoverageLimit[] = [
     requiredProfessional: "avocat",
   },
   {
+    id: "coverage-is-bareme-2026",
+    module: "is",
+    label: "Barème IS 2026",
+    status: "partially_covered",
+    explanation:
+      "Taux 15/25 % et contribution sociale couverts sur résultat fiscal déclaré ; réintégrations, déficits reportables et intégration fiscale non automatisés.",
+    requiredProfessional: "expert-comptable",
+  },
+  {
+    id: "coverage-sci-is-sortie",
+    module: "sci",
+    label: "SCI IS : sortie et distribution",
+    status: "partially_covered",
+    explanation:
+      "La plus-value professionnelle (réintégration des amortissements) est estimée ; la fiscalité de distribution (PFU sur dividendes) et la liquidation de la société ne sont pas automatisées.",
+    requiredProfessional: "expert-comptable",
+  },
+  {
+    id: "coverage-exit-tax-signal",
+    module: "exit-tax",
+    label: "Exit tax : signal documentaire",
+    status: "partially_covered",
+    explanation:
+      "Le moteur détecte le champ d'application et les obligations (2074-ETD, garanties) sans liquider l'impôt : conventions fiscales et participations indirectes à qualifier.",
+    requiredProfessional: "avocat",
+  },
+  {
     id: "coverage-documents-cabinet",
     module: "documents-cabinet",
     label: "DER, FIL, lettre de mission, rapport d'adéquation",

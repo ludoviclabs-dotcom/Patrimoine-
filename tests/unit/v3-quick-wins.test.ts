@@ -166,6 +166,9 @@ describe("V3 quick wins — intégration produit", () => {
       "pfu-arbitrage",
       "demembrement",
       "assurance-vie",
+      "is",
+      "sci-arbitrage",
+      "exit-tax",
     ]);
     expect(all.length).toBe(13 + v3.length);
   });
