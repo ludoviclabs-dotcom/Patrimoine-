@@ -8,7 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { WhyThisResultPanel } from "@/components/v1-1/why-this-result-panel";
-import { CheckboxInput, NumberInput } from "@/components/v3/forms/fields";
+import { CheckboxInput, NumberInput, SelectInput } from "@/components/v3/forms/fields";
+import {
+  defaultDemembrementFormState,
+  DemembrementForm,
+} from "@/components/v3-1/forms/demembrement-form";
 import { defaultIrFormState, IrBracketsChart, IrForm } from "@/components/v3/forms/ir-form";
 import { defaultPfuFormState, PfuComparisonChart, PfuForm } from "@/components/v3/forms/pfu-form";
 import {
@@ -17,6 +21,8 @@ import {
   PvImmoForm,
 } from "@/components/v3/forms/pv-immo-form";
 import { formatEuro } from "@/lib/format";
+import { simulateDemembrement } from "@/lib/tax/engines/demembrement";
+import { DMTG_RELATIONSHIP_LABELS, type DmtgRelationship } from "@/lib/tax/engines/dmtg";
 import { simulateIrBareme2026 } from "@/lib/tax/engines/ir";
 import { simulatePfuVsBareme } from "@/lib/tax/engines/pfu-arbitrage";
 import {
@@ -40,6 +46,7 @@ export type LabScenario =
   | "pfu"
   | "plus-value"
   | "transmission"
+  | "demembrement"
   | "dutreil"
   | "holding-tax"
   | "pea"
@@ -55,6 +62,7 @@ const scenarioLabels: Record<LabScenario, string> = {
   pfu: "PFU vs barème",
   "plus-value": "Plus-value",
   transmission: "Transmission",
+  demembrement: "Démembrement art. 669",
   dutreil: "Dutreil",
   "holding-tax": "Taxe holding",
   pea: "PEA retrait après 5 ans",
@@ -81,7 +89,9 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     priorDonations: 0,
     useDismemberment: true,
     familyCashGift: 0,
+    relationship: "direct-line" as DmtgRelationship,
   });
+  const [demembrement, setDemembrement] = useState(defaultDemembrementFormState);
   const [dutreil, setDutreil] = useState({
     companyValue: 850_000,
     eligibleOperatingValue: 790_000,
@@ -166,6 +176,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
       });
     if (activeScenario === "plus-value") return simulateRealEstateGainV2(realEstate);
     if (activeScenario === "transmission") return simulateTransmissionV2(transmission);
+    if (activeScenario === "demembrement") return simulateDemembrement(demembrement);
     if (activeScenario === "dutreil") return simulateDutreilV2(dutreil);
     if (activeScenario === "holding-tax") return simulateHoldingTaxV2({
       ...holding,
@@ -190,6 +201,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
   }, [
     activeScenario,
     adequacy,
+    demembrement,
     dutreil,
     holding,
     ir,
@@ -251,12 +263,24 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
           {activeScenario === "transmission" ? (
             <div className="grid gap-3">
               <NumberInput label="Valeur transmise" value={transmission.assetValue} onChange={(value) => setTransmission((item) => ({ ...item, assetValue: value }))} />
+              <SelectInput
+                label="Lien de parenté des bénéficiaires"
+                value={transmission.relationship}
+                options={(Object.entries(DMTG_RELATIONSHIP_LABELS) as Array<[DmtgRelationship, string]>).map(
+                  ([value, label]) => ({ value, label }),
+                )}
+                onChange={(relationship) => setTransmission((item) => ({ ...item, relationship }))}
+              />
               <NumberInput label="Âge donateur" value={transmission.donorAge} onChange={(value) => setTransmission((item) => ({ ...item, donorAge: value }))} />
-              <NumberInput label="Enfants" value={transmission.children} onChange={(value) => setTransmission((item) => ({ ...item, children: value }))} />
-              <NumberInput label="Donations antérieures" value={transmission.priorDonations} onChange={(value) => setTransmission((item) => ({ ...item, priorDonations: value }))} />
+              <NumberInput label="Bénéficiaires" value={transmission.children} onChange={(value) => setTransmission((item) => ({ ...item, children: value }))} />
+              <NumberInput label="Donations < 15 ans (rappel fiscal)" value={transmission.priorDonations} onChange={(value) => setTransmission((item) => ({ ...item, priorDonations: value }))} />
               <NumberInput label="Don familial déclaré" value={transmission.familyCashGift} onChange={(value) => setTransmission((item) => ({ ...item, familyCashGift: value }))} />
               <CheckboxInput label="Donation en nue-propriété" checked={transmission.useDismemberment} onChange={(checked) => setTransmission((item) => ({ ...item, useDismemberment: checked }))} />
             </div>
+          ) : null}
+
+          {activeScenario === "demembrement" ? (
+            <DemembrementForm value={demembrement} onChange={setDemembrement} />
           ) : null}
 
           {activeScenario === "dutreil" ? (

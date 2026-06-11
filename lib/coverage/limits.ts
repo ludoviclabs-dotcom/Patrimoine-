@@ -98,6 +98,24 @@ export const coverageLimits: CoverageLimit[] = [
     requiredProfessional: "notaire",
   },
   {
+    id: "coverage-dmtg-multi-liens",
+    module: "transmission",
+    label: "Barème DMTG multi-liens",
+    status: "partially_covered",
+    explanation:
+      "Ligne directe, petits-enfants, frères/sœurs, neveux/nièces et non-parents couverts ; donation entre époux (tableau II, abattement 80 724 €), handicap et représentations non automatisés.",
+    requiredProfessional: "notaire",
+  },
+  {
+    id: "coverage-demembrement-ifi-968",
+    module: "donation",
+    label: "Démembrement et IFI art. 968",
+    status: "partially_covered",
+    explanation:
+      "Valorisation art. 669 couverte ; à l'IFI, l'usufruitier déclare en principe la pleine propriété (art. 968), avec exceptions à qualifier par le professionnel.",
+    requiredProfessional: "notaire",
+  },
+  {
     id: "coverage-plus-value-structure",
     module: "plus-value",
     label: "Plus-value immobilière complète V2",

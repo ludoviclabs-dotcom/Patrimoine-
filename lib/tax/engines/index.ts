@@ -1,4 +1,5 @@
 import { getV2TaxRuns } from "../v2-engines";
+import { simulateDemembrement } from "./demembrement";
 import { simulateIrBareme2026 } from "./ir";
 import { simulatePfuVsBareme } from "./pfu-arbitrage";
 import type { TaxRun } from "../../types";
@@ -22,10 +23,19 @@ export {
   PFU_TOTAL_RATE_2026,
   PFU_SOCIAL_RATE_2026,
 } from "./pfu-arbitrage";
+export {
+  computeDmtg,
+  computeDmtgForShare,
+  getAvailableAllowance,
+  DMTG_ALLOWANCES,
+  DMTG_RELATIONSHIP_LABELS,
+  type DmtgRelationship,
+} from "./dmtg";
+export { computeDemembrement, simulateDemembrement } from "./demembrement";
 
 /** Runs v3 exécutés avec leurs hypothèses par défaut (catalogue + rapport). */
 export function getV3TaxRuns(): TaxRun[] {
-  return [simulateIrBareme2026(), simulatePfuVsBareme()];
+  return [simulateIrBareme2026(), simulatePfuVsBareme(), simulateDemembrement()];
 }
 
 /** Ensemble des runs démo : moteurs v2 historiques + moteurs v3. */

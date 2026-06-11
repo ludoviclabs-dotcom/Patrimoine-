@@ -161,8 +161,8 @@ describe("V3 quick wins — intégration produit", () => {
   it("agrège les runs v2 + v3 sans casser le set v2", () => {
     const all = getAllTaxRuns();
     const v3 = getV3TaxRuns();
-    expect(v3.map((run) => run.module)).toEqual(["ir-bareme", "pfu-arbitrage"]);
-    expect(all.length).toBe(13 + 2);
+    expect(v3.map((run) => run.module)).toEqual(["ir-bareme", "pfu-arbitrage", "demembrement"]);
+    expect(all.length).toBe(13 + v3.length);
   });
 
   it("garde la CDHR v2 alignée sur la délégation ir.ts", () => {

@@ -17,6 +17,7 @@ const moduleLabels: Record<TaxRun["module"], string> = {
   "pfu-arbitrage": "PFU vs barème",
   "plus-value-immo": "Plus-value immobilière",
   transmission: "Transmission",
+  demembrement: "Démembrement art. 669",
   dutreil: "Pacte Dutreil",
   "apport-cession": "Apport-cession",
   "holding-tax": "Taxe holding",

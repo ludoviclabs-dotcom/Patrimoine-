@@ -572,6 +572,7 @@ export type TaxModule =
   | "pfu-arbitrage"
   | "plus-value-immo"
   | "transmission"
+  | "demembrement"
   | "dutreil"
   | "apport-cession"
   | "holding-tax"

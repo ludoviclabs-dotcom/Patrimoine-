@@ -14,7 +14,13 @@ import {
   reportMethodItems,
 } from "@/lib/patrimonial-model/model";
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
-import { getAllTaxRuns, simulateIrBareme2026, simulatePfuVsBareme } from "@/lib/tax/engines";
+import { getDmtgDiffAuditEvents } from "@/lib/evidence/dmtg-rule-diff";
+import {
+  getAllTaxRuns,
+  simulateDemembrement,
+  simulateIrBareme2026,
+  simulatePfuVsBareme,
+} from "@/lib/tax/engines";
 import {
   generateProfessionalDocuments,
   simulateDutreilV2,
@@ -56,7 +62,11 @@ export function ReportDocument({
 }) {
   const taxRuns = getAllTaxRuns();
   const documents = generateProfessionalDocuments();
-  const auditEvents = [...getPfuDiffAuditEvents(), ...getPvImmoDiffAuditEvents()];
+  const auditEvents = [
+    ...getPfuDiffAuditEvents(),
+    ...getPvImmoDiffAuditEvents(),
+    ...getDmtgDiffAuditEvents(),
+  ];
   const adviserHypotheses = [
     {
       label: "IR barème 2026",
@@ -77,6 +87,11 @@ export function ReportDocument({
       label: "Donation démembrée",
       assumptions: "300 000 € transmis, donateur 51 ans, 2 enfants, nue-propriété retenue",
       run: simulateTransmissionV2({ useDismemberment: true }),
+    },
+    {
+      label: "Démembrement art. 669",
+      assumptions: "usufruitier 65 ans, 400 000 € en pleine propriété, nue-propriété en ligne directe",
+      run: simulateDemembrement(),
     },
     {
       label: "Pacte Dutreil",

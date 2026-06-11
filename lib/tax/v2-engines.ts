@@ -1,12 +1,12 @@
 import { demoHousehold } from "../demo-data/household";
 import { demoTenant } from "../demo-data/v1";
 import { calculatePerDeduction, demoConnectorImport } from "../patrimonial-model/model";
+import { createTaxRunFactory, getBareOwnershipRate, makeStep } from "./engine-kit";
 import {
-  calculateProgressiveTax,
-  createTaxRunFactory,
-  getBareOwnershipRate,
-  makeStep,
-} from "./engine-kit";
+  computeDmtgForShare,
+  DMTG_RELATIONSHIP_LABELS,
+  type DmtgRelationship,
+} from "./engines/dmtg";
 import { computeCdhr } from "./engines/ir";
 import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
 import type { Household, ProfessionalDocument } from "../types";
@@ -20,7 +20,6 @@ export {
 const tenantId = demoTenant.id;
 const caseId = "case-claire-marc-2026";
 const dossierSnapshotId = "snapshot-dossier-claire-marc-v2";
-const DIRECT_LINE_ALLOWANCE_PER_CHILD = 100_000;
 const FAMILY_CASH_GIFT_EXEMPTION = 31_865;
 
 const taxRun = createTaxRunFactory({
@@ -109,6 +108,7 @@ export function simulateTransmissionV2({
   donorAge = 51,
   useDismemberment = false,
   familyCashGift = 0,
+  relationship = "direct-line" as DmtgRelationship,
 }: {
   assetValue?: number;
   children?: number;
@@ -116,14 +116,24 @@ export function simulateTransmissionV2({
   donorAge?: number;
   useDismemberment?: boolean;
   familyCashGift?: number;
+  relationship?: DmtgRelationship;
 } = {}) {
   const childCount = Math.max(1, children);
   const bareOwnershipRate = getBareOwnershipRate(donorAge);
   const transmittedValue = useDismemberment ? Math.round(assetValue * bareOwnershipRate) : assetValue;
   const grossShare = Math.round(transmittedValue / childCount);
-  const availableAllowancePerChild = Math.max(0, DIRECT_LINE_ALLOWANCE_PER_CHILD - priorDonations);
-  const taxableShare = Math.max(0, grossShare - availableAllowancePerChild);
-  const rightsPerChild = calculateProgressiveTax(taxableShare);
+  // Barème DMTG multi-liens (art. 777) avec rappel fiscal 15 ans (art. 784)
+  // et arrondi par tranche — voir rule-dmtg-bareme-2026-v1 et le RuleDiff associé.
+  const dmtg = computeDmtgForShare({
+    grossShare,
+    relationship,
+    priorDonationsWithin15Years: priorDonations,
+  });
+  const availableAllowancePerChild = Number.isFinite(dmtg.availableAllowance)
+    ? Math.max(0, dmtg.availableAllowance)
+    : 0;
+  const taxableShare = dmtg.taxableShare;
+  const rightsPerChild = dmtg.tax;
   const indicativeRights = rightsPerChild * childCount;
   const familyCashGiftNeedsReview = familyCashGift > 0;
 
@@ -155,26 +165,28 @@ export function simulateTransmissionV2({
     makeStep({
       id: "transmission-step-allowance",
       order: 3,
-      label: "Abattement indicatif par enfant",
+      label: `Abattement ${DMTG_RELATIONSHIP_LABELS[relationship]} (rappel fiscal 15 ans)`,
       inputValue: `${grossShare} / donations antérieures ${priorDonations}`,
-      formula: "part enfant - abattement disponible sur 15 ans",
+      formula: "part par bénéficiaire - abattement disponible sur 15 ans (art. 784)",
       outputValue: taxableShare,
-      ruleVersionId: "rule-transmission-checklist-2026-v1",
-      evidenceSourceId: "src-legifrance-code-civil-transmission",
-      coverageLimitIds: ["coverage-transmission-checklist", "coverage-donation-usufruit-simple"],
+      ruleVersionId: "rule-dmtg-bareme-2026-v1",
+      evidenceSourceId: "src-impots-dmtg-bareme-2026",
+      coverageLimitIds: ["coverage-transmission-checklist", "coverage-dmtg-multi-liens"],
       confidenceStatus: "needs_review",
       nextAction: "Valider donations antérieures, donation-partage et protection du conjoint.",
     }),
     makeStep({
       id: "transmission-step-progressive-scale",
       order: 4,
-      label: "Droits indicatifs au barème ligne directe",
+      label: `Droits indicatifs au barème ${DMTG_RELATIONSHIP_LABELS[relationship]}`,
       inputValue: taxableShare,
-      formula: "barème progressif 5 % à 45 %",
+      formula: dmtg.exempt
+        ? "conjoint/PACS : exonération de droits de succession (loi TEPA)"
+        : "barème DMTG art. 777 du lien de parenté, arrondi par tranche",
       outputValue: indicativeRights,
-      ruleVersionId: "rule-transmission-checklist-2026-v1",
-      evidenceSourceId: "src-legifrance-code-civil-transmission",
-      coverageLimitIds: ["coverage-transmission-checklist"],
+      ruleVersionId: "rule-dmtg-bareme-2026-v1",
+      evidenceSourceId: "src-impots-dmtg-bareme-2026",
+      coverageLimitIds: ["coverage-transmission-checklist", "coverage-dmtg-multi-liens"],
       confidenceStatus: "needs_review",
       nextAction: "Faire liquider les droits par le notaire avant toute décision.",
     }),
@@ -210,6 +222,7 @@ export function simulateTransmissionV2({
       transmittedValue,
       grossShare,
       priorDonations,
+      relationship,
       availableAllowancePerChild,
       taxableShare,
       rightsPerChild,

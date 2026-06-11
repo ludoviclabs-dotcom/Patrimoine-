@@ -87,10 +87,11 @@ describe("V3 socle — engine-kit (extraction pure)", () => {
     expect(step.nextAction.length).toBeGreaterThan(10);
   });
 
-  it("ne change pas le résultat des moteurs v2 après extraction", () => {
-    // Défauts v2 : 300 000 € / 2 enfants → part 150 000, taxable 50 000, 8 194 € x 2
+  it("garde le moteur transmission aligné sur la règle DMTG en vigueur", () => {
+    // Depuis rule-dmtg-bareme-2026-v1 (arrondi par tranche, RuleDiff
+    // rule-diff-dmtg-2026-arrondi-par-tranche) : 8 195 € x 2 au lieu de 8 194 € x 2.
     const run = simulateTransmissionV2();
-    expect(run.computedResult?.indicativeRights).toBe(16_388);
+    expect(run.computedResult?.indicativeRights).toBe(16_390);
     expect(run.id).toBe("taxrun-transmission-claire-marc-v2");
   });
 });

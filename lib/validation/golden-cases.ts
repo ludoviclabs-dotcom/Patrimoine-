@@ -122,6 +122,7 @@ const baseGoldenCases = getV2TaxRuns().map((run) => {
     "pfu-arbitrage": "avocat",
     "plus-value-immo": "avocat",
     transmission: "notaire",
+    demembrement: "notaire",
     dutreil: "notaire",
     "apport-cession": "avocat",
     "holding-tax": "avocat",
