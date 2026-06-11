@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import { getSimulationByParam } from "../../lib/cabinet-refonte/v2-6";
 import { coverageLimits } from "../../lib/coverage/limits";
 import { getDmtgRegulatoryDiff } from "../../lib/evidence/dmtg-rule-diff";
+import { getDutreilRegulatoryDiff } from "../../lib/evidence/dutreil-rule-diff";
 import { evidenceSources } from "../../lib/evidence/sources";
 import { ruleVersions } from "../../lib/rules/rule-versions";
+import {
+  computeAssuranceVieTransmission,
+  simulateAssuranceVieTransmission,
+} from "../../lib/tax/engines/assurance-vie";
 import { computeDemembrement, simulateDemembrement } from "../../lib/tax/engines/demembrement";
 import {
   computeDmtg,
   computeDmtgForShare,
   getAvailableAllowance,
 } from "../../lib/tax/engines/dmtg";
-import { simulateTransmissionV2 } from "../../lib/tax/v2-engines";
+import { simulateDutreilV2, simulateTransmissionV2 } from "../../lib/tax/v2-engines";
 import { assertSimulationHasProof } from "../../lib/validation/golden-cases";
 
 describe("V3.1 — DMTG multi-liens (art. 777)", () => {
@@ -108,6 +113,125 @@ describe("V3.1 — démembrement art. 669", () => {
   });
 });
 
+describe("V3.1 — Dutreil v3 (chaînage DMTG)", () => {
+  it("chiffre l'économie vs sans pacte : 2 M€, donateur 65 ans → > 370 000 €", () => {
+    const run = simulateDutreilV2({
+      companyValue: 2_000_000,
+      eligibleOperatingValue: 2_000_000,
+      nonEligibleAssets: 0,
+      children: 1,
+      donorAge: 65,
+    });
+    // Sans pacte : 1 900 000 € taxables → 617 394 € ; avec pacte : 400 000 € → 78 195 €
+    expect(run.computedResult?.rightsWithoutDutreil).toBe(617_394);
+    expect(run.computedResult?.rightsWithDutreil).toBe(78_195);
+    expect(run.computedResult?.dutreilSavings).toBe(539_199);
+    expect(Number(run.computedResult?.dutreilSavings)).toBeGreaterThan(370_000);
+  });
+
+  it("n'applique la réduction 50 % (790 I) qu'aux donations antérieures au 21/02/2026", () => {
+    const base = {
+      companyValue: 2_000_000,
+      eligibleOperatingValue: 2_000_000,
+      nonEligibleAssets: 0,
+      children: 1,
+      donorAge: 65,
+    };
+    const after = simulateDutreilV2(base);
+    expect(after.computedResult?.fiftyPercentReductionApplicable).toBe(false);
+
+    const before = simulateDutreilV2({ ...base, donationBeforeFeb2026: true });
+    expect(before.computedResult?.fiftyPercentReductionApplicable).toBe(true);
+    expect(before.computedResult?.rightsWithDutreil).toBe(39_098);
+
+    // 70 ans ou plus, ou démembrement : pas de réduction même avant l'abrogation.
+    expect(
+      simulateDutreilV2({ ...base, donationBeforeFeb2026: true, donorAge: 70 }).computedResult
+        ?.fiftyPercentReductionApplicable,
+    ).toBe(false);
+    expect(
+      simulateDutreilV2({ ...base, donationBeforeFeb2026: true, fullOwnership: false })
+        .computedResult?.fiftyPercentReductionApplicable,
+    ).toBe(false);
+  });
+
+  it("préserve les invariants v2 (exonération 75 %, exclusions)", () => {
+    expect(simulateDutreilV2().computedResult?.exemptValue).toBe(592_500);
+    expect(simulateDutreilV2({ individualCommitmentYears: 5 }).computedResult?.exemptValue).toBe(0);
+    const run = simulateDutreilV2();
+    expect(run.steps.every((step) => step.ruleVersionId === "rule-dutreil-2026-v3")).toBe(true);
+  });
+
+  it("documente le diff v2 → v3 (abrogation réduction 790 I)", () => {
+    const diff = getDutreilRegulatoryDiff();
+    expect(diff.amountBefore).toBe(39_098);
+    expect(diff.amountAfter).toBe(78_195);
+    expect(diff.delta).toBe(39_097);
+    expect(diff.status).toBe("review_required");
+  });
+});
+
+describe("V3.1 — assurance-vie 990 I / 757 B", () => {
+  it("reproduit le golden : 352 500 € pré-70 ans → taxable 200 000 € → 40 000 €", () => {
+    const result = computeAssuranceVieTransmission({
+      deathBenefitBefore70: 352_500,
+      beneficiaries: 1,
+    });
+    expect(result.taxablePerBeneficiary990I).toBe(200_000);
+    expect(result.tax990ITotal).toBe(40_000);
+    expect(result.totalTax).toBe(40_000);
+  });
+
+  it("applique 31,25 % au-delà de 700 000 € de part taxable", () => {
+    // 1 152 500 € → taxable 1 000 000 → 700 000 × 20 % + 300 000 × 31,25 % = 233 750 €
+    const result = computeAssuranceVieTransmission({
+      deathBenefitBefore70: 1_152_500,
+      beneficiaries: 1,
+    });
+    expect(result.tax990ITotal).toBe(233_750);
+  });
+
+  it("partage l'abattement 152 500 € par bénéficiaire", () => {
+    const result = computeAssuranceVieTransmission({
+      deathBenefitBefore70: 400_000,
+      beneficiaries: 2,
+    });
+    // 200 000 € chacun → taxable 47 500 € → 9 500 € chacun → 19 000 €
+    expect(result.taxablePerBeneficiary990I).toBe(47_500);
+    expect(result.tax990ITotal).toBe(19_000);
+  });
+
+  it("soumet le surplus de primes après 70 ans aux DMTG (757 B), produits exonérés", () => {
+    const result = computeAssuranceVieTransmission({
+      deathBenefitBefore70: 0,
+      premiumsAfter70: 130_500,
+      gainsAfter70: 40_000,
+      relationship: "direct-line",
+    });
+    // 130 500 − 30 500 = 100 000 € → DMTG ligne directe = 404+404+573+16 814 = 18 195 €
+    expect(result.taxablePremiums757B).toBe(100_000);
+    expect(result.tax757B).toBe(18_195);
+    expect(result.tax990ITotal).toBe(0);
+  });
+
+  it("exonère totalement le conjoint/PACS", () => {
+    const result = computeAssuranceVieTransmission({
+      deathBenefitBefore70: 800_000,
+      premiumsAfter70: 200_000,
+      spouseBeneficiary: true,
+    });
+    expect(result.totalTax).toBe(0);
+    expect(result.exemptSpouse).toBe(true);
+  });
+
+  it("expose un TaxRun complet revu par notaire", () => {
+    const run = simulateAssuranceVieTransmission();
+    expect(run.module).toBe("assurance-vie");
+    expect(assertSimulationHasProof(run)).toBe(true);
+    expect(run.reviewerRequired).toBe("notaire");
+  });
+});
+
 describe("V3.1 — intégration produit", () => {
   it("documente le diff de règle DMTG (arrondi par tranche)", () => {
     const diff = getDmtgRegulatoryDiff();
@@ -126,5 +250,11 @@ describe("V3.1 — intégration produit", () => {
     expect(coverageLimits.some((limit) => limit.id === "coverage-demembrement-ifi-968")).toBe(true);
     expect(getSimulationByParam("demembrement")?.scenarioParam).toBe("demembrement");
     expect(getSimulationByParam("usufruit")?.scenarioParam).toBe("demembrement");
+    expect(getSimulationByParam("assurance-vie")?.scenarioParam).toBe("assurance-vie");
+    expect(ruleVersions.some((rule) => rule.id === "rule-dutreil-2026-v3" && rule.status === "active")).toBe(true);
+    expect(ruleVersions.some((rule) => rule.id === "rule-assurance-vie-990i-757b-2026-v1")).toBe(true);
+    expect(evidenceSources.some((source) => source.id === "src-bofip-tcas-aut-60-2026")).toBe(true);
+    expect(evidenceSources.some((source) => source.id === "src-bofip-dmtg-reduction-790-2026")).toBe(true);
+    expect(coverageLimits.some((limit) => limit.id === "coverage-assurance-vie-transmission")).toBe(true);
   });
 });

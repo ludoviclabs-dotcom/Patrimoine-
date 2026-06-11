@@ -18,6 +18,7 @@ const moduleLabels: Record<TaxRun["module"], string> = {
   "plus-value-immo": "Plus-value immobilière",
   transmission: "Transmission",
   demembrement: "Démembrement art. 669",
+  "assurance-vie": "Assurance-vie décès",
   dutreil: "Pacte Dutreil",
   "apport-cession": "Apport-cession",
   "holding-tax": "Taxe holding",

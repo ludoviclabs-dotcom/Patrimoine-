@@ -241,6 +241,11 @@ export function simulateDutreilV2({
   collectiveCommitmentSigned = true,
   managementCommitmentSigned = true,
   individualCommitmentYears = 6,
+  children = 1,
+  donorAge = 65,
+  fullOwnership = true,
+  priorDonations = 0,
+  donationBeforeFeb2026 = false,
 }: {
   companyValue?: number;
   eligibleOperatingValue?: number;
@@ -249,12 +254,41 @@ export function simulateDutreilV2({
   collectiveCommitmentSigned?: boolean;
   managementCommitmentSigned?: boolean;
   individualCommitmentYears?: number;
+  children?: number;
+  donorAge?: number;
+  fullOwnership?: boolean;
+  priorDonations?: number;
+  /** Réduction 50 % (art. 790 I) abrogée par la LF 2026 pour les transmissions à compter du 21/02/2026. */
+  donationBeforeFeb2026?: boolean;
 } = {}) {
   const totalExcludedValue = nonEligibleAssets + excludedLuxuryAssetsValue;
   const eligibleBase = Math.max(0, Math.min(eligibleOperatingValue, companyValue - totalExcludedValue));
   const eligible = collectiveCommitmentSigned && managementCommitmentSigned && individualCommitmentYears >= 6;
   const exemptValue = eligible ? Math.round(eligibleBase * 0.75) : 0;
   const taxableBeforeOtherAllowances = companyValue - exemptValue;
+
+  // Chaînage DMTG : droits avec et sans pacte (ligne directe, rappel 15 ans).
+  const childCount = Math.max(1, children);
+  const withDutreilPerChild = computeDmtgForShare({
+    grossShare: Math.round(taxableBeforeOtherAllowances / childCount),
+    relationship: "direct-line",
+    priorDonationsWithin15Years: priorDonations,
+  });
+  // Réduction 50 % art. 790 I : uniquement donations antérieures au 21/02/2026,
+  // donateur < 70 ans et transmission en pleine propriété (abrogée par la LF 2026).
+  const fiftyPercentReductionApplicable =
+    donationBeforeFeb2026 && eligible && fullOwnership && donorAge < 70;
+  const rightsWithDutreilPerChild = fiftyPercentReductionApplicable
+    ? Math.round(withDutreilPerChild.tax * 0.5)
+    : withDutreilPerChild.tax;
+  const rightsWithDutreil = rightsWithDutreilPerChild * childCount;
+  const withoutDutreilPerChild = computeDmtgForShare({
+    grossShare: Math.round(companyValue / childCount),
+    relationship: "direct-line",
+    priorDonationsWithin15Years: priorDonations,
+  });
+  const rightsWithoutDutreil = withoutDutreilPerChild.tax * childCount;
+  const dutreilSavings = Math.max(0, rightsWithoutDutreil - rightsWithDutreil);
 
   const steps = [
     makeStep({
@@ -264,7 +298,7 @@ export function simulateDutreilV2({
       inputValue: `${collectiveCommitmentSigned} / ${managementCommitmentSigned} / ${individualCommitmentYears} ans`,
       formula: "engagement collectif + fonction de direction + engagement individuel 6 ans",
       outputValue: eligible ? "Éligible sous réserve" : "Non éligible",
-      ruleVersionId: "rule-dutreil-2026-v2",
+      ruleVersionId: "rule-dutreil-2026-v3",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -276,7 +310,7 @@ export function simulateDutreilV2({
       inputValue: `${nonEligibleAssets} / ${excludedLuxuryAssetsValue}`,
       formula: "actifs non éligibles + biens somptuaires à exclure",
       outputValue: totalExcludedValue,
-      ruleVersionId: "rule-dutreil-2026-v2",
+      ruleVersionId: "rule-dutreil-2026-v3",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: totalExcludedValue > 0 ? "needs_review" : "indicative",
@@ -289,11 +323,53 @@ export function simulateDutreilV2({
       inputValue: eligibleBase,
       formula: "valeur éligible nette x 75 %",
       outputValue: exemptValue,
-      ruleVersionId: "rule-dutreil-2026-v2",
+      ruleVersionId: "rule-dutreil-2026-v3",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
       nextAction: "Faire qualifier l'activité, les actifs non affectés et les engagements par notaire/avocat.",
+    }),
+    makeStep({
+      id: "dutreil-step-rights-with",
+      order: 4,
+      label: "Droits indicatifs avec pacte Dutreil",
+      inputValue: `${taxableBeforeOtherAllowances} € / ${childCount} bénéficiaire(s)`,
+      formula: "base après exonération 75 % → abattement 100 000 € → barème DMTG ligne directe",
+      outputValue: rightsWithDutreil,
+      ruleVersionId: "rule-dutreil-2026-v3",
+      evidenceSourceId: "src-impots-dmtg-bareme-2026",
+      coverageLimitIds: ["coverage-dutreil-eligibility"],
+      confidenceStatus: "needs_review",
+      nextAction: "Faire liquider les droits par le notaire (donation-partage, soulte, démembrement).",
+    }),
+    makeStep({
+      id: "dutreil-step-reduction-790",
+      order: 5,
+      label: "Réduction 50 % art. 790 I (abrogée LF 2026)",
+      inputValue: `donateur ${donorAge} ans / ${fullOwnership ? "pleine propriété" : "démembrement"}`,
+      formula:
+        "réduction 50 % des droits si donateur < 70 ans en pleine propriété — abrogée pour les transmissions à compter du 21/02/2026 (loi 2026-103)",
+      outputValue: fiftyPercentReductionApplicable
+        ? "Appliquée (donation antérieure au 21/02/2026)"
+        : "Non applicable (abrogée LF 2026)",
+      ruleVersionId: "rule-dutreil-2026-v3",
+      evidenceSourceId: "src-bofip-dmtg-reduction-790-2026",
+      coverageLimitIds: ["coverage-dutreil-eligibility"],
+      confidenceStatus: "needs_review",
+      nextAction: "Vérifier la date de la donation par rapport au 21/02/2026 et le régime transitoire.",
+    }),
+    makeStep({
+      id: "dutreil-step-savings",
+      order: 6,
+      label: "Économie indicative vs donation sans pacte",
+      inputValue: `${rightsWithoutDutreil} € sans pacte / ${rightsWithDutreil} € avec pacte`,
+      formula: "droits sans Dutreil − droits avec Dutreil",
+      outputValue: dutreilSavings,
+      ruleVersionId: "rule-dutreil-2026-v3",
+      evidenceSourceId: "src-legifrance-dutreil-2026",
+      coverageLimitIds: ["coverage-dutreil-eligibility"],
+      confidenceStatus: "needs_review",
+      nextAction: "Ne décider qu'après validation notaire/avocat des engagements et de l'éligibilité.",
     }),
   ];
 
@@ -301,9 +377,15 @@ export function simulateDutreilV2({
     module: "dutreil",
     scenario: "dutreil",
     steps,
-    resultLabel: `${totalExcludedValue} € d'actifs à exclure ou documenter`,
-    resultAmount: taxableBeforeOtherAllowances,
-    evidenceSourceIds: ["src-legifrance-dutreil-2026"],
+    resultLabel: eligible
+      ? `Économie indicative ${dutreilSavings} € vs donation sans pacte`
+      : `${totalExcludedValue} € d'actifs à exclure ou documenter`,
+    resultAmount: dutreilSavings,
+    evidenceSourceIds: [
+      "src-legifrance-dutreil-2026",
+      "src-impots-dmtg-bareme-2026",
+      "src-bofip-dmtg-reduction-790-2026",
+    ],
     reviewerRequired: "notaire",
     computedResult: {
       eligible,
@@ -318,6 +400,14 @@ export function simulateDutreilV2({
       individualCommitmentYears,
       exemptValue,
       taxableBeforeOtherAllowances,
+      children: childCount,
+      donorAge,
+      fullOwnership,
+      donationBeforeFeb2026,
+      fiftyPercentReductionApplicable,
+      rightsWithDutreil,
+      rightsWithoutDutreil,
+      dutreilSavings,
     },
   });
 }

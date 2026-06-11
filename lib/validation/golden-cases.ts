@@ -1,5 +1,6 @@
 import { appendAuditEventToRepository } from "../audit/repository";
 import { demoTenant } from "../demo-data/v1";
+import { simulateAssuranceVieTransmission } from "../tax/engines/assurance-vie";
 import { simulateIrBareme2026 } from "../tax/engines/ir";
 import { simulatePfuVsBareme } from "../tax/engines/pfu-arbitrage";
 import {
@@ -42,7 +43,16 @@ function actualFromRun(run: TaxRun): Record<string, number | string | boolean | 
         bareOwnershipRate: run.computedResult?.bareOwnershipRate ?? null,
       };
     case "dutreil":
-      return { exemptValue: run.computedResult?.exemptValue ?? null };
+      return {
+        exemptValue: run.computedResult?.exemptValue ?? null,
+        dutreilSavings: run.computedResult?.dutreilSavings ?? null,
+      };
+    case "assurance-vie":
+      return {
+        tax990ITotal: run.computedResult?.tax990ITotal ?? null,
+        tax757B: run.computedResult?.tax757B ?? null,
+        totalTax: run.computedResult?.totalTax ?? null,
+      };
     case "apport-cession":
       return { requiredReinvestment: run.computedResult?.requiredReinvestment ?? null };
     case "holding-tax":
@@ -123,6 +133,7 @@ const baseGoldenCases = getV2TaxRuns().map((run) => {
     "plus-value-immo": "avocat",
     transmission: "notaire",
     demembrement: "notaire",
+    "assurance-vie": "notaire",
     dutreil: "notaire",
     "apport-cession": "avocat",
     "holding-tax": "avocat",
@@ -195,6 +206,12 @@ export const goldenCases: GoldenCase[] = [
     expected: { pfuTotal: 314, baremeTotal: 238, winner: "bareme" },
     reviewer: "avocat",
     title: "PFU vs barème - 1 000 € dividendes TMI 11 % - exemple de référence",
+  }),
+  caseFromRun({
+    run: simulateAssuranceVieTransmission({ deathBenefitBefore70: 352_500, beneficiaries: 1 }),
+    expected: { tax990ITotal: 40_000, tax757B: 0, totalTax: 40_000 },
+    reviewer: "notaire",
+    title: "Assurance-vie 990 I - 352 500 € pré-70 ans - taxable 200 000 € à 20 %",
   }),
 ];
 

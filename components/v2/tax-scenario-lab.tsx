@@ -10,6 +10,10 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { WhyThisResultPanel } from "@/components/v1-1/why-this-result-panel";
 import { CheckboxInput, NumberInput, SelectInput } from "@/components/v3/forms/fields";
 import {
+  defaultAssuranceVieFormState,
+  AssuranceVieForm,
+} from "@/components/v3-1/forms/assurance-vie-form";
+import {
   defaultDemembrementFormState,
   DemembrementForm,
 } from "@/components/v3-1/forms/demembrement-form";
@@ -21,6 +25,7 @@ import {
   PvImmoForm,
 } from "@/components/v3/forms/pv-immo-form";
 import { formatEuro } from "@/lib/format";
+import { simulateAssuranceVieTransmission } from "@/lib/tax/engines/assurance-vie";
 import { simulateDemembrement } from "@/lib/tax/engines/demembrement";
 import { DMTG_RELATIONSHIP_LABELS, type DmtgRelationship } from "@/lib/tax/engines/dmtg";
 import { simulateIrBareme2026 } from "@/lib/tax/engines/ir";
@@ -47,6 +52,7 @@ export type LabScenario =
   | "plus-value"
   | "transmission"
   | "demembrement"
+  | "assurance-vie"
   | "dutreil"
   | "holding-tax"
   | "pea"
@@ -63,6 +69,7 @@ const scenarioLabels: Record<LabScenario, string> = {
   "plus-value": "Plus-value",
   transmission: "Transmission",
   demembrement: "Démembrement art. 669",
+  "assurance-vie": "Assurance-vie décès",
   dutreil: "Dutreil",
   "holding-tax": "Taxe holding",
   pea: "PEA retrait après 5 ans",
@@ -92,6 +99,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     relationship: "direct-line" as DmtgRelationship,
   });
   const [demembrement, setDemembrement] = useState(defaultDemembrementFormState);
+  const [assuranceVie, setAssuranceVie] = useState(defaultAssuranceVieFormState);
   const [dutreil, setDutreil] = useState({
     companyValue: 850_000,
     eligibleOperatingValue: 790_000,
@@ -100,6 +108,10 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     collectiveCommitmentSigned: true,
     managementCommitmentSigned: true,
     individualCommitmentYears: 6,
+    children: 1,
+    donorAge: 65,
+    fullOwnership: true,
+    donationBeforeFeb2026: false,
   });
   const [holding, setHolding] = useState({
     isSubjectToCorporateTax: true,
@@ -177,6 +189,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     if (activeScenario === "plus-value") return simulateRealEstateGainV2(realEstate);
     if (activeScenario === "transmission") return simulateTransmissionV2(transmission);
     if (activeScenario === "demembrement") return simulateDemembrement(demembrement);
+    if (activeScenario === "assurance-vie") return simulateAssuranceVieTransmission(assuranceVie);
     if (activeScenario === "dutreil") return simulateDutreilV2(dutreil);
     if (activeScenario === "holding-tax") return simulateHoldingTaxV2({
       ...holding,
@@ -201,6 +214,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
   }, [
     activeScenario,
     adequacy,
+    assuranceVie,
     demembrement,
     dutreil,
     holding,
@@ -283,6 +297,10 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
             <DemembrementForm value={demembrement} onChange={setDemembrement} />
           ) : null}
 
+          {activeScenario === "assurance-vie" ? (
+            <AssuranceVieForm value={assuranceVie} onChange={setAssuranceVie} />
+          ) : null}
+
           {activeScenario === "dutreil" ? (
             <div className="grid gap-3">
               <NumberInput label="Valeur entreprise" value={dutreil.companyValue} onChange={(value) => setDutreil((item) => ({ ...item, companyValue: value }))} />
@@ -290,8 +308,12 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
               <NumberInput label="Actifs non éligibles" value={dutreil.nonEligibleAssets} onChange={(value) => setDutreil((item) => ({ ...item, nonEligibleAssets: value }))} />
               <NumberInput label="Actifs somptuaires exclus" value={dutreil.excludedLuxuryAssetsValue} onChange={(value) => setDutreil((item) => ({ ...item, excludedLuxuryAssetsValue: value }))} />
               <NumberInput label="Engagement individuel" value={dutreil.individualCommitmentYears} onChange={(value) => setDutreil((item) => ({ ...item, individualCommitmentYears: value }))} />
+              <NumberInput label="Bénéficiaires (ligne directe)" value={dutreil.children} onChange={(value) => setDutreil((item) => ({ ...item, children: value }))} />
+              <NumberInput label="Âge du donateur" value={dutreil.donorAge} onChange={(value) => setDutreil((item) => ({ ...item, donorAge: value }))} />
               <CheckboxInput label="Engagement collectif signé" checked={dutreil.collectiveCommitmentSigned} onChange={(checked) => setDutreil((item) => ({ ...item, collectiveCommitmentSigned: checked }))} />
               <CheckboxInput label="Fonction de direction documentée" checked={dutreil.managementCommitmentSigned} onChange={(checked) => setDutreil((item) => ({ ...item, managementCommitmentSigned: checked }))} />
+              <CheckboxInput label="Donation en pleine propriété" checked={dutreil.fullOwnership} onChange={(checked) => setDutreil((item) => ({ ...item, fullOwnership: checked }))} />
+              <CheckboxInput label="Donation antérieure au 21/02/2026 (réduction 790 I)" checked={dutreil.donationBeforeFeb2026} onChange={(checked) => setDutreil((item) => ({ ...item, donationBeforeFeb2026: checked }))} />
             </div>
           ) : null}
 

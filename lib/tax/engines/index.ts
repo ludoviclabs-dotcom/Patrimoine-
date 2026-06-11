@@ -1,4 +1,5 @@
 import { getV2TaxRuns } from "../v2-engines";
+import { simulateAssuranceVieTransmission } from "./assurance-vie";
 import { simulateDemembrement } from "./demembrement";
 import { simulateIrBareme2026 } from "./ir";
 import { simulatePfuVsBareme } from "./pfu-arbitrage";
@@ -32,10 +33,19 @@ export {
   type DmtgRelationship,
 } from "./dmtg";
 export { computeDemembrement, simulateDemembrement } from "./demembrement";
+export {
+  computeAssuranceVieTransmission,
+  simulateAssuranceVieTransmission,
+} from "./assurance-vie";
 
 /** Runs v3 exécutés avec leurs hypothèses par défaut (catalogue + rapport). */
 export function getV3TaxRuns(): TaxRun[] {
-  return [simulateIrBareme2026(), simulatePfuVsBareme(), simulateDemembrement()];
+  return [
+    simulateIrBareme2026(),
+    simulatePfuVsBareme(),
+    simulateDemembrement(),
+    simulateAssuranceVieTransmission(),
+  ];
 }
 
 /** Ensemble des runs démo : moteurs v2 historiques + moteurs v3. */

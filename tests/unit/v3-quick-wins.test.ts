@@ -161,7 +161,12 @@ describe("V3 quick wins — intégration produit", () => {
   it("agrège les runs v2 + v3 sans casser le set v2", () => {
     const all = getAllTaxRuns();
     const v3 = getV3TaxRuns();
-    expect(v3.map((run) => run.module)).toEqual(["ir-bareme", "pfu-arbitrage", "demembrement"]);
+    expect(v3.map((run) => run.module)).toEqual([
+      "ir-bareme",
+      "pfu-arbitrage",
+      "demembrement",
+      "assurance-vie",
+    ]);
     expect(all.length).toBe(13 + v3.length);
   });
 

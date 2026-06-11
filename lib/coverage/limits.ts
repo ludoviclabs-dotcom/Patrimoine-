@@ -167,6 +167,15 @@ export const coverageLimits: CoverageLimit[] = [
     requiredProfessional: "cgp",
   },
   {
+    id: "coverage-assurance-vie-transmission",
+    module: "assurance-vie",
+    label: "Assurance-vie au décès (990 I / 757 B)",
+    status: "partially_covered",
+    explanation:
+      "Abattements et taux couverts pour les cas standards ; ventilation par contrat, contrats vie-génération, clauses démembrées et intégration successorale fine du surplus 757 B non automatisées.",
+    requiredProfessional: "notaire",
+  },
+  {
     id: "coverage-dutreil-eligibility",
     module: "dutreil",
     label: "Pacte Dutreil LF 2026",

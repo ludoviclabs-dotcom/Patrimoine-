@@ -15,8 +15,10 @@ import {
 } from "@/lib/patrimonial-model/model";
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
 import { getDmtgDiffAuditEvents } from "@/lib/evidence/dmtg-rule-diff";
+import { getDutreilDiffAuditEvents } from "@/lib/evidence/dutreil-rule-diff";
 import {
   getAllTaxRuns,
+  simulateAssuranceVieTransmission,
   simulateDemembrement,
   simulateIrBareme2026,
   simulatePfuVsBareme,
@@ -66,6 +68,7 @@ export function ReportDocument({
     ...getPfuDiffAuditEvents(),
     ...getPvImmoDiffAuditEvents(),
     ...getDmtgDiffAuditEvents(),
+    ...getDutreilDiffAuditEvents(),
   ];
   const adviserHypotheses = [
     {
@@ -95,8 +98,13 @@ export function ReportDocument({
     },
     {
       label: "Pacte Dutreil",
-      assumptions: "850 000 € de titres, 60 000 € d'actifs non éligibles, engagements à documenter",
+      assumptions: "850 000 € de titres, 60 000 € d'actifs non éligibles, économie vs sans pacte chiffrée",
       run: simulateDutreilV2(),
+    },
+    {
+      label: "Assurance-vie décès",
+      assumptions: "352 500 € de capitaux pré-70 ans, 1 bénéficiaire en ligne directe (990 I)",
+      run: simulateAssuranceVieTransmission(),
     },
     {
       label: "Taxe holding",
