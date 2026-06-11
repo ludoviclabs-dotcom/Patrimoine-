@@ -46,20 +46,33 @@ npm run e2e
 
 ## Parcours demo
 
-- `/cabinet` : cockpit cabinet V2 avec promesse pro, CTA dossier/persona/rapport/demo et moteurs LF 2026.
-- `/dossiers` : onboarding 90 secondes, personas instanciables et dossier vivant.
-- `/dashboard` : synthese patrimoniale Claire et Marc.
-- `/client` : collecte documentaire, completude, data quality, consentements et droits client.
+- `/cabinet` : cockpit cabinet avec alertes fiscales chiffrees derivees des moteurs.
+- `/dossiers` : dossier vivant, suivi des preconisations (CRM) et calendrier fiscal.
+- `/dashboard` : synthese patrimoniale Claire et Marc, alertes calculees.
+- `/client` : espace client simule (role restreint), comptes agreges Powens/DSP2 fixtures.
 - `/workflow` : dossier, saisie actifs/passifs, simulation persistable, replay, revue et rapport versionne.
-- `/simulations` : moteurs fiscaux cabinet V2, IFI, IR/PFU/CDHR, plus-value, transmission, Dutreil, apport-cession, taxe holding.
+- `/simulations` : 20 moteurs deterministes — IFI, IR bareme 2026, PFU vs bareme, plus-value immobiliere v2 (forfaits 7,5/15 %), transmission DMTG multi-liens, demembrement art. 669, assurance-vie 990 I/757 B, Dutreil v3 (chainage DMTG), apport-cession, taxe holding, IS, SCI IR vs IS, exit tax, PEA, PER (plafonds 2026), succession, stress liquidite, adequation produit.
+- `/comptabilite-sci` : balance Pennylane simulee, classification 2072/2065, import FEC pedagogique.
+- `/conformite-cgp` : DER, lettre de mission, KYC -> declaration d'adequation, scoring LCB-FT, signature simulee (SES) et PDF natifs.
 - `/atlas-fiscal` : atlas visuel statique, cartes de frictions fiscales et ventilation de 1 000 EUR de prelevements publics.
-- `/scenarios` : comparateur 5 scenarios, radar de vigilance, timeline et checklist rendez-vous.
-- `/evidence` : Preuves & conformite, sources officielles enrichies, snapshots, regles versionnees, diff de regles et watcher.
+- `/scenarios` : comparateur de scenarios (estimations calculees par le moteur de projection), courbes 10 ans, radar, timeline fusionnee avec le calendrier fiscal.
+- `/evidence` : sources officielles hashees, snapshots, regles versionnees, diffs de regles (PFU, PV immo, DMTG, Dutreil, PER, SCI) et watcher.
 - `/admin/evidence` : controle des sources, hash, alertes et impact dossiers.
 - `/review` : validation humaine et audit append-only.
-- `/report` : rapport professionnel enrichi / export PDF via navigateur.
+- `/report` : rapport professionnel (print CSS durci, en-tete repete avec versions de regles).
 - `/compliance` : registre RGPD, AIPD pilote et gouvernance IA runtime desactivee.
 - `/pilot` : cas pilote, script commercial 7 minutes, deck et mentions non-conseil.
+- `/mentions-legales`, `/cgu`, `/politique-confidentialite` : pages legales.
+
+## Discipline des baremes (v3)
+
+Chaque moteur porte une regle versionnee reliee a au moins une source officielle hashee.
+Les baremes 2026 verifies en ligne (IR, decote, DMTG, art. 669, IS, exit tax, LFSS PS 18,6 %)
+sont en regles `active` ; les parametres non reverifies a la source (2048-IMM, 990 I,
+PASS/PER, liasses) restent en `draft`/`to-review` avec badge — le produit applique sa
+propre discipline de preuve. Voir `docs/v3-socle-moteurs.md` et `docs/v3-3-gestion-client.md`.
+Les integrations (Powens, Pennylane, signature) sont simulees et pretes a brancher :
+la demo fonctionne sans aucune variable d'environnement.
 
 ## Donnees demo
 

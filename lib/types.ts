@@ -13,6 +13,8 @@ export type EvidenceAuthority =
   | "cnb"
   | "ordre-ec"
   | "commission-europeenne"
+  | "tracfin"
+  | "cncgp"
   | "editeur-logiciel";
 
 export type LegalScope =
@@ -265,6 +267,7 @@ export type RuleVersion = {
     | "liquidity-stress"
     | "product-adequacy"
     | "cif-orias"
+    | "mif2-dda"
     | "dora"
     | "cyber";
   version: string;
@@ -835,6 +838,46 @@ export type MaturityItem = {
   evidence: string;
   externalDependency?: string;
   nextAction: string;
+};
+
+export type KycProfile = {
+  id: string;
+  caseId: string;
+  knowledgeLevel: "novice" | "informe" | "experimente";
+  experienceYears: number;
+  lossCapacityPercent: number;
+  riskTolerance: number;
+  horizonYears: number;
+  sustainabilityPreference: boolean;
+  sustainabilityDocumented: boolean;
+  capturedAt: string;
+};
+
+export type AmlVigilanceLevel = "standard" | "renforcee" | "declaration-soupcon";
+
+export type AmlRiskScoring = {
+  id: string;
+  caseId: string;
+  isPep: boolean;
+  countryRisk: "faible" | "moyen" | "eleve";
+  sourceOfFundsDocumented: boolean;
+  beneficialOwnerIdentified: boolean;
+  score: number;
+  vigilanceLevel: AmlVigilanceLevel;
+  rationale: string[];
+  scoredAt: string;
+};
+
+export type SignatureEnvelope = {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  documentHash: string;
+  signers: Array<{ name: string; role: "client" | "conseiller" }>;
+  status: "draft" | "sent" | "signed";
+  signatureLevel: "SES-demo";
+  timestampedAt?: string;
+  auditEventId?: string;
 };
 
 export type FiscalAlert = {

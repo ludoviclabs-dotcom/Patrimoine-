@@ -18,6 +18,8 @@ const authorityLabels: Record<EvidenceSource["authority"], string> = {
   cnb: "CNB",
   "ordre-ec": "Ordre EC",
   "commission-europeenne": "Commission européenne",
+  tracfin: "Tracfin",
+  cncgp: "CNCGP",
   "editeur-logiciel": "Éditeur logiciel",
 };
 

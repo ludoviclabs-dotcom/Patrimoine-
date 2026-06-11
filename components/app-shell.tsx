@@ -7,6 +7,7 @@ import {
   BarChart3,
   BookOpen,
   ChevronDown,
+  FileCheck,
   FileText,
   FolderKanban,
   FolderOpen,
@@ -46,6 +47,7 @@ const navItems: NavItem[] = [
   { href: "/evidence", label: "Preuves & règles", icon: Library },
   { href: "/review", label: "Revue", icon: UserCheck },
   { href: "/report", label: "Rapports", icon: FileText },
+  { href: "/conformite-cgp", label: "Conformité CGP", icon: FileCheck },
   { href: "/compliance", label: "Administration", icon: SlidersHorizontal },
 ];
 
@@ -276,6 +278,19 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
 
         <div className="relative z-10 mx-auto max-w-7xl px-5 py-7 lg:py-9">{children}</div>
+
+        <footer className="relative z-10 mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-2 border-t border-border px-5 py-6 text-xs text-muted">
+          <span>Démo pédagogique — simulations indicatives, revue professionnelle requise.</span>
+          <Link href="/mentions-legales" className="hover:text-foreground">
+            Mentions légales
+          </Link>
+          <Link href="/cgu" className="hover:text-foreground">
+            CGU
+          </Link>
+          <Link href="/politique-confidentialite" className="hover:text-foreground">
+            Politique de confidentialité
+          </Link>
+        </footer>
       </main>
 
       <CommandPalette />
