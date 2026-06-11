@@ -16,6 +16,7 @@ import {
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
 import { getDmtgDiffAuditEvents } from "@/lib/evidence/dmtg-rule-diff";
 import { getDutreilDiffAuditEvents } from "@/lib/evidence/dutreil-rule-diff";
+import { getV32DiffAuditEvents } from "@/lib/evidence/v3-2-rule-diffs";
 import {
   getAllTaxRuns,
   simulateAssuranceVieTransmission,
@@ -71,6 +72,7 @@ export function ReportDocument({
     ...getPvImmoDiffAuditEvents(),
     ...getDmtgDiffAuditEvents(),
     ...getDutreilDiffAuditEvents(),
+    ...getV32DiffAuditEvents(),
   ];
   const adviserHypotheses = [
     {

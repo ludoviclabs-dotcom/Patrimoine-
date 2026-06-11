@@ -193,6 +193,20 @@ describe("V3.2 — goldens IFI (barème exact)", () => {
   });
 });
 
+describe("V3.2 — diffs de règles", () => {
+  it("documente les montées de version PER et SCI avec dossiers à recalculer", async () => {
+    const { getPerRegulatoryDiff, getSciRegulatoryDiff } = await import(
+      "../../lib/evidence/v3-2-rule-diffs"
+    );
+    const perDiff = getPerRegulatoryDiff();
+    expect(perDiff.amountAfter).toBe(37_680);
+    expect(perDiff.status).toBe("review_required");
+    const sciDiff = getSciRegulatoryDiff();
+    expect(sciDiff.amountAfter).toBe(8_021);
+    expect(sciDiff.impactedRuns[0].recalculationRequired).toBe(true);
+  });
+});
+
 describe("V3.2 — intégration produit", () => {
   it("déclare règles, sources, limites et catalogue", () => {
     expect(ruleVersions.some((rule) => rule.id === "rule-is-bareme-2026-v1" && rule.status === "active")).toBe(true);
