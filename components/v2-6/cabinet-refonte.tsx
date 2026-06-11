@@ -38,6 +38,8 @@ import {
   type RiskTone,
   type SimulationCatalogItem,
 } from "@/lib/cabinet-refonte/v2-6";
+import { demoHousehold } from "@/lib/demo-data/household";
+import { getGrossWealth, getNetWealth, getTotalDebt } from "@/lib/demo-data/metrics";
 import { evidenceSources } from "@/lib/evidence/sources";
 import type { EvidenceSource, TaxRun } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -213,9 +215,13 @@ export function TaskList({ tasks }: { tasks: CabinetTask[] }) {
 /* ============================== /dossiers ============================== */
 
 export function DossierWorkspaceV26() {
-  const brut = 3_420_000;
-  const passifs = 680_000;
-  const net = brut - passifs;
+  const brut = getGrossWealth(demoHousehold);
+  const passifs = getTotalDebt(demoHousehold);
+  const net = getNetWealth(demoHousehold);
+  const netInMillions = `${(net / 1_000_000).toLocaleString("fr-FR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} M€`;
 
   return (
     <div className="space-y-8">
@@ -270,7 +276,7 @@ export function DossierWorkspaceV26() {
                   { label: "Patrimoine net", value: net, color: "var(--accent)" },
                   { label: "Passifs", value: passifs, color: "var(--gold)" },
                 ]}
-                centerValue="2,74 M€"
+                centerValue={netInMillions}
                 centerLabel="Net"
               />
               <div className="grid flex-1 gap-3 sm:grid-cols-2">

@@ -101,6 +101,10 @@ export function ReportDocument({
 
   return (
     <div className="print-page relative space-y-6 overflow-hidden rounded-lg border border-border bg-white p-6 shadow-[var(--shadow)]">
+      <div className="print-only print-running-header" aria-hidden>
+        {household.name} · Version règles V2-2026.05 · Simulation indicative — non validée · Revue
+        professionnelle requise
+      </div>
       <div className="pointer-events-none absolute left-1/2 top-20 -translate-x-1/2 rotate-[-10deg] text-center text-4xl font-bold uppercase tracking-[0.18em] text-red-100 md:text-6xl">
         Indicatif non validé
       </div>

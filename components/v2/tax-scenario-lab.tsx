@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { WhyThisResultPanel } from "@/components/v1-1/why-this-result-panel";
+import { CheckboxInput, NumberInput } from "@/components/v3/forms/fields";
 import { formatEuro } from "@/lib/format";
 import {
   simulateDutreilV2,
@@ -382,51 +383,6 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
       {showWhy && firstStep ? <WhyThisResultPanel step={firstStep} /> : null}
       <LegalNotice compact />
     </div>
-  );
-}
-
-function NumberInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="grid gap-1 text-sm font-medium text-foreground">
-      <span>{label}</span>
-      <input
-        className="h-10 min-w-0 rounded-lg border border-border bg-white px-3 font-mono text-sm text-foreground outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[rgba(43,122,88,0.18)]"
-        inputMode="numeric"
-        type="number"
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
-function CheckboxInput({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="flex min-h-10 items-center justify-between gap-3 rounded-lg border border-border px-3 text-sm font-medium text-foreground">
-      <span>{label}</span>
-      <input
-        className="h-4 w-4 accent-[var(--accent)]"
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-    </label>
   );
 }
 
