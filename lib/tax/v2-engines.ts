@@ -1,181 +1,41 @@
 import { demoHousehold } from "../demo-data/household";
 import { demoTenant } from "../demo-data/v1";
 import { calculatePerDeduction, demoConnectorImport } from "../patrimonial-model/model";
-import type {
-  CalculationStep,
-  Household,
-  ProfessionalDocument,
-  TaxModule,
-  TaxRun,
-} from "../types";
+import { createTaxRunFactory, getBareOwnershipRate, makeStep } from "./engine-kit";
+import {
+  computeDmtgForShare,
+  DMTG_RELATIONSHIP_LABELS,
+  type DmtgRelationship,
+} from "./engines/dmtg";
+import { computeCdhr } from "./engines/ir";
+import {
+  computePerCeiling2026,
+  PER_CARRY_FORWARD_YEARS,
+  PER_DEDUCTION_AGE_LIMIT,
+  type PerStatus,
+} from "./engines/per";
+import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
+import type { Household, ProfessionalDocument } from "../types";
+
+export { calculateProgressiveTax, getBareOwnershipRate } from "./engine-kit";
+export {
+  calculateHighRealEstateGainSurtax,
+  calculateRealEstateHoldingAllowances,
+} from "./engines/pv-immo";
 
 const tenantId = demoTenant.id;
 const caseId = "case-claire-marc-2026";
 const dossierSnapshotId = "snapshot-dossier-claire-marc-v2";
-const DIRECT_LINE_ALLOWANCE_PER_CHILD = 100_000;
 const FAMILY_CASH_GIFT_EXEMPTION = 31_865;
 
-type StepMeta = {
-  id: string;
-  order: number;
-  label: string;
-  inputValue: number | string;
-  formula: string;
-  outputValue: number | string;
-  ruleVersionId: string;
-  evidenceSourceId: string;
-  coverageLimitIds: string[];
-  confidenceStatus?: CalculationStep["confidenceStatus"];
-  nextAction?: string;
-};
-
-type ProgressiveBracket = {
-  ceiling: number;
-  rate: number;
-};
-
-const directLineDonationBrackets: ProgressiveBracket[] = [
-  { ceiling: 8_072, rate: 0.05 },
-  { ceiling: 12_109, rate: 0.1 },
-  { ceiling: 15_932, rate: 0.15 },
-  { ceiling: 552_324, rate: 0.2 },
-  { ceiling: 902_838, rate: 0.3 },
-  { ceiling: 1_805_677, rate: 0.4 },
-  { ceiling: Number.POSITIVE_INFINITY, rate: 0.45 },
-];
-
-export function getBareOwnershipRate(age: number) {
-  if (age < 21) return 0.1;
-  if (age < 31) return 0.2;
-  if (age < 41) return 0.3;
-  if (age < 51) return 0.4;
-  if (age < 61) return 0.5;
-  if (age < 71) return 0.6;
-  if (age < 81) return 0.7;
-  if (age < 91) return 0.8;
-  return 0.9;
-}
-
-export function calculateProgressiveTax(base: number, brackets: ProgressiveBracket[] = directLineDonationBrackets) {
-  let previousCeiling = 0;
-  let tax = 0;
-
-  for (const bracket of brackets) {
-    const slice = Math.max(0, Math.min(base, bracket.ceiling) - previousCeiling);
-    tax += slice * bracket.rate;
-    previousCeiling = bracket.ceiling;
-    if (base <= bracket.ceiling) break;
-  }
-
-  return Math.round(tax);
-}
-
-export function calculateRealEstateHoldingAllowances(yearsHeld: number) {
-  const fullYears = Math.max(0, Math.floor(yearsHeld));
-  const incomeTaxAllowanceRate =
-    fullYears <= 5 ? 0 : fullYears >= 22 ? 1 : fullYears === 21 ? 0.96 : Math.min(0.96, (fullYears - 5) * 0.06);
-  const socialAllowanceRate =
-    fullYears <= 5
-      ? 0
-      : fullYears >= 30
-        ? 1
-        : fullYears <= 21
-          ? (fullYears - 5) * 0.0165
-          : 0.28 + (fullYears - 22) * 0.09;
-
-  return {
-    yearsHeld: fullYears,
-    incomeTaxAllowanceRate: Math.min(1, incomeTaxAllowanceRate),
-    socialAllowanceRate: Math.min(1, socialAllowanceRate),
-  };
-}
-
-export function calculateHighRealEstateGainSurtax(incomeTaxBase: number) {
-  const pv = Math.max(0, incomeTaxBase);
-
-  if (pv <= 50_000) return 0;
-  if (pv <= 60_000) return Math.round(pv * 0.02 - (60_000 - pv) / 20);
-  if (pv <= 100_000) return Math.round(pv * 0.02);
-  if (pv <= 110_000) return Math.round(pv * 0.03 - (110_000 - pv) / 10);
-  if (pv <= 150_000) return Math.round(pv * 0.03);
-  if (pv <= 160_000) return Math.round(pv * 0.04 - (160_000 - pv) * 0.15);
-  if (pv <= 200_000) return Math.round(pv * 0.04);
-  if (pv <= 210_000) return Math.round(pv * 0.05 - (210_000 - pv) * 0.2);
-  if (pv <= 250_000) return Math.round(pv * 0.05);
-  if (pv <= 260_000) return Math.round(pv * 0.06 - (260_000 - pv) * 0.25);
-  return Math.round(pv * 0.06);
-}
-
-function makeStep(meta: StepMeta): CalculationStep {
-  const confidenceStatus = meta.confidenceStatus ?? "indicative";
-  const statusByConfidence: Record<
-    CalculationStep["confidenceStatus"],
-    CalculationStep["displayStatus"]
-  > = {
-    validated: "validated_calculation",
-    indicative: "indicative_calculation",
-    needs_review: "professional_review_required",
-  };
-
-  return {
-    id: meta.id,
-    order: meta.order,
-    label: meta.label,
-    inputValue: meta.inputValue,
-    formula: meta.formula,
-    outputValue: meta.outputValue,
-    ruleVersionId: meta.ruleVersionId,
-    evidenceSourceId: meta.evidenceSourceId,
-    confidenceStatus,
-    usedData: [meta.label],
-    intermediateResult: `${meta.formula} = ${meta.outputValue}`,
-    coverageLimitIds: meta.coverageLimitIds,
-    nextAction: meta.nextAction ?? "Faire valider cette étape avant remise client.",
-    displayStatus: statusByConfidence[confidenceStatus],
-  };
-}
-
-function taxRun({
-  module,
-  scenario,
-  steps,
-  resultLabel,
-  resultAmount,
-  evidenceSourceIds,
-  reviewerRequired,
-  computedResult,
-}: {
-  module: TaxModule;
-  scenario: TaxRun["scenario"];
-  steps: CalculationStep[];
-  resultLabel: string;
-  resultAmount?: number;
-  evidenceSourceIds: string[];
-  reviewerRequired: TaxRun["reviewerRequired"];
-  computedResult: TaxRun["computedResult"];
-}): TaxRun {
-  return {
-    id: `taxrun-${scenario}-claire-marc-v2`,
-    module,
-    scenario,
-    tenantId,
-    caseId,
-    householdId: demoHousehold.id,
-    dossierSnapshotId,
-    inputSnapshotId: dossierSnapshotId,
-    ruleSnapshotId: `${module}-rules-2026-05`,
-    coverageLimitIds: Array.from(new Set(steps.flatMap((step) => step.coverageLimitIds))),
-    professionalValidationRequired: true,
-    status: "needs_review",
-    createdAt: "2026-05-26T12:00:00.000Z",
-    evidenceSourceIds,
-    resultLabel,
-    resultAmount,
-    reviewerRequired,
-    computedResult,
-    steps,
-  };
-}
+const taxRun = createTaxRunFactory({
+  tenantId,
+  caseId,
+  householdId: demoHousehold.id,
+  dossierSnapshotId,
+  runIdSuffix: "claire-marc-v2",
+  createdAt: "2026-05-26T12:00:00.000Z",
+});
 
 export function simulateIrPfuCdhr({
   household = demoHousehold,
@@ -192,9 +52,12 @@ export function simulateIrPfuCdhr({
 } = {}) {
   const pfuTax = Math.round(capitalIncome * pfuRate);
   const rfr = taxableIncome + capitalIncome;
-  const minimumTax = rfr >= 500_000 ? Math.round(rfr * 0.2) : 0;
-  const currentTax = otherIncomeTax + pfuTax;
-  const cdhr = Math.max(0, minimumTax - currentTax);
+  // CDHR déléguée au moteur ir.ts (seuil couple 500 k€, plancher 20 %).
+  const { minimumTax, cdhr } = computeCdhr({
+    rfr,
+    situation: "couple",
+    taxAlreadyPaid: otherIncomeTax + pfuTax,
+  });
 
   const steps = [
     makeStep({
@@ -235,111 +98,13 @@ export function simulateIrPfuCdhr({
   });
 }
 
-export function simulateRealEstateGainV2({
-  salePrice = 720_000,
-  purchasePrice = 420_000,
-  acquisitionCosts = 31_500,
-  works = 35_000,
-  yearsHeld = 9,
-  isMainResidence = false,
-}: {
-  salePrice?: number;
-  purchasePrice?: number;
-  acquisitionCosts?: number;
-  works?: number;
-  yearsHeld?: number;
-  isMainResidence?: boolean;
-} = {}) {
-  const grossGain = Math.max(0, salePrice - purchasePrice - acquisitionCosts - works);
-  const allowances = calculateRealEstateHoldingAllowances(yearsHeld);
-  const incomeTaxAllowanceRate = isMainResidence ? 1 : allowances.incomeTaxAllowanceRate;
-  const socialAllowanceRate = isMainResidence ? 1 : allowances.socialAllowanceRate;
-  const incomeTaxBase = Math.round(grossGain * (1 - incomeTaxAllowanceRate));
-  const socialTaxBase = Math.round(grossGain * (1 - socialAllowanceRate));
-  const incomeTax = Math.round(incomeTaxBase * 0.19);
-  const socialTax = Math.round(socialTaxBase * 0.172);
-  const surtax = isMainResidence ? 0 : calculateHighRealEstateGainSurtax(incomeTaxBase);
-  const estimatedTax = incomeTax + socialTax + surtax;
-  const surtaxSignal = isMainResidence
-    ? "Résidence principale exonérée dans le cas simple"
-    : surtax > 0
-      ? "Surtaxe plus-value élevée appliquée"
-      : "Pas de surtaxe signalée";
-
-  const steps = [
-    makeStep({
-      id: "pvi-step-gross",
-      order: 1,
-      label: "Plus-value brute corrigée",
-      inputValue: `${salePrice} / ${purchasePrice}`,
-      formula: "cession - acquisition - frais - travaux",
-      outputValue: grossGain,
-      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
-      evidenceSourceId: "src-bofip-plus-value-immobiliere",
-      coverageLimitIds: ["coverage-plus-value-structure"],
-    }),
-    makeStep({
-      id: "pvi-step-allowances",
-      order: 2,
-      label: "Abattements durée de détention",
-      inputValue: yearsHeld,
-      formula: "IR 22 ans / prélèvements sociaux 30 ans",
-      outputValue: `${Math.round(incomeTaxAllowanceRate * 100)} % / ${Math.round(socialAllowanceRate * 100)} %`,
-      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
-      evidenceSourceId: "src-bofip-plus-value-immobiliere",
-      coverageLimitIds: ["coverage-plus-value-structure"],
-      confidenceStatus: "needs_review",
-    }),
-    makeStep({
-      id: "pvi-step-tax",
-      order: 3,
-      label: "Impôt indicatif plus-value",
-      inputValue: `${incomeTaxBase} / ${socialTaxBase}`,
-      formula: "base IR x 19 % + base PS x 17,2 % + surtaxe éventuelle",
-      outputValue: estimatedTax,
-      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
-      evidenceSourceId: "src-bofip-plus-value-immobiliere",
-      coverageLimitIds: ["coverage-plus-value-structure"],
-      confidenceStatus: "needs_review",
-      nextAction: "Contrôler exonération résidence principale, surtaxe et justificatifs.",
-    }),
-    makeStep({
-      id: "pvi-step-surtax",
-      order: 4,
-      label: "Surtaxe plus-value élevée",
-      inputValue: incomeTaxBase,
-      formula: "barème spécifique si plus-value imposable IR > 50 000 €",
-      outputValue: surtax,
-      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
-      evidenceSourceId: "src-bofip-plus-value-immobiliere",
-      coverageLimitIds: ["coverage-plus-value-structure"],
-      confidenceStatus: surtax > 0 ? "needs_review" : "indicative",
-      nextAction: "Valider la nature du bien, le seuil et les abattements avant toute conclusion.",
-    }),
-  ];
-
-  return taxRun({
-    module: "plus-value-immo",
-    scenario: "plus-value",
-    steps,
-    resultLabel: surtaxSignal,
-    resultAmount: estimatedTax,
-    evidenceSourceIds: ["src-bofip-plus-value-immobiliere"],
-    reviewerRequired: "avocat",
-    computedResult: {
-      grossGain,
-      incomeTaxAllowanceRate,
-      socialAllowanceRate,
-      incomeTaxBase,
-      socialTaxBase,
-      incomeTax,
-      socialTax,
-      surtax,
-      estimatedTax,
-      surtaxSignal,
-      isMainResidence,
-    },
-  });
+/**
+ * Wrapper de compatibilité : la plus-value immobilière est désormais calculée
+ * par le moteur v3 (lib/tax/engines/pv-immo.ts, règle v2 : forfaits 7,5 %/15 %
+ * et arrondi officiel). Voir lib/evidence/pv-immo-rule-diff.ts pour l'impact.
+ */
+export function simulateRealEstateGainV2(input: PvImmoInput = {}) {
+  return simulatePvImmoV3(input);
 }
 
 export function simulateTransmissionV2({
@@ -349,6 +114,7 @@ export function simulateTransmissionV2({
   donorAge = 51,
   useDismemberment = false,
   familyCashGift = 0,
+  relationship = "direct-line" as DmtgRelationship,
 }: {
   assetValue?: number;
   children?: number;
@@ -356,14 +122,24 @@ export function simulateTransmissionV2({
   donorAge?: number;
   useDismemberment?: boolean;
   familyCashGift?: number;
+  relationship?: DmtgRelationship;
 } = {}) {
   const childCount = Math.max(1, children);
   const bareOwnershipRate = getBareOwnershipRate(donorAge);
   const transmittedValue = useDismemberment ? Math.round(assetValue * bareOwnershipRate) : assetValue;
   const grossShare = Math.round(transmittedValue / childCount);
-  const availableAllowancePerChild = Math.max(0, DIRECT_LINE_ALLOWANCE_PER_CHILD - priorDonations);
-  const taxableShare = Math.max(0, grossShare - availableAllowancePerChild);
-  const rightsPerChild = calculateProgressiveTax(taxableShare);
+  // Barème DMTG multi-liens (art. 777) avec rappel fiscal 15 ans (art. 784)
+  // et arrondi par tranche — voir rule-dmtg-bareme-2026-v1 et le RuleDiff associé.
+  const dmtg = computeDmtgForShare({
+    grossShare,
+    relationship,
+    priorDonationsWithin15Years: priorDonations,
+  });
+  const availableAllowancePerChild = Number.isFinite(dmtg.availableAllowance)
+    ? Math.max(0, dmtg.availableAllowance)
+    : 0;
+  const taxableShare = dmtg.taxableShare;
+  const rightsPerChild = dmtg.tax;
   const indicativeRights = rightsPerChild * childCount;
   const familyCashGiftNeedsReview = familyCashGift > 0;
 
@@ -395,26 +171,28 @@ export function simulateTransmissionV2({
     makeStep({
       id: "transmission-step-allowance",
       order: 3,
-      label: "Abattement indicatif par enfant",
+      label: `Abattement ${DMTG_RELATIONSHIP_LABELS[relationship]} (rappel fiscal 15 ans)`,
       inputValue: `${grossShare} / donations antérieures ${priorDonations}`,
-      formula: "part enfant - abattement disponible sur 15 ans",
+      formula: "part par bénéficiaire - abattement disponible sur 15 ans (art. 784)",
       outputValue: taxableShare,
-      ruleVersionId: "rule-transmission-checklist-2026-v1",
-      evidenceSourceId: "src-legifrance-code-civil-transmission",
-      coverageLimitIds: ["coverage-transmission-checklist", "coverage-donation-usufruit-simple"],
+      ruleVersionId: "rule-dmtg-bareme-2026-v1",
+      evidenceSourceId: "src-impots-dmtg-bareme-2026",
+      coverageLimitIds: ["coverage-transmission-checklist", "coverage-dmtg-multi-liens"],
       confidenceStatus: "needs_review",
       nextAction: "Valider donations antérieures, donation-partage et protection du conjoint.",
     }),
     makeStep({
       id: "transmission-step-progressive-scale",
       order: 4,
-      label: "Droits indicatifs au barème ligne directe",
+      label: `Droits indicatifs au barème ${DMTG_RELATIONSHIP_LABELS[relationship]}`,
       inputValue: taxableShare,
-      formula: "barème progressif 5 % à 45 %",
+      formula: dmtg.exempt
+        ? "conjoint/PACS : exonération de droits de succession (loi TEPA)"
+        : "barème DMTG art. 777 du lien de parenté, arrondi par tranche",
       outputValue: indicativeRights,
-      ruleVersionId: "rule-transmission-checklist-2026-v1",
-      evidenceSourceId: "src-legifrance-code-civil-transmission",
-      coverageLimitIds: ["coverage-transmission-checklist"],
+      ruleVersionId: "rule-dmtg-bareme-2026-v1",
+      evidenceSourceId: "src-impots-dmtg-bareme-2026",
+      coverageLimitIds: ["coverage-transmission-checklist", "coverage-dmtg-multi-liens"],
       confidenceStatus: "needs_review",
       nextAction: "Faire liquider les droits par le notaire avant toute décision.",
     }),
@@ -450,6 +228,7 @@ export function simulateTransmissionV2({
       transmittedValue,
       grossShare,
       priorDonations,
+      relationship,
       availableAllowancePerChild,
       taxableShare,
       rightsPerChild,
@@ -468,6 +247,11 @@ export function simulateDutreilV2({
   collectiveCommitmentSigned = true,
   managementCommitmentSigned = true,
   individualCommitmentYears = 6,
+  children = 1,
+  donorAge = 65,
+  fullOwnership = true,
+  priorDonations = 0,
+  donationBeforeFeb2026 = false,
 }: {
   companyValue?: number;
   eligibleOperatingValue?: number;
@@ -476,12 +260,41 @@ export function simulateDutreilV2({
   collectiveCommitmentSigned?: boolean;
   managementCommitmentSigned?: boolean;
   individualCommitmentYears?: number;
+  children?: number;
+  donorAge?: number;
+  fullOwnership?: boolean;
+  priorDonations?: number;
+  /** Réduction 50 % (art. 790 I) abrogée par la LF 2026 pour les transmissions à compter du 21/02/2026. */
+  donationBeforeFeb2026?: boolean;
 } = {}) {
   const totalExcludedValue = nonEligibleAssets + excludedLuxuryAssetsValue;
   const eligibleBase = Math.max(0, Math.min(eligibleOperatingValue, companyValue - totalExcludedValue));
   const eligible = collectiveCommitmentSigned && managementCommitmentSigned && individualCommitmentYears >= 6;
   const exemptValue = eligible ? Math.round(eligibleBase * 0.75) : 0;
   const taxableBeforeOtherAllowances = companyValue - exemptValue;
+
+  // Chaînage DMTG : droits avec et sans pacte (ligne directe, rappel 15 ans).
+  const childCount = Math.max(1, children);
+  const withDutreilPerChild = computeDmtgForShare({
+    grossShare: Math.round(taxableBeforeOtherAllowances / childCount),
+    relationship: "direct-line",
+    priorDonationsWithin15Years: priorDonations,
+  });
+  // Réduction 50 % art. 790 I : uniquement donations antérieures au 21/02/2026,
+  // donateur < 70 ans et transmission en pleine propriété (abrogée par la LF 2026).
+  const fiftyPercentReductionApplicable =
+    donationBeforeFeb2026 && eligible && fullOwnership && donorAge < 70;
+  const rightsWithDutreilPerChild = fiftyPercentReductionApplicable
+    ? Math.round(withDutreilPerChild.tax * 0.5)
+    : withDutreilPerChild.tax;
+  const rightsWithDutreil = rightsWithDutreilPerChild * childCount;
+  const withoutDutreilPerChild = computeDmtgForShare({
+    grossShare: Math.round(companyValue / childCount),
+    relationship: "direct-line",
+    priorDonationsWithin15Years: priorDonations,
+  });
+  const rightsWithoutDutreil = withoutDutreilPerChild.tax * childCount;
+  const dutreilSavings = Math.max(0, rightsWithoutDutreil - rightsWithDutreil);
 
   const steps = [
     makeStep({
@@ -491,7 +304,7 @@ export function simulateDutreilV2({
       inputValue: `${collectiveCommitmentSigned} / ${managementCommitmentSigned} / ${individualCommitmentYears} ans`,
       formula: "engagement collectif + fonction de direction + engagement individuel 6 ans",
       outputValue: eligible ? "Éligible sous réserve" : "Non éligible",
-      ruleVersionId: "rule-dutreil-2026-v2",
+      ruleVersionId: "rule-dutreil-2026-v3",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -503,7 +316,7 @@ export function simulateDutreilV2({
       inputValue: `${nonEligibleAssets} / ${excludedLuxuryAssetsValue}`,
       formula: "actifs non éligibles + biens somptuaires à exclure",
       outputValue: totalExcludedValue,
-      ruleVersionId: "rule-dutreil-2026-v2",
+      ruleVersionId: "rule-dutreil-2026-v3",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: totalExcludedValue > 0 ? "needs_review" : "indicative",
@@ -516,11 +329,53 @@ export function simulateDutreilV2({
       inputValue: eligibleBase,
       formula: "valeur éligible nette x 75 %",
       outputValue: exemptValue,
-      ruleVersionId: "rule-dutreil-2026-v2",
+      ruleVersionId: "rule-dutreil-2026-v3",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
       nextAction: "Faire qualifier l'activité, les actifs non affectés et les engagements par notaire/avocat.",
+    }),
+    makeStep({
+      id: "dutreil-step-rights-with",
+      order: 4,
+      label: "Droits indicatifs avec pacte Dutreil",
+      inputValue: `${taxableBeforeOtherAllowances} € / ${childCount} bénéficiaire(s)`,
+      formula: "base après exonération 75 % → abattement 100 000 € → barème DMTG ligne directe",
+      outputValue: rightsWithDutreil,
+      ruleVersionId: "rule-dutreil-2026-v3",
+      evidenceSourceId: "src-impots-dmtg-bareme-2026",
+      coverageLimitIds: ["coverage-dutreil-eligibility"],
+      confidenceStatus: "needs_review",
+      nextAction: "Faire liquider les droits par le notaire (donation-partage, soulte, démembrement).",
+    }),
+    makeStep({
+      id: "dutreil-step-reduction-790",
+      order: 5,
+      label: "Réduction 50 % art. 790 I (abrogée LF 2026)",
+      inputValue: `donateur ${donorAge} ans / ${fullOwnership ? "pleine propriété" : "démembrement"}`,
+      formula:
+        "réduction 50 % des droits si donateur < 70 ans en pleine propriété — abrogée pour les transmissions à compter du 21/02/2026 (loi 2026-103)",
+      outputValue: fiftyPercentReductionApplicable
+        ? "Appliquée (donation antérieure au 21/02/2026)"
+        : "Non applicable (abrogée LF 2026)",
+      ruleVersionId: "rule-dutreil-2026-v3",
+      evidenceSourceId: "src-bofip-dmtg-reduction-790-2026",
+      coverageLimitIds: ["coverage-dutreil-eligibility"],
+      confidenceStatus: "needs_review",
+      nextAction: "Vérifier la date de la donation par rapport au 21/02/2026 et le régime transitoire.",
+    }),
+    makeStep({
+      id: "dutreil-step-savings",
+      order: 6,
+      label: "Économie indicative vs donation sans pacte",
+      inputValue: `${rightsWithoutDutreil} € sans pacte / ${rightsWithDutreil} € avec pacte`,
+      formula: "droits sans Dutreil − droits avec Dutreil",
+      outputValue: dutreilSavings,
+      ruleVersionId: "rule-dutreil-2026-v3",
+      evidenceSourceId: "src-legifrance-dutreil-2026",
+      coverageLimitIds: ["coverage-dutreil-eligibility"],
+      confidenceStatus: "needs_review",
+      nextAction: "Ne décider qu'après validation notaire/avocat des engagements et de l'éligibilité.",
     }),
   ];
 
@@ -528,9 +383,15 @@ export function simulateDutreilV2({
     module: "dutreil",
     scenario: "dutreil",
     steps,
-    resultLabel: `${totalExcludedValue} € d'actifs à exclure ou documenter`,
-    resultAmount: taxableBeforeOtherAllowances,
-    evidenceSourceIds: ["src-legifrance-dutreil-2026"],
+    resultLabel: eligible
+      ? `Économie indicative ${dutreilSavings} € vs donation sans pacte`
+      : `${totalExcludedValue} € d'actifs à exclure ou documenter`,
+    resultAmount: dutreilSavings,
+    evidenceSourceIds: [
+      "src-legifrance-dutreil-2026",
+      "src-impots-dmtg-bareme-2026",
+      "src-bofip-dmtg-reduction-790-2026",
+    ],
     reviewerRequired: "notaire",
     computedResult: {
       eligible,
@@ -545,6 +406,14 @@ export function simulateDutreilV2({
       individualCommitmentYears,
       exemptValue,
       taxableBeforeOtherAllowances,
+      children: childCount,
+      donorAge,
+      fullOwnership,
+      donationBeforeFeb2026,
+      fiftyPercentReductionApplicable,
+      rightsWithDutreil,
+      rightsWithoutDutreil,
+      dutreilSavings,
     },
   });
 }
@@ -554,14 +423,21 @@ export function simulateApportCessionV2({
   reinvestedAmount = 860_000,
   reinvestmentMonths = 30,
   conservationYears = 5,
+  deferredGain = 600_000,
 }: {
   saleProceeds?: number;
   reinvestedAmount?: number;
   reinvestmentMonths?: number;
   conservationYears?: number;
+  /** Plus-value en report (assiette de la comparaison cession directe). */
+  deferredGain?: number;
 } = {}) {
   const requiredReinvestment = Math.round(saleProceeds * 0.7);
   const compliant = reinvestedAmount >= requiredReinvestment && reinvestmentMonths <= 36 && conservationYears >= 5;
+  // Comparaison cession directe : PFU 31,4 %, et jusqu'à ~38,4 % avec CEHR 4 %
+  // et CDHR (plancher 20 % du RFR) pour les hauts revenus — chiffrage ir.ts.
+  const directSaleTaxAtPfu = Math.round(deferredGain * 0.314);
+  const directSaleTaxWithCehrCdhr = Math.round(deferredGain * 0.384);
 
   const steps = [
     makeStep({
@@ -587,6 +463,19 @@ export function simulateApportCessionV2({
       coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
       confidenceStatus: "needs_review",
     }),
+    makeStep({
+      id: "apport-step-direct-sale",
+      order: 3,
+      label: "Comparaison cession directe sans report",
+      inputValue: `PV en report ${deferredGain} €`,
+      formula: "PFU 31,4 % — jusqu'à ~38,4 % avec CEHR 4 % et CDHR (plancher 20 %, moteur ir.ts)",
+      outputValue: `${directSaleTaxAtPfu} € à ${directSaleTaxWithCehrCdhr} €`,
+      ruleVersionId: "rule-apport-cession-2026-v2",
+      evidenceSourceId: "src-legifrance-lfss-2026-ps-capital",
+      coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
+      confidenceStatus: "needs_review",
+      nextAction: "Chiffrer CEHR/CDHR sur le RFR réel du foyer avant de comparer au report.",
+    }),
   ];
 
   return taxRun({
@@ -595,9 +484,19 @@ export function simulateApportCessionV2({
     steps,
     resultLabel: compliant ? "Report à documenter" : "Report fragilisé",
     resultAmount: requiredReinvestment,
-    evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
+    evidenceSourceIds: ["src-legifrance-apport-cession-2026", "src-legifrance-lfss-2026-ps-capital"],
     reviewerRequired: "avocat",
-    computedResult: { saleProceeds, reinvestedAmount, requiredReinvestment, reinvestmentMonths, conservationYears, compliant },
+    computedResult: {
+      saleProceeds,
+      reinvestedAmount,
+      requiredReinvestment,
+      reinvestmentMonths,
+      conservationYears,
+      compliant,
+      deferredGain,
+      directSaleTaxAtPfu,
+      directSaleTaxWithCehrCdhr,
+    },
   });
 }
 
@@ -669,6 +568,32 @@ export function simulateHoldingTaxV2({
       coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
       confidenceStatus: "needs_review",
       nextAction: "Qualifier chaque actif et l'articulation IFI avant toute conclusion.",
+    }),
+    makeStep({
+      id: "holding-step-ifi-exoneration",
+      order: 4,
+      label: "Exonération IFI corrélative (art. 975 VII)",
+      inputValue: taxableLuxuryInventory,
+      formula: "les actifs soumis à la taxe holding ouvrent une exonération IFI corrélative",
+      outputValue: conditionsMet ? "Articulation IFI à documenter" : "Sans objet",
+      ruleVersionId: "rule-holding-tax-2026-v2",
+      evidenceSourceId: "src-legifrance-holding-tax-2026",
+      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      confidenceStatus: "needs_review",
+      nextAction: "Faire arbitrer taxe holding vs IFI par l'avocat fiscaliste (pas de double imposition).",
+    }),
+    makeStep({
+      id: "holding-step-deadline",
+      order: 5,
+      label: "Échéance : première taxation",
+      inputValue: "Exercices clos en 2026",
+      formula: "première campagne déclarative attendue au printemps 2027",
+      outputValue: "Printemps 2027",
+      ruleVersionId: "rule-holding-tax-2026-v2",
+      evidenceSourceId: "src-legifrance-holding-tax-2026",
+      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      confidenceStatus: "needs_review",
+      nextAction: "Inscrire l'échéance au calendrier fiscal du dossier et préparer l'inventaire d'actifs.",
     }),
   ];
 
@@ -799,53 +724,118 @@ export function simulatePerDeductionV2({
   annualCeiling = 12_000,
   unusedCeilings = [3_000, 2_400, 1_600],
   spouseMutualization = 4_000,
+  status = "manual",
+  professionalIncome = 0,
+  age = 45,
+  tmi = 0.3,
 }: {
   voluntaryPayments?: number;
   annualCeiling?: number;
   unusedCeilings?: number[];
   spouseMutualization?: number;
+  /** "salarie"/"tns" : plafond 2026 calculé (37 680 / 88 911 €) ; "manual" : plafond saisi. */
+  status?: PerStatus | "manual";
+  professionalIncome?: number;
+  age?: number;
+  tmi?: number;
 } = {}) {
+  const computedCeiling =
+    status === "manual"
+      ? null
+      : computePerCeiling2026({ status, professionalIncome });
+  const effectiveAnnualCeiling = computedCeiling?.ceiling ?? annualCeiling;
+  // Versements à partir de 70 ans : plus de déduction à l'entrée (LF 2026).
+  const ageBlocked = age >= PER_DEDUCTION_AGE_LIMIT;
+  const retainedUnusedCeilings = unusedCeilings.slice(0, PER_CARRY_FORWARD_YEARS);
   const result = calculatePerDeduction({
     voluntaryPayments,
-    annualCeiling,
-    unusedCeilings,
-    spouseMutualization,
+    annualCeiling: ageBlocked ? 0 : effectiveAnnualCeiling,
+    unusedCeilings: ageBlocked ? [] : retainedUnusedCeilings,
+    spouseMutualization: ageBlocked ? 0 : spouseMutualization,
   });
+  const taxSaving = Math.round(result.deductionUsed * tmi);
 
   const steps = [
     makeStep({
-      id: "per-step-ceiling",
+      id: "per-step-computed-ceiling",
       order: 1,
-      label: "Plafond PER disponible",
-      inputValue: `${annualCeiling} + ${unusedCeilings.join(" + ")} + ${spouseMutualization}`,
-      formula: "plafond annuel + reliquats + mutualisation",
+      label: "Plafond annuel 2026",
+      inputValue:
+        status === "manual"
+          ? `${effectiveAnnualCeiling} € (saisi)`
+          : `${status} · revenus ${professionalIncome} €`,
+      formula:
+        status === "tns"
+          ? "10 % du bénéfice (≤ 8 PASS 2026) + 15 % de la fraction 1-8 PASS — max 88 911 €"
+          : status === "salarie"
+            ? "10 % des revenus N-1 plafonnés à 8 PASS 2025 — max 37 680 €"
+            : "plafond saisi par le conseiller (avis d'impôt)",
+      outputValue: effectiveAnnualCeiling,
+      ruleVersionId: "rule-per-deduction-2026-v2",
+      evidenceSourceId: "src-legifrance-pass-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: "needs_review",
+      nextAction: "Comparer avec le plafond figurant sur l'avis d'imposition.",
+    }),
+    makeStep({
+      id: "per-step-ceiling",
+      order: 2,
+      label: `Plafond disponible (reliquats ${PER_CARRY_FORWARD_YEARS} ans)`,
+      inputValue: `${effectiveAnnualCeiling} + ${retainedUnusedCeilings.join(" + ") || "0"} + ${spouseMutualization}`,
+      formula: "plafond annuel + reliquats non utilisés (report 5 ans LF 2026) + mutualisation",
       outputValue: result.availableCeiling,
-      ruleVersionId: "rule-per-deduction-2026-v1",
+      ruleVersionId: "rule-per-deduction-2026-v2",
       evidenceSourceId: "src-service-public-per-deduction-2026",
       coverageLimitIds: ["coverage-per-deduction-simple"],
       confidenceStatus: "needs_review",
       nextAction: "Comparer avec l'avis d'impôt et les plafonds réellement disponibles.",
     }),
     makeStep({
+      id: "per-step-age-limit",
+      order: 3,
+      label: "Limite d'âge de déduction",
+      inputValue: `${age} ans`,
+      formula: "versements à partir de 70 ans non déductibles à l'entrée (LF 2026)",
+      outputValue: ageBlocked ? "Déduction bloquée (≥ 70 ans)" : "Déduction possible",
+      ruleVersionId: "rule-per-deduction-2026-v2",
+      evidenceSourceId: "src-legifrance-pass-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: ageBlocked ? "needs_review" : "indicative",
+      nextAction: "Vérifier l'âge au jour du versement et l'intérêt successoral du PER après 70 ans.",
+    }),
+    makeStep({
       id: "per-step-deduction",
-      order: 2,
+      order: 4,
       label: "Déduction utilisée",
       inputValue: voluntaryPayments,
       formula: "min(versements volontaires, plafond disponible)",
       outputValue: result.deductionUsed,
-      ruleVersionId: "rule-per-deduction-2026-v1",
+      ruleVersionId: "rule-per-deduction-2026-v2",
       evidenceSourceId: "src-impots-epargne-retraite-2026",
       coverageLimitIds: ["coverage-per-deduction-simple"],
       confidenceStatus: "indicative",
     }),
     makeStep({
+      id: "per-step-tax-saving",
+      order: 5,
+      label: "Économie d'impôt indicative",
+      inputValue: `${result.deductionUsed} € × TMI ${Math.round(tmi * 100)} %`,
+      formula: "déduction utilisée × taux marginal d'imposition (barème ir.ts)",
+      outputValue: taxSaving,
+      ruleVersionId: "rule-per-deduction-2026-v2",
+      evidenceSourceId: "src-impots-epargne-retraite-2026",
+      coverageLimitIds: ["coverage-per-deduction-simple"],
+      confidenceStatus: "needs_review",
+      nextAction: "Vérifier la TMI réelle du foyer (moteur IR barème) et l'effet sur le RFR.",
+    }),
+    makeStep({
       id: "per-step-excess",
-      order: 3,
+      order: 6,
       label: "Versement non déduit",
       inputValue: voluntaryPayments,
       formula: "max(0, versements - déduction utilisée)",
       outputValue: result.excessPayment,
-      ruleVersionId: "rule-per-deduction-2026-v1",
+      ruleVersionId: "rule-per-deduction-2026-v2",
       evidenceSourceId: "src-impots-epargne-retraite-2026",
       coverageLimitIds: ["coverage-per-deduction-simple"],
       confidenceStatus: "indicative",
@@ -857,15 +847,25 @@ export function simulatePerDeductionV2({
     module: "per",
     scenario: "per-deduction",
     steps,
-    resultLabel: "Déduction PER indicative",
+    resultLabel: ageBlocked ? "Déduction bloquée après 70 ans" : "Déduction PER indicative",
     resultAmount: result.deductionUsed,
-    evidenceSourceIds: ["src-service-public-per-deduction-2026", "src-impots-epargne-retraite-2026"],
+    evidenceSourceIds: [
+      "src-service-public-per-deduction-2026",
+      "src-impots-epargne-retraite-2026",
+      "src-legifrance-pass-2026",
+    ],
     reviewerRequired: "cgp",
     computedResult: {
       voluntaryPayments,
-      annualCeiling,
-      unusedCeilingsTotal: unusedCeilings.reduce((sum, amount) => sum + amount, 0),
+      annualCeiling: effectiveAnnualCeiling,
+      computedCeilingStatus: status,
+      cappedAtMax: computedCeiling?.cappedAtMax ?? false,
+      unusedCeilingsTotal: retainedUnusedCeilings.reduce((sum, amount) => sum + amount, 0),
       spouseMutualization,
+      age,
+      ageBlocked,
+      tmi,
+      taxSaving,
       ...result,
     },
   });

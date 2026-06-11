@@ -12,7 +12,10 @@ export type EvidenceAuthority =
   | "amf"
   | "cnb"
   | "ordre-ec"
-  | "commission-europeenne";
+  | "commission-europeenne"
+  | "tracfin"
+  | "cncgp"
+  | "editeur-logiciel";
 
 export type LegalScope =
   | "IFI"
@@ -87,9 +90,14 @@ export type CoverageLimit = {
     | "plus-value"
     | "sci"
     | "ir-pfu-cdhr"
+    | "ir-bareme"
+    | "pfu-arbitrage"
+    | "assurance-vie"
     | "dutreil"
     | "apport-cession"
     | "holding-tax"
+    | "is"
+    | "exit-tax"
     | "documents-cabinet"
     | "pea"
     | "per"
@@ -144,9 +152,14 @@ export type SimulationRun = {
     | "plus-value"
     | "sci-arbitrage"
     | "ir-pfu-cdhr"
+    | "ir"
+    | "pfu"
+    | "assurance-vie"
     | "dutreil"
     | "apport-cession"
     | "holding-tax"
+    | "is"
+    | "exit-tax"
     | "pea-withdrawal"
     | "per-deduction"
     | "bank-import"
@@ -235,9 +248,14 @@ export type RuleVersion = {
     | "sci"
     | "ai-governance"
     | "ir-pfu-cdhr"
+    | "ir-bareme"
+    | "pfu-arbitrage"
+    | "assurance-vie"
     | "dutreil"
     | "apport-cession"
     | "holding-tax"
+    | "is"
+    | "exit-tax"
     | "documents-cabinet"
     | "pea"
     | "per"
@@ -249,6 +267,7 @@ export type RuleVersion = {
     | "liquidity-stress"
     | "product-adequacy"
     | "cif-orias"
+    | "mif2-dda"
     | "dora"
     | "cyber";
   version: string;
@@ -380,7 +399,11 @@ export type AuditAction =
   | "rule.updated"
   | "simulation.recalculation_required"
   | "scenario.compared"
-  | "report.exported";
+  | "report.exported"
+  | "recommendation.updated"
+  | "document.signed"
+  | "kyc.captured"
+  | "aml.scored";
 
 export type AuditLogEntry = {
   id: string;
@@ -562,11 +585,18 @@ export type ReportVersion = {
 export type TaxModule =
   | "ifi"
   | "ir-pfu-cdhr"
+  | "ir-bareme"
+  | "pfu-arbitrage"
   | "plus-value-immo"
   | "transmission"
+  | "demembrement"
+  | "assurance-vie"
   | "dutreil"
   | "apport-cession"
   | "holding-tax"
+  | "is"
+  | "sci-arbitrage"
+  | "exit-tax"
   | "pea"
   | "per"
   | "bank-import"
@@ -808,6 +838,114 @@ export type MaturityItem = {
   evidence: string;
   externalDependency?: string;
   nextAction: string;
+};
+
+export type KycProfile = {
+  id: string;
+  caseId: string;
+  knowledgeLevel: "novice" | "informe" | "experimente";
+  experienceYears: number;
+  lossCapacityPercent: number;
+  riskTolerance: number;
+  horizonYears: number;
+  sustainabilityPreference: boolean;
+  sustainabilityDocumented: boolean;
+  capturedAt: string;
+};
+
+export type AmlVigilanceLevel = "standard" | "renforcee" | "declaration-soupcon";
+
+export type AmlRiskScoring = {
+  id: string;
+  caseId: string;
+  isPep: boolean;
+  countryRisk: "faible" | "moyen" | "eleve";
+  sourceOfFundsDocumented: boolean;
+  beneficialOwnerIdentified: boolean;
+  score: number;
+  vigilanceLevel: AmlVigilanceLevel;
+  rationale: string[];
+  scoredAt: string;
+};
+
+export type SignatureEnvelope = {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  documentHash: string;
+  signers: Array<{ name: string; role: "client" | "conseiller" }>;
+  status: "draft" | "sent" | "signed";
+  signatureLevel: "SES-demo";
+  timestampedAt?: string;
+  auditEventId?: string;
+};
+
+export type FiscalAlert = {
+  id: string;
+  title: string;
+  severity: "info" | "warning" | "critical";
+  /** Montant chiffré (écart au seuil, plafond inutilisé, taxe estimée…). */
+  amount: number;
+  threshold?: number;
+  computedFromRunId: string;
+  explanation: string;
+  nextAction: string;
+};
+
+export type FiscalDeadline = {
+  id: string;
+  date: string;
+  label: string;
+  scope: "ir" | "is" | "sci" | "ifi" | "cfe" | "dutreil" | "holding-tax";
+  detail: string;
+  ruleVersionId: string;
+};
+
+export type AggregatedAccount = {
+  id: string;
+  provider: "powens-fixture";
+  label: string;
+  type: "checking" | "savings" | "securities" | "life-insurance";
+  iban?: string;
+  balance: number;
+  currency: "EUR";
+  lastSyncedAt: string;
+  consentStatus: "active" | "expired";
+};
+
+export type Recommendation = {
+  id: string;
+  caseId: string;
+  title: string;
+  detail: string;
+  status: "proposee" | "acceptee" | "en-cours" | "realisee";
+  linkedRunId?: string;
+  owner: string;
+  updatedAt: string;
+};
+
+export type TrialBalanceLine = {
+  account: string;
+  label: string;
+  debit: number;
+  credit: number;
+};
+
+export type SciAccountingSnapshot = {
+  caseId: string;
+  fiscalYear: string;
+  source: "pennylane-fixture" | "fec-import-simule";
+  rentalIncome: number;
+  deductibleCharges: number;
+  loanInterest: number;
+  depreciation: number;
+  partnerCurrentAccounts: number;
+  accountingResult: number;
+  rentalResultAtIr: number;
+  form2072Lines: Array<{ code: string; label: string; amount: number }>;
+  form2065: { taxableProfit: number; isAmount: number; effectiveRatePercent: number };
+  flags: { vatOnRents: boolean; crlDue: boolean; cfeDue: boolean };
+  reviewRequired: true;
 };
 
 export type AiAssistanceStatus = "disabled" | "draft_only" | "enabled_with_review";

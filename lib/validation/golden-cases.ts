@@ -1,5 +1,8 @@
 import { appendAuditEventToRepository } from "../audit/repository";
 import { demoTenant } from "../demo-data/v1";
+import { simulateAssuranceVieTransmission } from "../tax/engines/assurance-vie";
+import { simulateIrBareme2026 } from "../tax/engines/ir";
+import { simulatePfuVsBareme } from "../tax/engines/pfu-arbitrage";
 import {
   getV2TaxRuns,
   simulateIrPfuCdhr,
@@ -20,6 +23,18 @@ function actualFromRun(run: TaxRun): Record<string, number | string | boolean | 
   switch (run.module) {
     case "ir-pfu-cdhr":
       return { resultAmount: run.resultAmount ?? null, cdhr: run.computedResult?.cdhr ?? null, pfuTax: run.computedResult?.pfuTax ?? null };
+    case "ir-bareme":
+      return {
+        incomeTax: run.computedResult?.incomeTax ?? null,
+        marginalRate: run.computedResult?.marginalRate ?? null,
+        averageRatePercent: run.computedResult?.averageRatePercent ?? null,
+      };
+    case "pfu-arbitrage":
+      return {
+        pfuTotal: run.computedResult?.pfuTotal ?? null,
+        baremeTotal: run.computedResult?.baremeTotal ?? null,
+        winner: run.computedResult?.winner ?? null,
+      };
     case "plus-value-immo":
       return { estimatedTax: run.computedResult?.estimatedTax ?? null };
     case "transmission":
@@ -28,7 +43,16 @@ function actualFromRun(run: TaxRun): Record<string, number | string | boolean | 
         bareOwnershipRate: run.computedResult?.bareOwnershipRate ?? null,
       };
     case "dutreil":
-      return { exemptValue: run.computedResult?.exemptValue ?? null };
+      return {
+        exemptValue: run.computedResult?.exemptValue ?? null,
+        dutreilSavings: run.computedResult?.dutreilSavings ?? null,
+      };
+    case "assurance-vie":
+      return {
+        tax990ITotal: run.computedResult?.tax990ITotal ?? null,
+        tax757B: run.computedResult?.tax757B ?? null,
+        totalTax: run.computedResult?.totalTax ?? null,
+      };
     case "apport-cession":
       return { requiredReinvestment: run.computedResult?.requiredReinvestment ?? null };
     case "holding-tax":
@@ -104,11 +128,18 @@ const baseGoldenCases = getV2TaxRuns().map((run) => {
   const reviewerByModule: Record<TaxModule, GoldenCase["reviewer"]> = {
     ifi: "cgp",
     "ir-pfu-cdhr": "avocat",
+    "ir-bareme": "avocat",
+    "pfu-arbitrage": "avocat",
     "plus-value-immo": "avocat",
     transmission: "notaire",
+    demembrement: "notaire",
+    "assurance-vie": "notaire",
     dutreil: "notaire",
     "apport-cession": "avocat",
     "holding-tax": "avocat",
+    is: "expert-comptable",
+    "sci-arbitrage": "expert-comptable",
+    "exit-tax": "avocat",
     pea: "cgp",
     per: "cgp",
     "bank-import": "cgp",
@@ -166,6 +197,24 @@ export const goldenCases: GoldenCase[] = [
     expected: { indicativeRights: dismembermentRun.computedResult?.indicativeRights ?? null, bareOwnershipRate: 0.5 },
     reviewer: "notaire",
     title: "Démembrement - âge 51 ans et nue-propriété",
+  }),
+  caseFromRun({
+    run: simulateIrBareme2026({ taxableIncome: 30_000, situation: "single" }),
+    expected: { incomeTax: 2_103.99, marginalRate: 0.3, averageRatePercent: 7.01 },
+    reviewer: "avocat",
+    title: "IR 2026 - célibataire 30 000 € - exemple officiel service-public",
+  }),
+  caseFromRun({
+    run: simulatePfuVsBareme({ dividends: 1_000, tmi: 0.11, psRateAtBareme: 0.172 }),
+    expected: { pfuTotal: 314, baremeTotal: 238, winner: "bareme" },
+    reviewer: "avocat",
+    title: "PFU vs barème - 1 000 € dividendes TMI 11 % - exemple de référence",
+  }),
+  caseFromRun({
+    run: simulateAssuranceVieTransmission({ deathBenefitBefore70: 352_500, beneficiaries: 1 }),
+    expected: { tax990ITotal: 40_000, tax757B: 0, totalTax: 40_000 },
+    reviewer: "notaire",
+    title: "Assurance-vie 990 I - 352 500 € pré-70 ans - taxable 200 000 € à 20 %",
   }),
 ];
 

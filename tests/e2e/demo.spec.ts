@@ -45,6 +45,25 @@ test("V2.6 cabinet refonte workflow", async ({ page }) => {
   await expect(page.getByText("Pourquoi le produit ne conclut pas seul").first()).toBeVisible();
 });
 
+test("V3 conformité CGP : DER, lettre de mission, KYC et signature simulée", async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.goto("/conformite-cgp");
+
+  await expect(page.getByRole("heading", { name: "Documents réglementaires" })).toBeVisible();
+  await expect(page.getByText("Document d'entrée en relation").first()).toBeVisible();
+  await expect(page.getByText("Lettre de mission").first()).toBeVisible();
+  await expect(page.getByText("Questionnaire de connaissance client (KYC)")).toBeVisible();
+  await expect(page.getByText("Scoring de risque blanchiment")).toBeVisible();
+  await expect(page.getByText("Cérémonie de signature")).toBeVisible();
+
+  const signButtons = page.getByRole("button", { name: "Signer (simulé)" });
+  await expect(signButtons.first()).toBeVisible();
+  for (let index = 0; index < 3; index += 1) {
+    await signButtons.first().click();
+  }
+  await expect(page.getByText("Signé (SES démo) et archivé")).toHaveCount(3);
+});
+
 test("V2.6 mobile layout has no horizontal overflow", async ({ page }) => {
   test.setTimeout(60_000);
   await page.setViewportSize({ width: 390, height: 1000 });

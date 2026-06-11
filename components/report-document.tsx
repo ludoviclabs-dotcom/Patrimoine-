@@ -5,6 +5,7 @@ import { CoverageLimitsPanel } from "@/components/v1-1/coverage-limits-panel";
 import { MeetingBrief } from "@/components/v1-1/meeting-brief";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { getPfuDiffAuditEvents } from "@/lib/evidence/pfu-rule-diff";
+import { getPvImmoDiffAuditEvents } from "@/lib/evidence/pv-immo-rule-diff";
 import { formatEuro } from "@/lib/format";
 import {
   clientAdvisorReportSections,
@@ -13,9 +14,20 @@ import {
   reportMethodItems,
 } from "@/lib/patrimonial-model/model";
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
+import { getDmtgDiffAuditEvents } from "@/lib/evidence/dmtg-rule-diff";
+import { getDutreilDiffAuditEvents } from "@/lib/evidence/dutreil-rule-diff";
+import { getV32DiffAuditEvents } from "@/lib/evidence/v3-2-rule-diffs";
+import {
+  getAllTaxRuns,
+  simulateAssuranceVieTransmission,
+  simulateDemembrement,
+  simulateIrBareme2026,
+  simulateIs,
+  simulatePfuVsBareme,
+  simulateSciIrVsIs,
+} from "@/lib/tax/engines";
 import {
   generateProfessionalDocuments,
-  getV2TaxRuns,
   simulateDutreilV2,
   simulateHoldingTaxV2,
   simulatePerEarlyExitV24,
@@ -53,10 +65,26 @@ export function ReportDocument({
     steps: Parameters<typeof CalculationSteps>[0]["steps"];
   };
 }) {
-  const taxRuns = getV2TaxRuns();
+  const taxRuns = getAllTaxRuns();
   const documents = generateProfessionalDocuments();
-  const auditEvents = getPfuDiffAuditEvents();
+  const auditEvents = [
+    ...getPfuDiffAuditEvents(),
+    ...getPvImmoDiffAuditEvents(),
+    ...getDmtgDiffAuditEvents(),
+    ...getDutreilDiffAuditEvents(),
+    ...getV32DiffAuditEvents(),
+  ];
   const adviserHypotheses = [
+    {
+      label: "IR barème 2026",
+      assumptions: "célibataire, 30 000 € imposables, exemple officiel service-public (2 103,99 €)",
+      run: simulateIrBareme2026(),
+    },
+    {
+      label: "PFU vs barème",
+      assumptions: "1 000 € de dividendes, TMI 30 %, PS 18,6 % LFSS 2026, option barème comparée",
+      run: simulatePfuVsBareme(),
+    },
     {
       label: "Plus-value immobilière",
       assumptions: "cession 720 000 €, acquisition 420 000 €, 9 ans de détention, hors résidence principale",
@@ -68,14 +96,34 @@ export function ReportDocument({
       run: simulateTransmissionV2({ useDismemberment: true }),
     },
     {
+      label: "Démembrement art. 669",
+      assumptions: "usufruitier 65 ans, 400 000 € en pleine propriété, nue-propriété en ligne directe",
+      run: simulateDemembrement(),
+    },
+    {
       label: "Pacte Dutreil",
-      assumptions: "850 000 € de titres, 60 000 € d'actifs non éligibles, engagements à documenter",
+      assumptions: "850 000 € de titres, 60 000 € d'actifs non éligibles, économie vs sans pacte chiffrée",
       run: simulateDutreilV2(),
+    },
+    {
+      label: "Assurance-vie décès",
+      assumptions: "352 500 € de capitaux pré-70 ans, 1 bénéficiaire en ligne directe (990 I)",
+      run: simulateAssuranceVieTransmission(),
     },
     {
       label: "Taxe holding",
       assumptions: "5,4 M€ d'actifs, revenus passifs 56 %, contrôle 72 %, inventaire taxable 420 000 €",
       run: simulateHoldingTaxV2(),
+    },
+    {
+      label: "Impôt sur les sociétés",
+      assumptions: "bénéfice 120 000 €, CA 900 000 €, capital 100 % personnes physiques",
+      run: simulateIs(),
+    },
+    {
+      label: "SCI IR vs IS",
+      assumptions: "loyers 30 000 €, charges 8 000 €, TMI 30 %, amortissement 2,5 %, sortie à 10 ans",
+      run: simulateSciIrVsIs(),
     },
     {
       label: "Succession simple",
@@ -101,6 +149,10 @@ export function ReportDocument({
 
   return (
     <div className="print-page relative space-y-6 overflow-hidden rounded-lg border border-border bg-white p-6 shadow-[var(--shadow)]">
+      <div className="print-only print-running-header" aria-hidden>
+        {household.name} · Version règles V2-2026.05 · Simulation indicative — non validée · Revue
+        professionnelle requise
+      </div>
       <div className="pointer-events-none absolute left-1/2 top-20 -translate-x-1/2 rotate-[-10deg] text-center text-4xl font-bold uppercase tracking-[0.18em] text-red-100 md:text-6xl">
         Indicatif non validé
       </div>

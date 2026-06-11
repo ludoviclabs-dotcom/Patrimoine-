@@ -4,20 +4,20 @@ import { AllocationPanel } from "@/components/allocation-panel";
 import { AppShell } from "@/components/app-shell";
 import { AssetTable } from "@/components/asset-table";
 import { AuditTrail } from "@/components/audit-trail";
-import { DashboardAlerts } from "@/components/dashboard-alerts";
 import { EvidenceRail } from "@/components/evidence-list";
+import { FiscalAlertsPanel } from "@/components/v3-3/fiscal-alerts-panel";
 import { KpiCard } from "@/components/kpi-card";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { demoAuditTrail } from "@/lib/demo-data/audit";
 import { demoHousehold } from "@/lib/demo-data/household";
 import {
   getAllocation,
-  getDashboardAlerts,
   getGrossWealth,
   getLiquidity,
   getNetWealth,
   getTotalDebt,
 } from "@/lib/demo-data/metrics";
+import { getFiscalAlerts } from "@/lib/alerts/fiscal-alerts";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { formatEuro } from "@/lib/format";
 import { calculateIfi } from "@/lib/simulations/ifi";
@@ -28,7 +28,7 @@ export default function DashboardPage() {
   const netWealth = getNetWealth(demoHousehold);
   const liquidity = getLiquidity(demoHousehold);
   const allocation = getAllocation(demoHousehold);
-  const alerts = getDashboardAlerts(demoHousehold);
+  const fiscalAlerts = getFiscalAlerts();
   const ifiRun = calculateIfi(demoHousehold);
 
   return (
@@ -64,7 +64,7 @@ export default function DashboardPage() {
         <section className="grid gap-6 xl:grid-cols-[1fr_380px]">
           <div className="min-w-0 space-y-6">
             <AllocationPanel allocation={allocation} grossWealth={grossWealth} />
-            <DashboardAlerts alerts={alerts} />
+            <FiscalAlertsPanel alerts={fiscalAlerts} />
             <AssetTable household={demoHousehold} />
           </div>
           <div className="min-w-0 space-y-6">

@@ -98,6 +98,24 @@ export const coverageLimits: CoverageLimit[] = [
     requiredProfessional: "notaire",
   },
   {
+    id: "coverage-dmtg-multi-liens",
+    module: "transmission",
+    label: "Barème DMTG multi-liens",
+    status: "partially_covered",
+    explanation:
+      "Ligne directe, petits-enfants, frères/sœurs, neveux/nièces et non-parents couverts ; donation entre époux (tableau II, abattement 80 724 €), handicap et représentations non automatisés.",
+    requiredProfessional: "notaire",
+  },
+  {
+    id: "coverage-demembrement-ifi-968",
+    module: "donation",
+    label: "Démembrement et IFI art. 968",
+    status: "partially_covered",
+    explanation:
+      "Valorisation art. 669 couverte ; à l'IFI, l'usufruitier déclare en principe la pleine propriété (art. 968), avec exceptions à qualifier par le professionnel.",
+    requiredProfessional: "notaire",
+  },
+  {
     id: "coverage-plus-value-structure",
     module: "plus-value",
     label: "Plus-value immobilière complète V2",
@@ -122,6 +140,42 @@ export const coverageLimits: CoverageLimit[] = [
     requiredProfessional: "avocat",
   },
   {
+    id: "coverage-ir-bareme-2026",
+    module: "ir-bareme",
+    label: "IR barème 2026 complet",
+    status: "partially_covered",
+    explanation:
+      "Barème, quotient familial plafonné, décote, CEHR et CDHR couverts pour les cas standards ; demi-parts spéciales, revenus exceptionnels et crédits d'impôt non automatisés.",
+    requiredProfessional: "avocat",
+  },
+  {
+    id: "coverage-pfu-arbitrage-2026",
+    module: "pfu-arbitrage",
+    label: "Arbitrage PFU vs barème",
+    status: "partially_covered",
+    explanation:
+      "Comparaison indicative dividendes/PV mobilières ; l'option barème est globale et irrévocable pour l'année, à valider sur l'avis complet.",
+    requiredProfessional: "avocat",
+  },
+  {
+    id: "coverage-pfu-assurance-vie-30",
+    module: "pfu-arbitrage",
+    label: "Assurance-vie maintenue à 30 %",
+    status: "not_covered_v1",
+    explanation:
+      "Les produits d'assurance-vie restent au PFU 30 % (PS 17,2 % par dérogation LFSS 2026) : ils ne sont pas comparés par ce moteur.",
+    requiredProfessional: "cgp",
+  },
+  {
+    id: "coverage-assurance-vie-transmission",
+    module: "assurance-vie",
+    label: "Assurance-vie au décès (990 I / 757 B)",
+    status: "partially_covered",
+    explanation:
+      "Abattements et taux couverts pour les cas standards ; ventilation par contrat, contrats vie-génération, clauses démembrées et intégration successorale fine du surplus 757 B non automatisées.",
+    requiredProfessional: "notaire",
+  },
+  {
     id: "coverage-dutreil-eligibility",
     module: "dutreil",
     label: "Pacte Dutreil LF 2026",
@@ -143,6 +197,33 @@ export const coverageLimits: CoverageLimit[] = [
     label: "Taxe holding patrimoniale",
     status: "partially_covered",
     explanation: "Critères cumulés et assiette de biens non professionnels, cas complexes à valider.",
+    requiredProfessional: "avocat",
+  },
+  {
+    id: "coverage-is-bareme-2026",
+    module: "is",
+    label: "Barème IS 2026",
+    status: "partially_covered",
+    explanation:
+      "Taux 15/25 % et contribution sociale couverts sur résultat fiscal déclaré ; réintégrations, déficits reportables et intégration fiscale non automatisés.",
+    requiredProfessional: "expert-comptable",
+  },
+  {
+    id: "coverage-sci-is-sortie",
+    module: "sci",
+    label: "SCI IS : sortie et distribution",
+    status: "partially_covered",
+    explanation:
+      "La plus-value professionnelle (réintégration des amortissements) est estimée ; la fiscalité de distribution (PFU sur dividendes) et la liquidation de la société ne sont pas automatisées.",
+    requiredProfessional: "expert-comptable",
+  },
+  {
+    id: "coverage-exit-tax-signal",
+    module: "exit-tax",
+    label: "Exit tax : signal documentaire",
+    status: "partially_covered",
+    explanation:
+      "Le moteur détecte le champ d'application et les obligations (2074-ETD, garanties) sans liquider l'impôt : conventions fiscales et participations indirectes à qualifier.",
     requiredProfessional: "avocat",
   },
   {

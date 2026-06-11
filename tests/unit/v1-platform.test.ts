@@ -95,7 +95,9 @@ describe("V1 cabinet foundation", () => {
     const v1RuleSets = new Set(["donation", "plus-value", "sci", "ai-governance"]);
     const v1Rules = ruleVersions.filter((rule) => v1RuleSets.has(rule.ruleSet));
 
-    expect(v1Rules).toHaveLength(4);
+    // Les ruleSets V1 reçoivent de nouvelles versions au fil des phases (v2, v3…) :
+    // l'invariant est la présence des 4 règles fondatrices et la connexion aux sources.
+    expect(v1Rules.length).toBeGreaterThanOrEqual(4);
     expect(v1Rules.every((rule) => rule.evidenceSourceIds.length > 0)).toBe(true);
   });
 

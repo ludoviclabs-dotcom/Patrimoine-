@@ -333,6 +333,9 @@ textarea {
 }
 
 @media print {
+  @page {
+    margin: 16mm 12mm;
+  }
   body {
     background: #ffffff;
   }
@@ -349,6 +352,31 @@ textarea {
     box-shadow: none !important;
     border: 0 !important;
     padding: 0 !important;
+  }
+  /* Pagination durcie : pas de titre orphelin, pas de carte coupée en deux */
+  .print-page h1,
+  .print-page h2,
+  .print-page h3 {
+    break-after: avoid-page;
+  }
+  .print-page .rounded-lg,
+  .print-avoid-break {
+    break-inside: avoid-page;
+  }
+  /* En-tête répété sur chaque page imprimée (versions de règles, statut) */
+  .print-running-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding-bottom: 2mm;
+    border-bottom: 1px solid #d9cdb6;
+    background: #ffffff;
+    font-family: var(--font-geist-mono, monospace);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6b7068;
   }
   /* Jamais masquer le contenu animé à l'impression */
   * {
