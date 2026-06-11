@@ -1,5 +1,7 @@
 import { appendAuditEventToRepository } from "../audit/repository";
 import { demoTenant } from "../demo-data/v1";
+import { simulateIrBareme2026 } from "../tax/engines/ir";
+import { simulatePfuVsBareme } from "../tax/engines/pfu-arbitrage";
 import {
   getV2TaxRuns,
   simulateIrPfuCdhr,
@@ -20,6 +22,18 @@ function actualFromRun(run: TaxRun): Record<string, number | string | boolean | 
   switch (run.module) {
     case "ir-pfu-cdhr":
       return { resultAmount: run.resultAmount ?? null, cdhr: run.computedResult?.cdhr ?? null, pfuTax: run.computedResult?.pfuTax ?? null };
+    case "ir-bareme":
+      return {
+        incomeTax: run.computedResult?.incomeTax ?? null,
+        marginalRate: run.computedResult?.marginalRate ?? null,
+        averageRatePercent: run.computedResult?.averageRatePercent ?? null,
+      };
+    case "pfu-arbitrage":
+      return {
+        pfuTotal: run.computedResult?.pfuTotal ?? null,
+        baremeTotal: run.computedResult?.baremeTotal ?? null,
+        winner: run.computedResult?.winner ?? null,
+      };
     case "plus-value-immo":
       return { estimatedTax: run.computedResult?.estimatedTax ?? null };
     case "transmission":
@@ -104,6 +118,8 @@ const baseGoldenCases = getV2TaxRuns().map((run) => {
   const reviewerByModule: Record<TaxModule, GoldenCase["reviewer"]> = {
     ifi: "cgp",
     "ir-pfu-cdhr": "avocat",
+    "ir-bareme": "avocat",
+    "pfu-arbitrage": "avocat",
     "plus-value-immo": "avocat",
     transmission: "notaire",
     dutreil: "notaire",
@@ -166,6 +182,18 @@ export const goldenCases: GoldenCase[] = [
     expected: { indicativeRights: dismembermentRun.computedResult?.indicativeRights ?? null, bareOwnershipRate: 0.5 },
     reviewer: "notaire",
     title: "Démembrement - âge 51 ans et nue-propriété",
+  }),
+  caseFromRun({
+    run: simulateIrBareme2026({ taxableIncome: 30_000, situation: "single" }),
+    expected: { incomeTax: 2_103.99, marginalRate: 0.3, averageRatePercent: 7.01 },
+    reviewer: "avocat",
+    title: "IR 2026 - célibataire 30 000 € - exemple officiel service-public",
+  }),
+  caseFromRun({
+    run: simulatePfuVsBareme({ dividends: 1_000, tmi: 0.11, psRateAtBareme: 0.172 }),
+    expected: { pfuTotal: 314, baremeTotal: 238, winner: "bareme" },
+    reviewer: "avocat",
+    title: "PFU vs barème - 1 000 € dividendes TMI 11 % - exemple de référence",
   }),
 ];
 

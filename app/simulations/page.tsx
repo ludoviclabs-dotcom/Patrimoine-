@@ -21,7 +21,7 @@ import { getSimulationByParam } from "@/lib/cabinet-refonte/v2-6";
 import { demoAuditTrail } from "@/lib/demo-data/audit";
 import { demoHousehold } from "@/lib/demo-data/household";
 import { calculateIfi } from "@/lib/simulations/ifi";
-import { getV2TaxRuns } from "@/lib/tax/v2-engines";
+import { getAllTaxRuns } from "@/lib/tax/engines";
 import type { TaxRun } from "@/lib/types";
 
 type SimulationsPageProps = {
@@ -32,6 +32,8 @@ type SimulationsPageProps = {
 };
 
 const labScenarios = new Set<LabScenario>([
+  "ir",
+  "pfu",
   "plus-value",
   "transmission",
   "dutreil",
@@ -46,6 +48,8 @@ const labScenarios = new Set<LabScenario>([
 ]);
 
 const taxRunScenarioByLab: Record<LabScenario, TaxRun["scenario"]> = {
+  ir: "ir",
+  pfu: "pfu",
   "plus-value": "plus-value",
   transmission: "transmission",
   dutreil: "dutreil",
@@ -67,7 +71,7 @@ export default async function SimulationsPage({ searchParams }: SimulationsPageP
     ? (requestedScenario as LabScenario)
     : "plus-value";
   const ifiRun = calculateIfi(demoHousehold);
-  const taxRuns = getV2TaxRuns();
+  const taxRuns = getAllTaxRuns();
   const activeTaxRun =
     taxRuns.find((run) => run.scenario === taxRunScenarioByLab[activeScenario]) ??
     taxRuns.find((run) => run.scenario === "plus-value");

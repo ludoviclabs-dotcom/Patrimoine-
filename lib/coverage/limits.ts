@@ -122,6 +122,33 @@ export const coverageLimits: CoverageLimit[] = [
     requiredProfessional: "avocat",
   },
   {
+    id: "coverage-ir-bareme-2026",
+    module: "ir-bareme",
+    label: "IR barème 2026 complet",
+    status: "partially_covered",
+    explanation:
+      "Barème, quotient familial plafonné, décote, CEHR et CDHR couverts pour les cas standards ; demi-parts spéciales, revenus exceptionnels et crédits d'impôt non automatisés.",
+    requiredProfessional: "avocat",
+  },
+  {
+    id: "coverage-pfu-arbitrage-2026",
+    module: "pfu-arbitrage",
+    label: "Arbitrage PFU vs barème",
+    status: "partially_covered",
+    explanation:
+      "Comparaison indicative dividendes/PV mobilières ; l'option barème est globale et irrévocable pour l'année, à valider sur l'avis complet.",
+    requiredProfessional: "avocat",
+  },
+  {
+    id: "coverage-pfu-assurance-vie-30",
+    module: "pfu-arbitrage",
+    label: "Assurance-vie maintenue à 30 %",
+    status: "not_covered_v1",
+    explanation:
+      "Les produits d'assurance-vie restent au PFU 30 % (PS 17,2 % par dérogation LFSS 2026) : ils ne sont pas comparés par ce moteur.",
+    requiredProfessional: "cgp",
+  },
+  {
     id: "coverage-dutreil-eligibility",
     module: "dutreil",
     label: "Pacte Dutreil LF 2026",

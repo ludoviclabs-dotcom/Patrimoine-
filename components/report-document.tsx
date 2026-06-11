@@ -5,6 +5,7 @@ import { CoverageLimitsPanel } from "@/components/v1-1/coverage-limits-panel";
 import { MeetingBrief } from "@/components/v1-1/meeting-brief";
 import { evidenceSources } from "@/lib/evidence/sources";
 import { getPfuDiffAuditEvents } from "@/lib/evidence/pfu-rule-diff";
+import { getPvImmoDiffAuditEvents } from "@/lib/evidence/pv-immo-rule-diff";
 import { formatEuro } from "@/lib/format";
 import {
   clientAdvisorReportSections,
@@ -13,9 +14,9 @@ import {
   reportMethodItems,
 } from "@/lib/patrimonial-model/model";
 import { meetingBriefs, scenarioComparisons } from "@/lib/scenario-comparisons/comparisons";
+import { getAllTaxRuns, simulateIrBareme2026, simulatePfuVsBareme } from "@/lib/tax/engines";
 import {
   generateProfessionalDocuments,
-  getV2TaxRuns,
   simulateDutreilV2,
   simulateHoldingTaxV2,
   simulatePerEarlyExitV24,
@@ -53,10 +54,20 @@ export function ReportDocument({
     steps: Parameters<typeof CalculationSteps>[0]["steps"];
   };
 }) {
-  const taxRuns = getV2TaxRuns();
+  const taxRuns = getAllTaxRuns();
   const documents = generateProfessionalDocuments();
-  const auditEvents = getPfuDiffAuditEvents();
+  const auditEvents = [...getPfuDiffAuditEvents(), ...getPvImmoDiffAuditEvents()];
   const adviserHypotheses = [
+    {
+      label: "IR barème 2026",
+      assumptions: "célibataire, 30 000 € imposables, exemple officiel service-public (2 103,99 €)",
+      run: simulateIrBareme2026(),
+    },
+    {
+      label: "PFU vs barème",
+      assumptions: "1 000 € de dividendes, TMI 30 %, PS 18,6 % LFSS 2026, option barème comparée",
+      run: simulatePfuVsBareme(),
+    },
     {
       label: "Plus-value immobilière",
       assumptions: "cession 720 000 €, acquisition 420 000 €, 9 ans de détention, hors résidence principale",

@@ -9,7 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { WhyThisResultPanel } from "@/components/v1-1/why-this-result-panel";
 import { CheckboxInput, NumberInput } from "@/components/v3/forms/fields";
+import { defaultIrFormState, IrBracketsChart, IrForm } from "@/components/v3/forms/ir-form";
+import { defaultPfuFormState, PfuComparisonChart, PfuForm } from "@/components/v3/forms/pfu-form";
+import {
+  defaultPvImmoFormState,
+  PvAllowancesChart,
+  PvImmoForm,
+} from "@/components/v3/forms/pv-immo-form";
 import { formatEuro } from "@/lib/format";
+import { simulateIrBareme2026 } from "@/lib/tax/engines/ir";
+import { simulatePfuVsBareme } from "@/lib/tax/engines/pfu-arbitrage";
 import {
   simulateDutreilV2,
   simulateBankImportV2,
@@ -27,6 +36,8 @@ import { demoConnectorImport } from "@/lib/patrimonial-model/model";
 import type { TaxRun } from "@/lib/types";
 
 export type LabScenario =
+  | "ir"
+  | "pfu"
   | "plus-value"
   | "transmission"
   | "dutreil"
@@ -40,6 +51,8 @@ export type LabScenario =
   | "product-adequacy";
 
 const scenarioLabels: Record<LabScenario, string> = {
+  ir: "IR barème 2026",
+  pfu: "PFU vs barème",
   "plus-value": "Plus-value",
   transmission: "Transmission",
   dutreil: "Dutreil",
@@ -58,14 +71,9 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
   const [showWhy, setShowWhy] = useState(true);
   const [runStatus, setRunStatus] = useState("Simulation prête à lancer");
 
-  const [realEstate, setRealEstate] = useState({
-    salePrice: 720_000,
-    purchasePrice: 420_000,
-    acquisitionCosts: 31_500,
-    works: 35_000,
-    yearsHeld: 9,
-    isMainResidence: false,
-  });
+  const [ir, setIr] = useState(defaultIrFormState);
+  const [pfu, setPfu] = useState(defaultPfuFormState);
+  const [realEstate, setRealEstate] = useState(defaultPvImmoFormState);
   const [transmission, setTransmission] = useState({
     assetValue: 300_000,
     donorAge: 51,
@@ -140,6 +148,22 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
   });
 
   const activeRun = useMemo<TaxRun>(() => {
+    if (activeScenario === "ir")
+      return simulateIrBareme2026({
+        taxableIncome: ir.taxableIncome,
+        situation: ir.situation,
+        childrenHalfParts: ir.childrenHalfParts,
+        referenceIncome: ir.referenceIncome > 0 ? ir.referenceIncome : undefined,
+      });
+    if (activeScenario === "pfu")
+      return simulatePfuVsBareme({
+        dividends: pfu.dividends,
+        gains: pfu.gains,
+        tmi: pfu.tmiPercent / 100,
+        psRateAtBareme: pfu.psRateAtBaremePercent / 100,
+        titlesPre2018: pfu.titlesPre2018,
+        holdingYears: pfu.holdingYears,
+      });
     if (activeScenario === "plus-value") return simulateRealEstateGainV2(realEstate);
     if (activeScenario === "transmission") return simulateTransmissionV2(transmission);
     if (activeScenario === "dutreil") return simulateDutreilV2(dutreil);
@@ -168,10 +192,12 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
     adequacy,
     dutreil,
     holding,
+    ir,
     liquidityStress,
     pea,
     per,
     perExit,
+    pfu,
     realEstate,
     successionChecklist,
     transmission,
@@ -214,15 +240,12 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
             ))}
           </div>
 
+          {activeScenario === "ir" ? <IrForm value={ir} onChange={setIr} /> : null}
+
+          {activeScenario === "pfu" ? <PfuForm value={pfu} onChange={setPfu} /> : null}
+
           {activeScenario === "plus-value" ? (
-            <div className="grid gap-3">
-              <NumberInput label="Prix de cession" value={realEstate.salePrice} onChange={(value) => setRealEstate((item) => ({ ...item, salePrice: value }))} />
-              <NumberInput label="Prix d'acquisition" value={realEstate.purchasePrice} onChange={(value) => setRealEstate((item) => ({ ...item, purchasePrice: value }))} />
-              <NumberInput label="Frais d'acquisition" value={realEstate.acquisitionCosts} onChange={(value) => setRealEstate((item) => ({ ...item, acquisitionCosts: value }))} />
-              <NumberInput label="Travaux retenus" value={realEstate.works} onChange={(value) => setRealEstate((item) => ({ ...item, works: value }))} />
-              <NumberInput label="Durée de détention" value={realEstate.yearsHeld} onChange={(value) => setRealEstate((item) => ({ ...item, yearsHeld: value }))} />
-              <CheckboxInput label="Résidence principale simple" checked={realEstate.isMainResidence} onChange={(checked) => setRealEstate((item) => ({ ...item, isMainResidence: checked }))} />
-            </div>
+            <PvImmoForm value={realEstate} onChange={setRealEstate} />
           ) : null}
 
           {activeScenario === "transmission" ? (
@@ -375,6 +398,10 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
               <Metric label="Limites" value={`${activeRun.coverageLimitIds?.length ?? 0}`} />
             </div>
           </Card>
+
+          {activeScenario === "ir" ? <IrBracketsChart run={activeRun} /> : null}
+          {activeScenario === "pfu" ? <PfuComparisonChart run={activeRun} /> : null}
+          {activeScenario === "plus-value" ? <PvAllowancesChart /> : null}
 
           <CalculationSteps steps={activeRun.steps} />
         </div>

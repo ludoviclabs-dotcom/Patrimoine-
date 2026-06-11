@@ -13,6 +13,8 @@ import type { TaxRun } from "@/lib/types";
 const moduleLabels: Record<TaxRun["module"], string> = {
   ifi: "IFI",
   "ir-pfu-cdhr": "IR / PFU / CDHR",
+  "ir-bareme": "IR barème 2026",
+  "pfu-arbitrage": "PFU vs barème",
   "plus-value-immo": "Plus-value immobilière",
   transmission: "Transmission",
   dutreil: "Pacte Dutreil",

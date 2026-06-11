@@ -7,51 +7,21 @@ import {
   getBareOwnershipRate,
   makeStep,
 } from "./engine-kit";
+import { computeCdhr } from "./engines/ir";
+import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
 import type { Household, ProfessionalDocument } from "../types";
 
 export { calculateProgressiveTax, getBareOwnershipRate } from "./engine-kit";
+export {
+  calculateHighRealEstateGainSurtax,
+  calculateRealEstateHoldingAllowances,
+} from "./engines/pv-immo";
 
 const tenantId = demoTenant.id;
 const caseId = "case-claire-marc-2026";
 const dossierSnapshotId = "snapshot-dossier-claire-marc-v2";
 const DIRECT_LINE_ALLOWANCE_PER_CHILD = 100_000;
 const FAMILY_CASH_GIFT_EXEMPTION = 31_865;
-
-export function calculateRealEstateHoldingAllowances(yearsHeld: number) {
-  const fullYears = Math.max(0, Math.floor(yearsHeld));
-  const incomeTaxAllowanceRate =
-    fullYears <= 5 ? 0 : fullYears >= 22 ? 1 : fullYears === 21 ? 0.96 : Math.min(0.96, (fullYears - 5) * 0.06);
-  const socialAllowanceRate =
-    fullYears <= 5
-      ? 0
-      : fullYears >= 30
-        ? 1
-        : fullYears <= 21
-          ? (fullYears - 5) * 0.0165
-          : 0.28 + (fullYears - 22) * 0.09;
-
-  return {
-    yearsHeld: fullYears,
-    incomeTaxAllowanceRate: Math.min(1, incomeTaxAllowanceRate),
-    socialAllowanceRate: Math.min(1, socialAllowanceRate),
-  };
-}
-
-export function calculateHighRealEstateGainSurtax(incomeTaxBase: number) {
-  const pv = Math.max(0, incomeTaxBase);
-
-  if (pv <= 50_000) return 0;
-  if (pv <= 60_000) return Math.round(pv * 0.02 - (60_000 - pv) / 20);
-  if (pv <= 100_000) return Math.round(pv * 0.02);
-  if (pv <= 110_000) return Math.round(pv * 0.03 - (110_000 - pv) / 10);
-  if (pv <= 150_000) return Math.round(pv * 0.03);
-  if (pv <= 160_000) return Math.round(pv * 0.04 - (160_000 - pv) * 0.15);
-  if (pv <= 200_000) return Math.round(pv * 0.04);
-  if (pv <= 210_000) return Math.round(pv * 0.05 - (210_000 - pv) * 0.2);
-  if (pv <= 250_000) return Math.round(pv * 0.05);
-  if (pv <= 260_000) return Math.round(pv * 0.06 - (260_000 - pv) * 0.25);
-  return Math.round(pv * 0.06);
-}
 
 const taxRun = createTaxRunFactory({
   tenantId,
@@ -77,9 +47,12 @@ export function simulateIrPfuCdhr({
 } = {}) {
   const pfuTax = Math.round(capitalIncome * pfuRate);
   const rfr = taxableIncome + capitalIncome;
-  const minimumTax = rfr >= 500_000 ? Math.round(rfr * 0.2) : 0;
-  const currentTax = otherIncomeTax + pfuTax;
-  const cdhr = Math.max(0, minimumTax - currentTax);
+  // CDHR déléguée au moteur ir.ts (seuil couple 500 k€, plancher 20 %).
+  const { minimumTax, cdhr } = computeCdhr({
+    rfr,
+    situation: "couple",
+    taxAlreadyPaid: otherIncomeTax + pfuTax,
+  });
 
   const steps = [
     makeStep({
@@ -120,111 +93,13 @@ export function simulateIrPfuCdhr({
   });
 }
 
-export function simulateRealEstateGainV2({
-  salePrice = 720_000,
-  purchasePrice = 420_000,
-  acquisitionCosts = 31_500,
-  works = 35_000,
-  yearsHeld = 9,
-  isMainResidence = false,
-}: {
-  salePrice?: number;
-  purchasePrice?: number;
-  acquisitionCosts?: number;
-  works?: number;
-  yearsHeld?: number;
-  isMainResidence?: boolean;
-} = {}) {
-  const grossGain = Math.max(0, salePrice - purchasePrice - acquisitionCosts - works);
-  const allowances = calculateRealEstateHoldingAllowances(yearsHeld);
-  const incomeTaxAllowanceRate = isMainResidence ? 1 : allowances.incomeTaxAllowanceRate;
-  const socialAllowanceRate = isMainResidence ? 1 : allowances.socialAllowanceRate;
-  const incomeTaxBase = Math.round(grossGain * (1 - incomeTaxAllowanceRate));
-  const socialTaxBase = Math.round(grossGain * (1 - socialAllowanceRate));
-  const incomeTax = Math.round(incomeTaxBase * 0.19);
-  const socialTax = Math.round(socialTaxBase * 0.172);
-  const surtax = isMainResidence ? 0 : calculateHighRealEstateGainSurtax(incomeTaxBase);
-  const estimatedTax = incomeTax + socialTax + surtax;
-  const surtaxSignal = isMainResidence
-    ? "Résidence principale exonérée dans le cas simple"
-    : surtax > 0
-      ? "Surtaxe plus-value élevée appliquée"
-      : "Pas de surtaxe signalée";
-
-  const steps = [
-    makeStep({
-      id: "pvi-step-gross",
-      order: 1,
-      label: "Plus-value brute corrigée",
-      inputValue: `${salePrice} / ${purchasePrice}`,
-      formula: "cession - acquisition - frais - travaux",
-      outputValue: grossGain,
-      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
-      evidenceSourceId: "src-bofip-plus-value-immobiliere",
-      coverageLimitIds: ["coverage-plus-value-structure"],
-    }),
-    makeStep({
-      id: "pvi-step-allowances",
-      order: 2,
-      label: "Abattements durée de détention",
-      inputValue: yearsHeld,
-      formula: "IR 22 ans / prélèvements sociaux 30 ans",
-      outputValue: `${Math.round(incomeTaxAllowanceRate * 100)} % / ${Math.round(socialAllowanceRate * 100)} %`,
-      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
-      evidenceSourceId: "src-bofip-plus-value-immobiliere",
-      coverageLimitIds: ["coverage-plus-value-structure"],
-      confidenceStatus: "needs_review",
-    }),
-    makeStep({
-      id: "pvi-step-tax",
-      order: 3,
-      label: "Impôt indicatif plus-value",
-      inputValue: `${incomeTaxBase} / ${socialTaxBase}`,
-      formula: "base IR x 19 % + base PS x 17,2 % + surtaxe éventuelle",
-      outputValue: estimatedTax,
-      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
-      evidenceSourceId: "src-bofip-plus-value-immobiliere",
-      coverageLimitIds: ["coverage-plus-value-structure"],
-      confidenceStatus: "needs_review",
-      nextAction: "Contrôler exonération résidence principale, surtaxe et justificatifs.",
-    }),
-    makeStep({
-      id: "pvi-step-surtax",
-      order: 4,
-      label: "Surtaxe plus-value élevée",
-      inputValue: incomeTaxBase,
-      formula: "barème spécifique si plus-value imposable IR > 50 000 €",
-      outputValue: surtax,
-      ruleVersionId: "rule-plus-value-immobiliere-2026-v1",
-      evidenceSourceId: "src-bofip-plus-value-immobiliere",
-      coverageLimitIds: ["coverage-plus-value-structure"],
-      confidenceStatus: surtax > 0 ? "needs_review" : "indicative",
-      nextAction: "Valider la nature du bien, le seuil et les abattements avant toute conclusion.",
-    }),
-  ];
-
-  return taxRun({
-    module: "plus-value-immo",
-    scenario: "plus-value",
-    steps,
-    resultLabel: surtaxSignal,
-    resultAmount: estimatedTax,
-    evidenceSourceIds: ["src-bofip-plus-value-immobiliere"],
-    reviewerRequired: "avocat",
-    computedResult: {
-      grossGain,
-      incomeTaxAllowanceRate,
-      socialAllowanceRate,
-      incomeTaxBase,
-      socialTaxBase,
-      incomeTax,
-      socialTax,
-      surtax,
-      estimatedTax,
-      surtaxSignal,
-      isMainResidence,
-    },
-  });
+/**
+ * Wrapper de compatibilité : la plus-value immobilière est désormais calculée
+ * par le moteur v3 (lib/tax/engines/pv-immo.ts, règle v2 : forfaits 7,5 %/15 %
+ * et arrondi officiel). Voir lib/evidence/pv-immo-rule-diff.ts pour l'impact.
+ */
+export function simulateRealEstateGainV2(input: PvImmoInput = {}) {
+  return simulatePvImmoV3(input);
 }
 
 export function simulateTransmissionV2({
