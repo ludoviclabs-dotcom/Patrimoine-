@@ -1,28 +1,7 @@
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { Reveal } from "@/components/motion";
-import { SimulationsClient } from "@/components/simulations-client";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardEyebrow, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHero } from "@/components/ui/page-hero";
-import { TaxScenarioLab, type LabScenario } from "@/components/v2/tax-scenario-lab";
-import { TaxRunsPanel } from "@/components/v2/tax-runs-panel";
-import {
-  CalculationBreakdown,
-  SimulationAuditSummary,
-  SimulationCatalog,
-} from "@/components/v2-6/cabinet-refonte";
-import { getSimulationByParam } from "@/lib/cabinet-refonte/v2-6";
-import { demoAuditTrail } from "@/lib/demo-data/audit";
-import { demoHousehold } from "@/lib/demo-data/household";
-import { calculateIfi } from "@/lib/simulations/ifi";
-import { getAllTaxRuns } from "@/lib/tax/engines";
-import type { TaxRun } from "@/lib/types";
+import { GuidedSimulationsHome } from "@/components/v3-5/guided-home";
 
 type SimulationsPageProps = {
   searchParams?: Promise<{
@@ -31,124 +10,29 @@ type SimulationsPageProps = {
   }>;
 };
 
-const labScenarios = new Set<LabScenario>([
-  "ir",
-  "pfu",
-  "plus-value",
-  "transmission",
-  "demembrement",
-  "assurance-vie",
-  "dutreil",
-  "holding-tax",
-  "is",
-  "sci-arbitrage",
-  "exit-tax",
-  "pea",
-  "per",
-  "bank-import",
-  "succession-checklist",
-  "per-early-exit",
-  "succession-liquidity-stress",
-  "product-adequacy",
-]);
-
-const taxRunScenarioByLab: Record<LabScenario, TaxRun["scenario"]> = {
-  ir: "ir",
-  pfu: "pfu",
-  "plus-value": "plus-value",
-  transmission: "transmission",
-  demembrement: "demembrement",
-  "assurance-vie": "assurance-vie",
-  dutreil: "dutreil",
-  "holding-tax": "holding-tax",
-  is: "is",
-  "sci-arbitrage": "sci-arbitrage",
-  "exit-tax": "exit-tax",
-  pea: "pea-withdrawal",
-  per: "per-deduction",
-  "bank-import": "bank-import",
-  "succession-checklist": "succession-checklist",
-  "per-early-exit": "per-early-exit",
-  "succession-liquidity-stress": "succession-liquidity-stress",
-  "product-adequacy": "product-adequacy",
-};
-
 export default async function SimulationsPage({ searchParams }: SimulationsPageProps) {
   const params = (await searchParams) ?? {};
-  const catalogItem = getSimulationByParam(params.scenario) ?? getSimulationByParam("plus-value");
-  const requestedScenario = catalogItem?.scenarioParam ?? "plus-value";
-  const activeScenario: LabScenario = labScenarios.has(requestedScenario as LabScenario)
-    ? (requestedScenario as LabScenario)
-    : "plus-value";
-  const ifiRun = calculateIfi(demoHousehold);
-  const taxRuns = getAllTaxRuns();
-  const activeTaxRun =
-    taxRuns.find((run) => run.scenario === taxRunScenarioByLab[activeScenario]) ??
-    taxRuns.find((run) => run.scenario === "plus-value");
+
+  // Back-compat : tous les liens profonds historiques (?scenario=…) pointent
+  // désormais vers le laboratoire expert. Alias et scénarios inconnus passent
+  // tels quels — le labo applique son repli (plus-value).
+  if (params.scenario) {
+    const labParams = new URLSearchParams({ scenario: params.scenario });
+    if (params.from) labParams.set("from", params.from);
+    redirect(`/simulations/lab?${labParams.toString()}`);
+  }
 
   return (
     <AppShell>
       <div className="space-y-8">
         <PageHero
           as="h1"
-          eyebrow="Moteur déterministe"
+          eyebrow="Entrée par intention"
           title="Simuler"
-          lead="Catalogue de scénarios déterministes, moteur paramétrable et preuves affichées avant toute conclusion. Chaque simulation reste indicative et revue par un professionnel."
+          lead="Partez de votre intention — vendre, transmettre, optimiser, auditer. Le produit propose les simulations pertinentes, les pièces à réunir et les points nécessitant une revue humaine, avant d'exposer les détails techniques."
         />
-
-        <SimulationCatalog activeScenario={activeScenario} />
-
-        {catalogItem ? <SimulationContext {...catalogItem} /> : null}
-        <SimulationAuditSummary item={catalogItem} />
-        <Reveal>
-          <TaxScenarioLab initialScenario={activeScenario} />
-        </Reveal>
-        {activeTaxRun ? <CalculationBreakdown run={activeTaxRun} /> : null}
-
-        <Reveal>
-          <Card elevated>
-            <Accordion type="single" collapsible>
-              <AccordionItem value="more">
-                <AccordionTrigger>Voir les autres moteurs et historiques</AccordionTrigger>
-                <AccordionContent>
-                  <div className="space-y-6 pt-2">
-                    <TaxRunsPanel runs={taxRuns} />
-                    <SimulationsClient ifiRun={ifiRun} initialAudit={demoAuditTrail} />
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </Card>
-        </Reveal>
+        <GuidedSimulationsHome />
       </div>
     </AppShell>
-  );
-}
-
-function SimulationContext({
-  label,
-  userFacingExplanation,
-  status,
-  reviewGate,
-}: NonNullable<ReturnType<typeof getSimulationByParam>>) {
-  return (
-    <Reveal>
-      <Card accent elevated>
-        <CardHeader className="mb-0">
-          <div>
-            <div className="mb-3 flex flex-wrap gap-2">
-              <Badge tone="teal" dot>
-                Scénario actif
-              </Badge>
-              <Badge tone="warning">{status}</Badge>
-            </div>
-            <CardEyebrow>Contexte chargé</CardEyebrow>
-            <CardTitle className="mt-1">{label}</CardTitle>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">{userFacingExplanation}</p>
-            <p className="mt-3 text-sm font-medium text-foreground">{reviewGate}</p>
-          </div>
-        </CardHeader>
-      </Card>
-    </Reveal>
   );
 }

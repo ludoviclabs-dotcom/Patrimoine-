@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Calculator, HelpCircle, Play } from "lucide-react";
 import { CalculationSteps } from "@/components/calculation-steps";
 import { LegalNotice } from "@/components/legal-notice";
@@ -54,27 +55,10 @@ import {
   simulateTransmissionV2,
 } from "@/lib/tax/v2-engines";
 import { demoConnectorImport } from "@/lib/patrimonial-model/model";
+import { isLabScenario, type LabScenario } from "@/lib/simulations/lab-scenarios";
 import type { TaxRun } from "@/lib/types";
 
-export type LabScenario =
-  | "ir"
-  | "pfu"
-  | "plus-value"
-  | "transmission"
-  | "demembrement"
-  | "assurance-vie"
-  | "dutreil"
-  | "holding-tax"
-  | "is"
-  | "sci-arbitrage"
-  | "exit-tax"
-  | "pea"
-  | "per"
-  | "bank-import"
-  | "succession-checklist"
-  | "per-early-exit"
-  | "succession-liquidity-stress"
-  | "product-adequacy";
+export type { LabScenario } from "@/lib/simulations/lab-scenarios";
 
 const scenarioLabels: Record<LabScenario, string> = {
   ir: "IR barème 2026",
@@ -97,8 +81,30 @@ const scenarioLabels: Record<LabScenario, string> = {
   "product-adequacy": "Adéquation produit",
 };
 
-export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenario?: LabScenario }) {
-  const [activeScenario, setActiveScenario] = useState<LabScenario>(initialScenario);
+export type LabCatalogContext = {
+  hypothesis: string;
+  reviewGate: string;
+};
+
+export function TaxScenarioLab({
+  initialScenario = "dutreil",
+  catalogContext,
+}: {
+  initialScenario?: LabScenario;
+  /** Hypothèses et gate de revue du catalogue — alimente les étapes 2 et 5 du parcours progressif. */
+  catalogContext?: LabCatalogContext;
+}) {
+  // Source de vérité unique : le scénario actif vit dans l'URL (?scenario=).
+  // Les blocs serveur (contexte, catalogue, traçabilité, ventilation) lisent le
+  // même paramètre — labo et page ne peuvent plus diverger. `initialScenario`
+  // (fourni par le serveur) sert de repli quand le paramètre est absent ou
+  // inconnu, garantissant un premier rendu identique au SSR.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const scenarioParam = searchParams.get("scenario");
+  const activeScenario: LabScenario = isLabScenario(scenarioParam)
+    ? scenarioParam
+    : initialScenario;
   const [showWhy, setShowWhy] = useState(true);
   const [runStatus, setRunStatus] = useState("Simulation prête à lancer");
 
@@ -272,7 +278,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
   return (
     <div className="space-y-5">
       <div className="grid gap-5 xl:grid-cols-[420px_1fr]">
-        <Card>
+        <Card id="donnees" className="scroll-mt-24">
           <CardHeader>
             <div>
               <CardTitle>Laboratoire de simulation paramétrable</CardTitle>
@@ -290,7 +296,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
                 key={scenario}
                 type="button"
                 onClick={() => {
-                  setActiveScenario(scenario);
+                  router.replace(`/simulations/lab?scenario=${scenario}`, { scroll: false });
                   setRunStatus("Simulation prête à lancer");
                 }}
                 className={`min-h-10 rounded-lg border px-3 text-sm font-semibold transition ${
@@ -475,6 +481,18 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
             </div>
           ) : null}
 
+          {catalogContext ? (
+            <div
+              id="hypotheses"
+              className="mt-5 scroll-mt-24 rounded-lg border border-border bg-[var(--surface-soft)] p-3"
+            >
+              <p className="text-[0.66rem] font-semibold uppercase tracking-[0.14em] text-muted">
+                Hypothèses du scénario
+              </p>
+              <p className="mt-1 text-sm leading-6 text-foreground">{catalogContext.hypothesis}</p>
+            </div>
+          ) : null}
+
           <div className="mt-5 flex flex-wrap gap-3">
             <Button
               type="button"
@@ -491,7 +509,7 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
         </Card>
 
         <div className="space-y-5">
-          <Card>
+          <Card id="resultat" className="scroll-mt-24">
             <CardHeader>
               <div>
                 <CardTitle>{scenarioLabels[activeScenario]}</CardTitle>
@@ -512,12 +530,30 @@ export function TaxScenarioLab({ initialScenario = "dutreil" }: { initialScenari
           {activeScenario === "plus-value" ? <PvAllowancesChart /> : null}
           {activeScenario === "sci-arbitrage" ? <SciComparisonChart run={activeRun} /> : null}
 
-          <CalculationSteps steps={activeRun.steps} />
+          <div id="preuves" className="scroll-mt-24">
+            <CalculationSteps steps={activeRun.steps} />
+          </div>
         </div>
       </div>
 
       {showWhy && firstStep ? <WhyThisResultPanel step={firstStep} /> : null}
-      <LegalNotice compact />
+
+      <div id="revue" className="scroll-mt-24 space-y-5">
+        {catalogContext ? (
+          <Card accent>
+            <CardHeader className="mb-0">
+              <div>
+                <CardTitle>Revue humaine</CardTitle>
+                <p className="mt-2 text-sm leading-6 text-foreground">{catalogContext.reviewGate}</p>
+              </div>
+              <Badge tone="warning" dot>
+                Revue {activeRun.reviewerRequired}
+              </Badge>
+            </CardHeader>
+          </Card>
+        ) : null}
+        <LegalNotice compact />
+      </div>
     </div>
   );
 }
