@@ -239,6 +239,9 @@ export function simulateTransmissionV2({
   });
 }
 
+/** Pivot LF 2026 (loi n° 2026-103 du 19/02/2026) : engagement individuel 4 ans → 6 ans. */
+export const DUTREIL_LF2026_PIVOT_DATE = "2026-02-21";
+
 export function simulateDutreilV2({
   companyValue = 850_000,
   eligibleOperatingValue = 790_000,
@@ -251,7 +254,8 @@ export function simulateDutreilV2({
   donorAge = 65,
   fullOwnership = true,
   priorDonations = 0,
-  donationBeforeFeb2026 = false,
+  transmissionDate = "2026-06-11",
+  transmissionKind = "gift",
 }: {
   companyValue?: number;
   eligibleOperatingValue?: number;
@@ -264,12 +268,26 @@ export function simulateDutreilV2({
   donorAge?: number;
   fullOwnership?: boolean;
   priorDonations?: number;
-  /** Réduction 50 % (art. 790 I) abrogée par la LF 2026 pour les transmissions à compter du 21/02/2026. */
-  donationBeforeFeb2026?: boolean;
+  /**
+   * Date du fait générateur (ISO `YYYY-MM-DD`). Détermine le régime applicable :
+   * avant le 21/02/2026 → engagement individuel 4 ans et exclusions LF 2026 non
+   * applicables ; à compter du 21/02/2026 → 6 ans et exclusions LF 2026.
+   */
+  transmissionDate?: string;
+  /** La réduction de l'art. 790 CGI ne vise que les donations, pas les successions. */
+  transmissionKind?: "gift" | "inheritance";
 } = {}) {
-  const totalExcludedValue = nonEligibleAssets + excludedLuxuryAssetsValue;
+  // Comparaison lexicographique valide entre dates ISO de même format.
+  const lf2026RegimeApplied = transmissionDate >= DUTREIL_LF2026_PIVOT_DATE;
+  const requiredIndividualCommitmentYears = lf2026RegimeApplied ? 6 : 4;
+  // Les exclusions d'actifs LF 2026 ne sont pas rétroactives.
+  const lf2026ExcludedValue = lf2026RegimeApplied ? excludedLuxuryAssetsValue : 0;
+  const totalExcludedValue = nonEligibleAssets + lf2026ExcludedValue;
   const eligibleBase = Math.max(0, Math.min(eligibleOperatingValue, companyValue - totalExcludedValue));
-  const eligible = collectiveCommitmentSigned && managementCommitmentSigned && individualCommitmentYears >= 6;
+  const eligible =
+    collectiveCommitmentSigned &&
+    managementCommitmentSigned &&
+    individualCommitmentYears >= requiredIndividualCommitmentYears;
   const exemptValue = eligible ? Math.round(eligibleBase * 0.75) : 0;
   const taxableBeforeOtherAllowances = companyValue - exemptValue;
 
@@ -280,14 +298,18 @@ export function simulateDutreilV2({
     relationship: "direct-line",
     priorDonationsWithin15Years: priorDonations,
   });
-  // Réduction 50 % art. 790 I : uniquement donations antérieures au 21/02/2026,
-  // donateur < 70 ans et transmission en pleine propriété (abrogée par la LF 2026).
+  // Réduction de 50 % des droits : article 790 CGI (à ne pas confondre avec
+  // l'ancien article 790 I). Toujours en vigueur au 18/08/2026 : la LF 2026 ne
+  // l'a pas abrogée. Conditions : donation en pleine propriété de titres
+  // éligibles Dutreil et donateur de moins de 70 ans. Aucune condition de date.
   const fiftyPercentReductionApplicable =
-    donationBeforeFeb2026 && eligible && fullOwnership && donorAge < 70;
+    transmissionKind === "gift" && eligible && fullOwnership && donorAge < 70;
+  const rightsBeforeArticle790PerChild = withDutreilPerChild.tax;
   const rightsWithDutreilPerChild = fiftyPercentReductionApplicable
-    ? Math.round(withDutreilPerChild.tax * 0.5)
-    : withDutreilPerChild.tax;
+    ? Math.round(rightsBeforeArticle790PerChild * 0.5)
+    : rightsBeforeArticle790PerChild;
   const rightsWithDutreil = rightsWithDutreilPerChild * childCount;
+  const rightsBeforeArticle790 = rightsBeforeArticle790PerChild * childCount;
   const withoutDutreilPerChild = computeDmtgForShare({
     grossShare: Math.round(companyValue / childCount),
     relationship: "direct-line",
@@ -302,9 +324,9 @@ export function simulateDutreilV2({
       order: 1,
       label: "Éligibilité Dutreil LF 2026",
       inputValue: `${collectiveCommitmentSigned} / ${managementCommitmentSigned} / ${individualCommitmentYears} ans`,
-      formula: "engagement collectif + fonction de direction + engagement individuel 6 ans",
+      formula: `engagement collectif + fonction de direction + engagement individuel ${requiredIndividualCommitmentYears} ans (transmission du ${transmissionDate}, régime ${lf2026RegimeApplied ? "LF 2026" : "antérieur au 21/02/2026"})`,
       outputValue: eligible ? "Éligible sous réserve" : "Non éligible",
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -314,9 +336,11 @@ export function simulateDutreilV2({
       order: 2,
       label: "Actifs exclus ou non affectés",
       inputValue: `${nonEligibleAssets} / ${excludedLuxuryAssetsValue}`,
-      formula: "actifs non éligibles + biens somptuaires à exclure",
+      formula: lf2026RegimeApplied
+        ? "actifs non éligibles + biens somptuaires exclus (LF 2026)"
+        : "actifs non éligibles ; exclusions LF 2026 non applicables avant le 21/02/2026",
       outputValue: totalExcludedValue,
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: totalExcludedValue > 0 ? "needs_review" : "indicative",
@@ -329,7 +353,7 @@ export function simulateDutreilV2({
       inputValue: eligibleBase,
       formula: "valeur éligible nette x 75 %",
       outputValue: exemptValue,
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -342,7 +366,7 @@ export function simulateDutreilV2({
       inputValue: `${taxableBeforeOtherAllowances} € / ${childCount} bénéficiaire(s)`,
       formula: "base après exonération 75 % → abattement 100 000 € → barème DMTG ligne directe",
       outputValue: rightsWithDutreil,
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-impots-dmtg-bareme-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -351,18 +375,19 @@ export function simulateDutreilV2({
     makeStep({
       id: "dutreil-step-reduction-790",
       order: 5,
-      label: "Réduction 50 % art. 790 I (abrogée LF 2026)",
-      inputValue: `donateur ${donorAge} ans / ${fullOwnership ? "pleine propriété" : "démembrement"}`,
+      label: "Réduction 50 % art. 790 CGI",
+      inputValue: `donateur ${donorAge} ans / ${fullOwnership ? "pleine propriété" : "démembrement"} / ${transmissionKind === "gift" ? "donation" : "succession"}`,
       formula:
-        "réduction 50 % des droits si donateur < 70 ans en pleine propriété — abrogée pour les transmissions à compter du 21/02/2026 (loi 2026-103)",
+        "réduction de 50 % des droits liquidés si donation en pleine propriété de titres éligibles Dutreil et donateur < 70 ans (art. 790 CGI, non abrogé par la LF 2026)",
       outputValue: fiftyPercentReductionApplicable
-        ? "Appliquée (donation antérieure au 21/02/2026)"
-        : "Non applicable (abrogée LF 2026)",
-      ruleVersionId: "rule-dutreil-2026-v3",
+        ? "Appliquée (art. 790 CGI)"
+        : "Non applicable (conditions art. 790 non réunies)",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-bofip-dmtg-reduction-790-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
-      nextAction: "Vérifier la date de la donation par rapport au 21/02/2026 et le régime transitoire.",
+      nextAction:
+        "Faire confirmer par le notaire la pleine propriété, l'âge du donateur et l'éligibilité Dutreil ; ne pas confondre avec l'ancien art. 790 I.",
     }),
     makeStep({
       id: "dutreil-step-savings",
@@ -371,7 +396,7 @@ export function simulateDutreilV2({
       inputValue: `${rightsWithoutDutreil} € sans pacte / ${rightsWithDutreil} € avec pacte`,
       formula: "droits sans Dutreil − droits avec Dutreil",
       outputValue: dutreilSavings,
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -409,8 +434,13 @@ export function simulateDutreilV2({
       children: childCount,
       donorAge,
       fullOwnership,
-      donationBeforeFeb2026,
+      transmissionDate,
+      transmissionKind,
+      lf2026RegimeApplied,
+      requiredIndividualCommitmentYears,
       fiftyPercentReductionApplicable,
+      article790ReductionRate: fiftyPercentReductionApplicable ? 0.5 : 0,
+      rightsBeforeArticle790,
       rightsWithDutreil,
       rightsWithoutDutreil,
       dutreilSavings,

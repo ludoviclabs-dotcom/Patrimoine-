@@ -113,60 +113,136 @@ describe("V3.1 — démembrement art. 669", () => {
   });
 });
 
-describe("V3.1 — Dutreil v3 (chaînage DMTG)", () => {
+describe("V3.1 — Dutreil v4 (chaînage DMTG)", () => {
+  /** Cas de référence : société 2 M€, 100 % opérationnelle, 1 bénéficiaire en ligne directe. */
+  const base = {
+    companyValue: 2_000_000,
+    eligibleOperatingValue: 2_000_000,
+    nonEligibleAssets: 0,
+    children: 1,
+    donorAge: 65,
+  };
+
   it("chiffre l'économie vs sans pacte : 2 M€, donateur 65 ans → > 370 000 €", () => {
-    const run = simulateDutreilV2({
-      companyValue: 2_000_000,
-      eligibleOperatingValue: 2_000_000,
-      nonEligibleAssets: 0,
-      children: 1,
-      donorAge: 65,
-    });
-    // Sans pacte : 1 900 000 € taxables → 617 394 € ; avec pacte : 400 000 € → 78 195 €
+    const run = simulateDutreilV2(base);
+    // Sans pacte : 1 900 000 € taxables → 617 394 €.
+    // Avec pacte : 400 000 € taxables → 78 195 €, puis réduction art. 790 → 39 098 €.
     expect(run.computedResult?.rightsWithoutDutreil).toBe(617_394);
-    expect(run.computedResult?.rightsWithDutreil).toBe(78_195);
-    expect(run.computedResult?.dutreilSavings).toBe(539_199);
+    expect(run.computedResult?.rightsBeforeArticle790).toBe(78_195);
+    expect(run.computedResult?.rightsWithDutreil).toBe(39_098);
+    expect(run.computedResult?.dutreilSavings).toBe(578_296);
     expect(Number(run.computedResult?.dutreilSavings)).toBeGreaterThan(370_000);
   });
 
-  it("n'applique la réduction 50 % (790 I) qu'aux donations antérieures au 21/02/2026", () => {
-    const base = {
-      companyValue: 2_000_000,
-      eligibleOperatingValue: 2_000_000,
-      nonEligibleAssets: 0,
-      children: 1,
-      donorAge: 65,
-    };
-    const after = simulateDutreilV2(base);
-    expect(after.computedResult?.fiftyPercentReductionApplicable).toBe(false);
+  // --- GOLDEN CASES art. 790 CGI (TAX-P0-001) -------------------------------
+  // Source : REGLEMENTATION_AOUT_2026.md § 7.5 et § 17 (registre P0).
+  // L'article 790 CGI (réduction de 50 % des droits) est TOUJOURS en vigueur au
+  // 18/08/2026 : il n'a pas été abrogé par la LF 2026. La V3 le confondait avec
+  // l'ancien article 790 I et le désactivait après le 21/02/2026, ce qui
+  // surévaluait les droits.
+  it("golden — art. 790 : réduction 50 % maintenue pour une donation POSTÉRIEURE au 21/02/2026", () => {
+    const run = simulateDutreilV2({ ...base, transmissionDate: "2026-06-01" });
+    expect(run.computedResult?.fiftyPercentReductionApplicable).toBe(true);
+    expect(run.computedResult?.article790ReductionRate).toBe(0.5);
+    expect(run.computedResult?.rightsWithDutreil).toBe(39_098);
+  });
 
-    const before = simulateDutreilV2({ ...base, donationBeforeFeb2026: true });
-    expect(before.computedResult?.fiftyPercentReductionApplicable).toBe(true);
-    expect(before.computedResult?.rightsWithDutreil).toBe(39_098);
+  it("golden — art. 790 : réduction 50 % également acquise AVANT le 21/02/2026", () => {
+    const run = simulateDutreilV2({ ...base, transmissionDate: "2026-01-15" });
+    expect(run.computedResult?.fiftyPercentReductionApplicable).toBe(true);
+    expect(run.computedResult?.rightsWithDutreil).toBe(39_098);
+  });
 
-    // 70 ans ou plus, ou démembrement : pas de réduction même avant l'abrogation.
+  it("golden — art. 790 : non-régression du taux de 50 % au 18/08/2026", () => {
     expect(
-      simulateDutreilV2({ ...base, donationBeforeFeb2026: true, donorAge: 70 }).computedResult
+      simulateDutreilV2({ ...base, transmissionDate: "2026-08-18" }).computedResult
+        ?.article790ReductionRate,
+    ).toBe(0.5);
+  });
+
+  it("golden — art. 790 : seuil d'âge du donateur (69 ans oui / 70 ans non)", () => {
+    expect(
+      simulateDutreilV2({ ...base, donorAge: 69 }).computedResult?.fiftyPercentReductionApplicable,
+    ).toBe(true);
+    expect(
+      simulateDutreilV2({ ...base, donorAge: 70 }).computedResult?.fiftyPercentReductionApplicable,
+    ).toBe(false);
+    // Sans réduction, les droits restent à leur montant plein.
+    expect(simulateDutreilV2({ ...base, donorAge: 70 }).computedResult?.rightsWithDutreil).toBe(
+      78_195,
+    );
+  });
+
+  it("golden — art. 790 : exclue hors pleine propriété et hors donation", () => {
+    expect(
+      simulateDutreilV2({ ...base, fullOwnership: false }).computedResult
         ?.fiftyPercentReductionApplicable,
     ).toBe(false);
+    // L'article 790 ne vise que les donations, pas les successions.
     expect(
-      simulateDutreilV2({ ...base, donationBeforeFeb2026: true, fullOwnership: false })
-        .computedResult?.fiftyPercentReductionApplicable,
+      simulateDutreilV2({ ...base, transmissionKind: "inheritance" }).computedResult
+        ?.fiftyPercentReductionApplicable,
     ).toBe(false);
+  });
+
+  it("golden — art. 790 : pas de réduction si le pacte n'est pas éligible", () => {
+    const run = simulateDutreilV2({ ...base, collectiveCommitmentSigned: false });
+    expect(run.computedResult?.eligible).toBe(false);
+    expect(run.computedResult?.fiftyPercentReductionApplicable).toBe(false);
+  });
+
+  // --- GOLDEN CASES pivot LF 2026 du 21/02/2026 (TAX-P0-007) ----------------
+  // Engagement individuel : 4 ans avant le 21/02/2026, 6 ans à compter de cette
+  // date. Les exclusions d'actifs LF 2026 ne sont pas rétroactives.
+  it("golden — pivot 21/02/2026 : engagement individuel 4 ans avant, 6 ans après", () => {
+    // 4 ans suffisent sous le régime antérieur.
+    expect(
+      simulateDutreilV2({
+        ...base,
+        transmissionDate: "2026-01-15",
+        individualCommitmentYears: 4,
+      }).computedResult?.eligible,
+    ).toBe(true);
+    // 4 ans ne suffisent plus à compter du 21/02/2026.
+    expect(
+      simulateDutreilV2({ ...base, individualCommitmentYears: 4 }).computedResult?.eligible,
+    ).toBe(false);
+  });
+
+  it("golden — pivot 21/02/2026 : bascule exacte au jour près", () => {
+    const eve = simulateDutreilV2({ ...base, transmissionDate: "2026-02-20" });
+    expect(eve.computedResult?.lf2026RegimeApplied).toBe(false);
+    expect(eve.computedResult?.requiredIndividualCommitmentYears).toBe(4);
+
+    const pivot = simulateDutreilV2({ ...base, transmissionDate: "2026-02-21" });
+    expect(pivot.computedResult?.lf2026RegimeApplied).toBe(true);
+    expect(pivot.computedResult?.requiredIndividualCommitmentYears).toBe(6);
+  });
+
+  it("golden — exclusions d'actifs LF 2026 non rétroactives", () => {
+    const luxury = { ...base, excludedLuxuryAssetsValue: 200_000 };
+    // Avant le 21/02/2026 : exclusion non appliquée → base éligible intacte.
+    expect(
+      simulateDutreilV2({ ...luxury, transmissionDate: "2026-01-15", individualCommitmentYears: 4 })
+        .computedResult?.exemptValue,
+    ).toBe(1_500_000);
+    // À compter du 21/02/2026 : exclusion appliquée.
+    expect(simulateDutreilV2(luxury).computedResult?.exemptValue).toBe(1_350_000);
   });
 
   it("préserve les invariants v2 (exonération 75 %, exclusions)", () => {
     expect(simulateDutreilV2().computedResult?.exemptValue).toBe(592_500);
     expect(simulateDutreilV2({ individualCommitmentYears: 5 }).computedResult?.exemptValue).toBe(0);
     const run = simulateDutreilV2();
-    expect(run.steps.every((step) => step.ruleVersionId === "rule-dutreil-2026-v3")).toBe(true);
+    expect(run.steps.every((step) => step.ruleVersionId === "rule-dutreil-2026-v4")).toBe(true);
   });
 
-  it("documente le diff v2 → v3 (abrogation réduction 790 I)", () => {
+  it("documente le diff v3 → v4 (rétablissement de la réduction art. 790)", () => {
     const diff = getDutreilRegulatoryDiff();
-    expect(diff.amountBefore).toBe(39_098);
-    expect(diff.amountAfter).toBe(78_195);
-    expect(diff.delta).toBe(39_097);
+    // V3 : droits pleins 78 195 € → V4 : 39 098 € après réduction art. 790.
+    expect(diff.amountBefore).toBe(78_195);
+    expect(diff.amountAfter).toBe(39_098);
+    expect(diff.delta).toBe(-39_097);
     expect(diff.status).toBe("review_required");
   });
 });
@@ -251,7 +327,9 @@ describe("V3.1 — intégration produit", () => {
     expect(getSimulationByParam("demembrement")?.scenarioParam).toBe("demembrement");
     expect(getSimulationByParam("usufruit")?.scenarioParam).toBe("demembrement");
     expect(getSimulationByParam("assurance-vie")?.scenarioParam).toBe("assurance-vie");
-    expect(ruleVersions.some((rule) => rule.id === "rule-dutreil-2026-v3" && rule.status === "active")).toBe(true);
+    // V4 active (correction art. 790), V3 archivée : cycle de vie draft → active → archived.
+    expect(ruleVersions.some((rule) => rule.id === "rule-dutreil-2026-v4" && rule.status === "active")).toBe(true);
+    expect(ruleVersions.some((rule) => rule.id === "rule-dutreil-2026-v3" && rule.status === "archived")).toBe(true);
     expect(ruleVersions.some((rule) => rule.id === "rule-assurance-vie-990i-757b-2026-v1")).toBe(true);
     expect(evidenceSources.some((source) => source.id === "src-bofip-tcas-aut-60-2026")).toBe(true);
     expect(evidenceSources.some((source) => source.id === "src-bofip-dmtg-reduction-790-2026")).toBe(true);

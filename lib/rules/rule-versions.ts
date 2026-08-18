@@ -276,6 +276,20 @@ export const ruleVersions: RuleVersion[] = [
     version: "DUTREIL-2026.06-V3",
     title: "Pacte Dutreil V3 : chaînage DMTG, économie vs sans pacte, réduction 790 I abrogée",
     effectiveFrom: "2026-06-11",
+    status: "archived",
+    evidenceSourceIds: [
+      "src-legifrance-dutreil-2026",
+      "src-impots-dmtg-bareme-2026",
+      "src-bofip-dmtg-reduction-790-2026",
+    ],
+  },
+  {
+    id: "rule-dutreil-2026-v4",
+    ruleSet: "dutreil",
+    version: "DUTREIL-2026.08-V4",
+    title:
+      "Pacte Dutreil V4 : réduction art. 790 maintenue (50 %), pivot 21/02/2026 (4 → 6 ans) et exclusions LF 2026 non rétroactives",
+    effectiveFrom: "2026-01-01",
     status: "active",
     evidenceSourceIds: [
       "src-legifrance-dutreil-2026",

@@ -136,7 +136,7 @@ export function TaxScenarioLab({
     children: 1,
     donorAge: 65,
     fullOwnership: true,
-    donationBeforeFeb2026: false,
+    transmissionDate: "2026-06-11",
   });
   const [holding, setHolding] = useState({
     isSubjectToCorporateTax: true,
@@ -365,7 +365,7 @@ export function TaxScenarioLab({
               <CheckboxInput label="Engagement collectif signé" checked={dutreil.collectiveCommitmentSigned} onChange={(checked) => setDutreil((item) => ({ ...item, collectiveCommitmentSigned: checked }))} />
               <CheckboxInput label="Fonction de direction documentée" checked={dutreil.managementCommitmentSigned} onChange={(checked) => setDutreil((item) => ({ ...item, managementCommitmentSigned: checked }))} />
               <CheckboxInput label="Donation en pleine propriété" checked={dutreil.fullOwnership} onChange={(checked) => setDutreil((item) => ({ ...item, fullOwnership: checked }))} />
-              <CheckboxInput label="Donation antérieure au 21/02/2026 (réduction 790 I)" checked={dutreil.donationBeforeFeb2026} onChange={(checked) => setDutreil((item) => ({ ...item, donationBeforeFeb2026: checked }))} />
+              <CheckboxInput label="Transmission antérieure au 21/02/2026 (engagement 4 ans, hors exclusions LF 2026)" checked={dutreil.transmissionDate < "2026-02-21"} onChange={(checked) => setDutreil((item) => ({ ...item, transmissionDate: checked ? "2026-01-15" : "2026-06-11" }))} />
             </div>
           ) : null}
 
