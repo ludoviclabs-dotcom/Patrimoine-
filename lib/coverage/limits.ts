@@ -124,6 +124,15 @@ export const coverageLimits: CoverageLimit[] = [
     requiredProfessional: "avocat",
   },
   {
+    id: "coverage-plus-value-main-residence",
+    module: "plus-value",
+    label: "Exonération résidence principale",
+    status: "partially_covered",
+    explanation:
+      "Occupation effective au jour de la cession et tolérance de vente après déménagement (délai ≤ 1 an) couvertes ; dépendances immédiates et nécessaires, terrain à bâtir et situations factuelles incomplètes restent à qualifier par le professionnel.",
+    requiredProfessional: "avocat",
+  },
+  {
     id: "coverage-sci-arbitrage",
     module: "sci",
     label: "Arbitrage SCI/direct",

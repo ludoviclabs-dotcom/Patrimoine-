@@ -70,7 +70,17 @@ export const ruleVersions: RuleVersion[] = [
     version: "PV-IMMO-2026.06-V2",
     title: "Plus-value immobilière V2 : forfaits 7,5 %/15 %, abattements exacts et arrondi officiel",
     effectiveFrom: "2026-06-11",
-    status: "draft",
+    status: "archived",
+    evidenceSourceIds: ["src-bofip-plus-value-immobiliere", "src-impots-2048-imm-2026"],
+  },
+  {
+    id: "rule-plus-value-immobiliere-2026-v3",
+    ruleSet: "plus-value",
+    version: "PV-IMMO-2026.08-V3",
+    title:
+      "Plus-value immobilière V3 : exonération résidence principale qualifiée (eligible/not-eligible/needs_review), plus abattements et forfaits V2",
+    effectiveFrom: "2026-01-01",
+    status: "active",
     evidenceSourceIds: ["src-bofip-plus-value-immobiliere", "src-impots-2048-imm-2026"],
   },
   {

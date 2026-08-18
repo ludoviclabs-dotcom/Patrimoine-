@@ -122,7 +122,14 @@ describe("V2 cabinet fiscal product layer", () => {
       socialAllowanceRate: 1,
     });
 
-    expect(simulateRealEstateGainV2({ isMainResidence: true }).resultAmount).toBe(0);
+    // TAX-P0-006 : un simple booléen ne suffit plus à exonérer — voir le bloc
+    // golden dédié dans v3-quick-wins.test.ts pour la matrice complète.
+    expect(
+      simulateRealEstateGainV2({
+        isMainResidence: true,
+        mainResidenceQualification: { occupiedAtSale: true },
+      }).resultAmount,
+    ).toBe(0);
     expect(
       simulateRealEstateGainV2({
         salePrice: 900_000,

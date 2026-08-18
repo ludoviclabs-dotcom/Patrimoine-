@@ -103,10 +103,15 @@ describe("V3 quick wins — plus-value immobilière v2", () => {
   });
 
   it("garde le wrapper v2 fonctionnel (non-régression de surface)", () => {
-    expect(simulateRealEstateGainV2({ isMainResidence: true }).resultAmount).toBe(0);
+    expect(
+      simulateRealEstateGainV2({
+        isMainResidence: true,
+        mainResidenceQualification: { occupiedAtSale: true },
+      }).resultAmount,
+    ).toBe(0);
     expect(simulateRealEstateGainV2({ yearsHeld: 9 }).resultAmount).toBeGreaterThan(0);
     const run = simulatePvImmoV3();
-    expect(run.steps.every((step) => step.ruleVersionId === "rule-plus-value-immobiliere-2026-v2")).toBe(true);
+    expect(run.steps.every((step) => step.ruleVersionId === "rule-plus-value-immobiliere-2026-v3")).toBe(true);
   });
 
   it("documente le diff de règle v1 → v2 avec dossiers à recalculer", () => {
@@ -114,6 +119,150 @@ describe("V3 quick wins — plus-value immobilière v2", () => {
     expect(diff.status).toBe("review_required");
     expect(diff.impactedRuns.length).toBeGreaterThan(0);
     expect(diff.amountAfter).toBe(4_279 + 9_326);
+  });
+
+  // --- GOLDEN CASES résidence principale (TAX-P0-006) -----------------------
+  // Source : REGLEMENTATION_AOUT_2026.md § 17 (TAX-P0-006), § 5.6 protocole
+  // PF-01B, CGI art. 150 U II-1°, BOFiP RFPI-PVI-10-40-10. Un booléen
+  // `isMainResidence` déclaré seul ne doit plus jamais produire une
+  // exonération totale automatique.
+  describe("V3.5 — exonération résidence principale qualifiée (TAX-P0-006)", () => {
+    const base = {
+      salePrice: 720_000,
+      purchasePrice: 420_000,
+      acquisitionCosts: 31_500,
+      works: 35_000,
+      yearsHeld: 9,
+    } as const;
+    const normalTax = { incomeTax: 33_717, socialTax: 37_511, surtax: 7_098, estimatedTax: 78_326 };
+
+    it("golden 1 — résidence principale clairement éligible : occupation confirmée au jour de la cession", () => {
+      const result = computePvImmo({
+        ...base,
+        isMainResidence: true,
+        mainResidenceQualification: { occupiedAtSale: true },
+      });
+      expect(result.mainResidenceAssessment).toBe("eligible");
+      expect(result.mainResidenceExempt).toBe(true);
+      expect(result.estimatedTax).toBe(0);
+    });
+
+    it("golden 2 — résidence secondaire : imposition normale, aucune exonération évaluée", () => {
+      const result = computePvImmo(base);
+      expect(result.isMainResidence).toBe(false);
+      expect(result.mainResidenceAssessment).toBeNull();
+      expect(result.mainResidenceExempt).toBe(false);
+      expect(result.estimatedTax).toBe(normalTax.estimatedTax);
+    });
+
+    it("golden 3 — résidence principale déclarée mais informations insuffisantes : needs_review, jamais d'exonération automatique", () => {
+      const result = computePvImmo({ ...base, isMainResidence: true });
+      expect(result.mainResidenceAssessment).toBe("needs_review");
+      expect(result.mainResidenceExempt).toBe(false);
+      expect(result.estimatedTax).toBe(normalTax.estimatedTax);
+      expect(result.mainResidenceAssessmentReason).toMatch(/non renseignée/);
+    });
+
+    it("golden 4 — départ avant cession : tolérance BOFiP appliquée si vente diligente dans l'année", () => {
+      const withinDelay = computePvImmo({
+        ...base,
+        isMainResidence: true,
+        mainResidenceQualification: {
+          occupiedAtSale: false,
+          vacantWithActiveSaleEffort: true,
+          monthsBetweenVacatingAndSale: 6,
+        },
+      });
+      expect(withinDelay.mainResidenceAssessment).toBe("eligible");
+      expect(withinDelay.estimatedTax).toBe(0);
+
+      // Pile au seuil légal d'un an : encore éligible.
+      const atThreshold = computePvImmo({
+        ...base,
+        isMainResidence: true,
+        mainResidenceQualification: {
+          occupiedAtSale: false,
+          vacantWithActiveSaleEffort: true,
+          monthsBetweenVacatingAndSale: 12,
+        },
+      });
+      expect(atThreshold.mainResidenceAssessment).toBe("eligible");
+
+      // Au-delà d'un an : nécessite une appréciation professionnelle, pas d'exonération automatique.
+      const overDelay = computePvImmo({
+        ...base,
+        isMainResidence: true,
+        mainResidenceQualification: {
+          occupiedAtSale: false,
+          vacantWithActiveSaleEffort: true,
+          monthsBetweenVacatingAndSale: 18,
+        },
+      });
+      expect(overDelay.mainResidenceAssessment).toBe("needs_review");
+      expect(overDelay.mainResidenceExempt).toBe(false);
+      expect(overDelay.estimatedTax).toBe(normalTax.estimatedTax);
+    });
+
+    it("golden 5 — bien vacant, situation ambiguë : needs_review plutôt qu'une exclusion arbitraire", () => {
+      const result = computePvImmo({
+        ...base,
+        isMainResidence: true,
+        mainResidenceQualification: { occupiedAtSale: false },
+      });
+      expect(result.mainResidenceAssessment).toBe("needs_review");
+      expect(result.mainResidenceExempt).toBe(false);
+      expect(result.estimatedTax).toBe(normalTax.estimatedTax);
+
+      // Vacance établie sans diligence de vente (loué/prêté) : exclusion positive, pas une ambiguïté.
+      const noEffort = computePvImmo({
+        ...base,
+        isMainResidence: true,
+        mainResidenceQualification: { occupiedAtSale: false, vacantWithActiveSaleEffort: false },
+      });
+      expect(noEffort.mainResidenceAssessment).toBe("not-eligible");
+      expect(noEffort.mainResidenceExempt).toBe(false);
+    });
+
+    it("golden 6 — un needs_review ne bénéficie jamais silencieusement d'une exonération complète", () => {
+      const scenarios = [
+        computePvImmo({ ...base, isMainResidence: true }),
+        computePvImmo({
+          ...base,
+          isMainResidence: true,
+          mainResidenceQualification: { occupiedAtSale: false },
+        }),
+        computePvImmo({
+          ...base,
+          isMainResidence: true,
+          mainResidenceQualification: {
+            occupiedAtSale: false,
+            vacantWithActiveSaleEffort: true,
+            monthsBetweenVacatingAndSale: 24,
+          },
+        }),
+      ];
+      for (const result of scenarios) {
+        expect(result.mainResidenceAssessment).toBe("needs_review");
+        expect(result.mainResidenceExempt).toBe(false);
+        expect(result.incomeTaxAllowanceRate).toBeLessThan(1);
+        expect(result.estimatedTax).toBeGreaterThan(0);
+      }
+    });
+
+    it("golden 7 — le run complet reflète l'étape dédiée et le statut needs_review sans exonération", () => {
+      const run = simulatePvImmoV3({ ...base, isMainResidence: true });
+      const step = run.steps.find((s) => s.id === "pvi-step-main-residence");
+      expect(step).toBeDefined();
+      expect(step?.confidenceStatus).toBe("needs_review");
+      expect(step?.ruleVersionId).toBe("rule-plus-value-immobiliere-2026-v3");
+      expect(step?.coverageLimitIds).toContain("coverage-plus-value-main-residence");
+      expect(run.resultAmount).toBe(normalTax.estimatedTax);
+      expect(run.resultLabel).toMatch(/revue requise/);
+
+      // Résidence secondaire : pas d'étape résidence principale du tout.
+      const secondaryRun = simulatePvImmoV3(base);
+      expect(secondaryRun.steps.some((s) => s.id === "pvi-step-main-residence")).toBe(false);
+    });
   });
 });
 

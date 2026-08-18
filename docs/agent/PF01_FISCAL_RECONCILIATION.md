@@ -53,7 +53,7 @@ comme réellement présents dans le code.
 | PFU | Constante globale 31,4 % (12,8 + 18,6) appliquée à toute assiette | Profil de taux par catégorie de revenu ; assurance-vie maintenue à 17,2 % (PFU 30 %) | Absent | § 17 TAX-P0-002 | MISMATCH | **P0 — non corrigé** |
 | Apport-cession | 70 % / 36 mois en dur, sans date du fait générateur | Règle datée : 60 %/2 ans avant le 21/02/2026, 70 %/3 ans à compter | Absent | § 8.2, § 17 TAX-P0-003 | PARTIAL | **P0 — non corrigé** |
 | Taxe holding | `(somptuaires + financiers + immobilier + liquidités) × 20 %` | Liste fermée art. 235 ter C, assiette et taux à qualifier | Absent | § 9, § 17 TAX-P0-004 | MISMATCH | **P0 — non corrigé** |
-| Résidence principale | Booléen `isMainResidence` → exonération 100 % automatique | Questionnaire factuel ; `professional-review` si délai > 1 an | Absent | § 17 TAX-P0-006 | MISMATCH | **P0 — non corrigé** |
+| Résidence principale | Booléen `isMainResidence` → exonération 100 % automatique | Questionnaire factuel ; `professional-review` si délai > 1 an | Absent → 7 golden cases (PF-01B) | § 17 TAX-P0-006 | MISMATCH | **P0 — corrigé (PF-01B)** |
 | E-facturation | Échéance en chaîne statique `"1er septembre 2026"` | État daté, bascule au 1er septembre | Absent | § 17 TAX-P0-005 | PARTIAL | **P0 — non corrigé** |
 | IR / CEHR / CDHR | Barème, quotient plafonné, décote, CEHR et CDHR distinctes | Conforme au référentiel | Cas officiel service-public présent | § 1, § 3 | MATCH | N/A |
 | DMTG multi-liens | Barèmes 777, abattements 779/790 B, rappel 15 ans, arrondi par tranche | Conforme ; arrondi reproduit l'exemple officiel (50 000 € → 8 195 €) | Présent | § 6 | MATCH | N/A |
@@ -115,6 +115,60 @@ comme réellement présents dans le code.
 - Le diff réglementaire est devenu un diff **V3 → V4** documentant la
   correction et exigeant le recalcul des dossiers liquidés sous la V3.
 
+### TAX-P0-006 — Exonération résidence principale sur simple booléen (PF-01B)
+
+- **Root cause** : `computePvImmo` traitait `isMainResidence: boolean` comme
+  suffisant à lui seul pour appliquer une exonération de 100 % (`incomeTaxAllowanceRate = 1`,
+  `socialAllowanceRate = 1`, `surtax = 0`), sans aucune donnée factuelle sur
+  l'occupation du bien au jour de la cession. Un simple `isMainResidence: true`
+  produisait une exonération totale certaine — c'est une **sous-estimation de
+  l'impôt**, le seul des P0 identifiés en PF-01 à produire une exonération
+  indue plutôt qu'une surévaluation.
+- **Comportement précédent** : `isMainResidence: true` seul → `estimatedTax = 0`,
+  quelles que soient les circonstances réelles de départ, de vacance ou de
+  mise en vente.
+- **Comportement corrigé** : `isMainResidence` ne fait plus que déclarer le
+  bien candidat à l'exonération. Le résultat réel dépend de
+  `assessMainResidenceExemption(mainResidenceQualification)`, qui distingue
+  trois issues :
+  - `eligible` — occupation effective confirmée au jour de la cession, ou
+    vacance avec diligences de vente actives et délai ≤ 12 mois (tolérance
+    BOFiP) → exonération totale appliquée ;
+  - `not-eligible` — les faits excluent positivement la tolérance (logement
+    loué, prêté, ou non activement mis en vente) → imposition normale ;
+  - `needs_review` — informations absentes ou ambiguës (déclaration seule
+    sans qualification, vacance sans diligence renseignée, délai non établi
+    ou supérieur à 12 mois) → **imposition normale, jamais d'exonération
+    automatique**, avec motif explicite et action de revue.
+  Seule l'issue `eligible` déclenche l'exonération ; `not-eligible` et
+  `needs_review` produisent exactement le même calcul (durée de détention,
+  abattements, surtaxe) que pour un bien non déclaré résidence principale.
+- **Modélisation** : ajout minimal et additif de `MainResidenceQualification`
+  (`occupiedAtSale`, `vacantWithActiveSaleEffort`, `monthsBetweenVacatingAndSale`)
+  dans `PvImmoInput`, sans migration du modèle patrimonial ni breaking change —
+  `isMainResidence` reste utilisable seul (résultat : `needs_review`, plus
+  jamais d'exonération silencieuse).
+- **Rule ID / version** : `rule-plus-value-immobiliere-2026-v3`
+  (`PV-IMMO-2026.08-V3`), statut `active` ; `rule-plus-value-immobiliere-2026-v2`
+  passée en `archived`.
+- **Date d'effet** : 2026-01-01 (aucun changement de régime dans le temps —
+  correction de modélisation, pas d'évolution légale datée).
+- **Source** : CGI art. 150 U, II-1° ; BOFiP RFPI-PVI-10-40-10 ; référentiel
+  `REGLEMENTATION_AOUT_2026.md` § 17 (TAX-P0-006) et § 5.6 du protocole
+  PF-01B ; implémentation de référence `MOTEURS_FISCAUX_2026.ts`
+  `assessMainResidenceExemption` (L1121-1196) et son câblage dans
+  `computeRealEstateCapitalGain2026` (L1295-1322) — seul `assessment === "eligible"`
+  déclenche l'exonération totale, `professional-review` retombe sur le calcul
+  normal, conformément au modèle repris ici.
+- **Nouvelle étape de calcul** : `pvi-step-main-residence`, ajoutée uniquement
+  quand `isMainResidence` est déclaré, avec `coverageLimitIds: ["coverage-plus-value-main-residence"]`
+  (nouvelle limite de couverture dédiée) et `confidenceStatus` reflétant
+  l'issue de l'évaluation.
+- **Fichiers corrigés** : `lib/tax/engines/pv-immo.ts`, `lib/rules/rule-versions.ts`,
+  `lib/coverage/limits.ts`, `components/v2/tax-scenario-lab.tsx`,
+  `components/v3/forms/pv-immo-form.tsx`.
+- **Statut** : **FIXED**, 7 golden cases ajoutés.
+
 ## 5. Golden cases
 
 Le golden case existant `tests/unit/v3-1-transmission.test.ts` **verrouillait la
@@ -124,7 +178,7 @@ antérieures au 21/02/2026 (cas explicitement visé par le protocole PF-01 :
 ajusté pour faire passer un calcul : la justification légale est documentée
 ci-dessus (§ 4, TAX-P0-001).
 
-Golden cases ajoutés (9 nouveaux tests, 183 → 191) :
+Golden cases ajoutés en PF-01 (9 nouveaux tests, 183 → 191) :
 
 | Cas | Attendu |
 |---|---|
@@ -137,6 +191,18 @@ Golden cases ajoutés (9 nouveaux tests, 183 → 191) :
 | Pivot — engagement 4 ans avant / 6 ans après | éligible avant, non éligible après |
 | Pivot — bascule exacte 20/02 vs 21/02 | régime antérieur puis régime LF 2026 |
 | Exclusions LF 2026 non rétroactives | 1 500 000 € avant, 1 350 000 € après |
+
+Golden cases ajoutés en PF-01B pour TAX-P0-006 (7 nouveaux tests, 191 → 198) :
+
+| Cas | Attendu |
+|---|---|
+| 1. Éligible — occupation confirmée au jour de la cession | `eligible`, exonération totale, impôt 0 € |
+| 2. Résidence secondaire | pas d'évaluation, imposition normale 78 326 € |
+| 3. Déclarée mais informations insuffisantes | `needs_review`, imposition normale, jamais 0 € |
+| 4. Départ avant cession : tolérance ≤ 12 mois vs > 12 mois | 6 et 12 mois → `eligible` ; 18 mois → `needs_review` |
+| 5. Vacance ambiguë vs vacance sans diligence | ambiguë → `needs_review` ; sans diligence → `not-eligible` |
+| 6. `needs_review` ne bénéficie jamais d'une exonération silencieuse | sur 3 scénarios : imposition normale systématique |
+| 7. Étape dédiée `pvi-step-main-residence` et compatibilité non-résidence-principale | étape présente et `needs_review` si déclarée sans preuve ; absente sinon |
 
 ### Écart d'arrondi documenté (non corrigé, volontaire)
 
@@ -154,11 +220,13 @@ La convention du dépôt est adossée à un exemple officiel : elle n'a **pas** 
 modifiée dans PF-01. L'écart est signalé ici pour arbitrage explicite, et non
 absorbé silencieusement.
 
-## 6. P0 confirmés et NON corrigés dans ce run
+## 6. P0 confirmés et NON corrigés
 
-Ces cinq P0 sont **confirmés présents dans le code** mais volontairement laissés
-hors périmètre de ce run : chacun demande une modification de fond sur un moteur
-distinct, et le protocole impose de corriger « un moteur à la fois ».
+Ces quatre P0 restent **confirmés présents dans le code** mais volontairement
+hors périmètre des runs PF-01/PF-01B : chacun demande une modification de fond
+sur un moteur distinct, et le protocole impose de corriger « un moteur à la
+fois ». TAX-P0-006, initialement dans cette liste, a été corrigé en PF-01B
+(voir § 4).
 
 | ID | Constat vérifié dans le code | Emplacement |
 |---|---|---|
@@ -166,12 +234,6 @@ distinct, et le protocole impose de corriger « un moteur à la fois ».
 | TAX-P0-003 | `requiredReinvestment = saleProceeds * 0.7` et `reinvestmentMonths <= 36` en dur, sans date de cession : le régime 2026 serait appliqué rétroactivement aux cessions antérieures au 21/02/2026. | `lib/tax/v2-engines.ts` L435-436 |
 | TAX-P0-004 | `holdingTax = taxableLuxuryInventory * 0.2` où l'inventaire additionne intégralement liquidités et actifs financiers : assiette ouverte, non conforme à la liste fermée de l'art. 235 ter C. | `lib/tax/v2-engines.ts` L529-531 |
 | TAX-P0-005 | Échéance stockée en chaîne statique `"1er septembre 2026"` ; aucun état passé/futur calculé par rapport à la date courante. | `lib/simulations/e-invoicing.ts` L12 |
-| TAX-P0-006 | `isMainResidence: boolean` → `incomeTaxAllowanceRate = 1` et `socialAllowanceRate = 1`, soit exonération totale automatique sur simple case à cocher, sans aucun élément factuel (occupation au jour de la cession, délai de vente, vacance, diligences). | `lib/tax/engines/pv-immo.ts` L95-96, L102 |
-
-**TAX-P0-006 mérite une attention prioritaire** : c'est le seul des cinq qui
-produit une exonération indue (donc une sous-estimation de l'impôt) sur la
-simple valeur d'un booléen, ce que le protocole PF-01 § 5.6 interdit
-explicitement.
 
 ## 7. Revue juridique requise / `needs_review`
 
@@ -182,9 +244,9 @@ explicitement.
 - **Écart d'arrondi DMTG** (§ 5) : arbitrage à confirmer entre la convention
   par tranche du dépôt et la convention du référentiel.
 - Aucune situation `[BLOCKED — SOURCE VERIFICATION REQUIRED]` n'a été
-  rencontrée : les deux corrections de ce run reposent sur le référentiel
-  approuvé du 18/08/2026, qui documente lui-même le constat et la correction
-  attendue.
+  rencontrée : les trois corrections (PF-01 + PF-01B) reposent sur le
+  référentiel approuvé du 18/08/2026, qui documente lui-même le constat et la
+  correction attendue.
 
 ## 8. Backlog P1 / P2 (non implémenté)
 
@@ -198,9 +260,11 @@ explicitement.
 
 ## 9. Validation finale
 
+État après PF-01B (TAX-P0-006 inclus) :
+
 | Commande | Résultat |
 |---|---|
-| `npm test` | PASS — 20 fichiers, **191 tests**, 0 échec (183 avant, +8 nets) |
+| `npm test` | PASS — 20 fichiers, **198 tests**, 0 échec (183 baseline PF-01, 191 après PF-01, +7 nets en PF-01B) |
 | `npx tsc --noEmit` | PASS (exit 0) |
 | `npm run lint` | PASS (exit 0) |
 | `npm run build` | PASS (exit 0) |

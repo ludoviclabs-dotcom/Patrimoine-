@@ -215,7 +215,13 @@ export function TaxScenarioLab({
         titlesPre2018: pfu.titlesPre2018,
         holdingYears: pfu.holdingYears,
       });
-    if (activeScenario === "plus-value") return simulateRealEstateGainV2(realEstate);
+    if (activeScenario === "plus-value")
+      return simulateRealEstateGainV2({
+        ...realEstate,
+        mainResidenceQualification: realEstate.isMainResidence
+          ? { occupiedAtSale: realEstate.occupiedAtSale }
+          : undefined,
+      });
     if (activeScenario === "transmission") return simulateTransmissionV2(transmission);
     if (activeScenario === "demembrement") return simulateDemembrement(demembrement);
     if (activeScenario === "assurance-vie") return simulateAssuranceVieTransmission(assuranceVie);
