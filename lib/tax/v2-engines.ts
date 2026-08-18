@@ -15,6 +15,11 @@ import {
   type PerStatus,
 } from "./engines/per";
 import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
+import {
+  getInvestmentIncomeProfile,
+  PFU_LFSS_2026_PIVOT_DATE,
+  type FinancialIncomeKind,
+} from "./investment-income-profiles";
 import type { Household, ProfessionalDocument } from "../types";
 
 export { calculateProgressiveTax, getBareOwnershipRate } from "./engine-kit";
@@ -41,16 +46,33 @@ export function simulateIrPfuCdhr({
   household = demoHousehold,
   taxableIncome = 280_000,
   capitalIncome = 120_000,
-  pfuRate = 0.314,
+  pfuRate,
+  capitalIncomeKind = "dividend",
+  asOfDate = PFU_LFSS_2026_PIVOT_DATE,
   otherIncomeTax = 58_000,
 }: {
   household?: Household;
   taxableIncome?: number;
   capitalIncome?: number;
+  /**
+   * Compatibilité : override explicite du taux agrégé. Laisser vide pour que le
+   * taux soit dérivé du profil de catégorie — le taux agrégé n'est plus la
+   * source primaire du calcul (correction P0 TAX-P0-002).
+   */
   pfuRate?: 0.3 | 0.314;
+  /** Catégorie du revenu de capitaux : détermine IR et prélèvements sociaux. */
+  capitalIncomeKind?: FinancialIncomeKind;
+  /** Date du fait générateur (pivot LFSS 2026 au 01/01/2026). */
+  asOfDate?: string;
   otherIncomeTax?: number;
 } = {}) {
-  const pfuTax = Math.round(capitalIncome * pfuRate);
+  const profile = getInvestmentIncomeProfile(capitalIncomeKind, asOfDate);
+  // Composantes conservées séparément ; l'agrégat reste une valeur dérivée.
+  const pfuIncomeTax = Math.round(capitalIncome * profile.incomeTaxRate);
+  const pfuSocialLevies = Math.round(capitalIncome * profile.socialLevyRate);
+  const pfuTax =
+    pfuRate === undefined ? pfuIncomeTax + pfuSocialLevies : Math.round(capitalIncome * pfuRate);
+  const effectivePfuRate = pfuRate ?? profile.aggregateRate;
   const rfr = taxableIncome + capitalIncome;
   // CDHR déléguée au moteur ir.ts (seuil couple 500 k€, plancher 20 %).
   const { minimumTax, cdhr } = computeCdhr({
@@ -65,9 +87,9 @@ export function simulateIrPfuCdhr({
       order: 1,
       label: "PFU sur revenus de capitaux",
       inputValue: capitalIncome,
-      formula: `${capitalIncome} x ${(pfuRate * 100).toFixed(1)} %`,
+      formula: `${capitalIncome} × (${(profile.incomeTaxRate * 100).toLocaleString("fr-FR")} % IR + ${(profile.socialLevyRate * 100).toLocaleString("fr-FR")} % PS) = ${(effectivePfuRate * 100).toFixed(1)} % — régime ${profile.regimeId}`,
       outputValue: pfuTax,
-      ruleVersionId: "rule-ir-pfu-cdhr-2026-v2",
+      ruleVersionId: "rule-ir-pfu-cdhr-2026-v3",
       evidenceSourceId: "src-service-public-pfu-2026",
       coverageLimitIds: ["coverage-ir-pfu-cdhr-simple"],
     }),
@@ -78,7 +100,7 @@ export function simulateIrPfuCdhr({
       inputValue: rfr,
       formula: `max(0, 20 % RFR - impôts déjà estimés)`,
       outputValue: cdhr,
-      ruleVersionId: "rule-ir-pfu-cdhr-2026-v2",
+      ruleVersionId: "rule-ir-pfu-cdhr-2026-v3",
       evidenceSourceId: "src-economie-cdhr-2026",
       coverageLimitIds: ["coverage-ir-pfu-cdhr-simple"],
       confidenceStatus: "needs_review",
@@ -94,7 +116,22 @@ export function simulateIrPfuCdhr({
     resultAmount: pfuTax + cdhr,
     evidenceSourceIds: ["src-service-public-pfu-2026", "src-economie-cdhr-2026"],
     reviewerRequired: "avocat",
-    computedResult: { taxableIncome, capitalIncome, pfuTax, rfr, minimumTax, cdhr },
+    computedResult: {
+      taxableIncome,
+      capitalIncome,
+      capitalIncomeKind,
+      asOfDate,
+      pfuRegimeId: profile.regimeId,
+      pfuIncomeTaxRate: profile.incomeTaxRate,
+      pfuSocialRate: profile.socialLevyRate,
+      pfuAggregateRate: effectivePfuRate,
+      pfuIncomeTax,
+      pfuSocialLevies,
+      pfuTax,
+      rfr,
+      minimumTax,
+      cdhr,
+    },
   });
 }
 
@@ -448,6 +485,14 @@ export function simulateDutreilV2({
   });
 }
 
+/**
+ * Majoration indicative CEHR + CDHR retenue par le moteur v2 pour la borne haute
+ * de la fourchette affichée (7 points au-dessus du PFU de droit commun, soit
+ * ~38,4 % en 2026). Valeur inchangée depuis la v2 : le chiffrage exact est
+ * délégué à lib/tax/engines/ir.ts sur le RFR réel du foyer.
+ */
+const CEHR_CDHR_INDICATIVE_UPLIFT = 0.07;
+
 export function simulateApportCessionV2({
   saleProceeds = 1_200_000,
   reinvestedAmount = 860_000,
@@ -464,10 +509,15 @@ export function simulateApportCessionV2({
 } = {}) {
   const requiredReinvestment = Math.round(saleProceeds * 0.7);
   const compliant = reinvestedAmount >= requiredReinvestment && reinvestmentMonths <= 36 && conservationYears >= 5;
-  // Comparaison cession directe : PFU 31,4 %, et jusqu'à ~38,4 % avec CEHR 4 %
-  // et CDHR (plancher 20 % du RFR) pour les hauts revenus — chiffrage ir.ts.
-  const directSaleTaxAtPfu = Math.round(deferredGain * 0.314);
-  const directSaleTaxWithCehrCdhr = Math.round(deferredGain * 0.384);
+  // Comparaison cession directe : la plus-value de cession de titres relève du
+  // régime de droit commun ; le taux est dérivé du profil de catégorie et non
+  // d'une constante globale (correction P0 TAX-P0-002). Le complément CEHR 4 % +
+  // CDHR (plancher 20 % du RFR) pour les hauts revenus est chiffré par ir.ts.
+  const securitiesGainProfile = getInvestmentIncomeProfile("securities-capital-gain");
+  const directSaleTaxAtPfu = Math.round(deferredGain * securitiesGainProfile.aggregateRate);
+  const directSaleTaxWithCehrCdhr = Math.round(
+    deferredGain * (securitiesGainProfile.aggregateRate + CEHR_CDHR_INDICATIVE_UPLIFT),
+  );
 
   const steps = [
     makeStep({
@@ -657,17 +707,30 @@ export function simulateHoldingTaxV2({
 export function simulatePeaWithdrawalV2({
   yearsHeld = 7,
   withdrawnGains = 42_000,
-  socialContributionRate = 0.172,
+  socialContributionRate,
   partialWithdrawal = true,
+  asOfDate = PFU_LFSS_2026_PIVOT_DATE,
 }: {
   yearsHeld?: number;
   withdrawnGains?: number;
+  /**
+   * Override explicite. Laisser vide pour dériver du profil PEA : le PEA n'est
+   * pas dérogatoire, ses prélèvements sociaux suivent la hausse LFSS 2026
+   * (17,2 % → 18,6 %). Correction P0 TAX-P0-002.
+   */
   socialContributionRate?: number;
   partialWithdrawal?: boolean;
+  /** Date du fait générateur (pivot LFSS 2026 au 01/01/2026). */
+  asOfDate?: string;
 } = {}) {
   const afterFiveYears = yearsHeld >= 5;
-  const incomeTax = afterFiveYears ? 0 : Math.round(withdrawnGains * 0.128);
-  const socialContributions = Math.round(withdrawnGains * socialContributionRate);
+  const profile = getInvestmentIncomeProfile(
+    afterFiveYears ? "pea-after-five-years" : "pea-before-five-years",
+    asOfDate,
+  );
+  const resolvedSocialRate = socialContributionRate ?? profile.socialLevyRate;
+  const incomeTax = Math.round(withdrawnGains * profile.incomeTaxRate);
+  const socialContributions = Math.round(withdrawnGains * resolvedSocialRate);
   const estimatedTax = incomeTax + socialContributions;
   const closesPlan = afterFiveYears ? !partialWithdrawal : true;
 
@@ -679,7 +742,7 @@ export function simulatePeaWithdrawalV2({
       inputValue: `${yearsHeld} ans`,
       formula: "date retrait - date ouverture",
       outputValue: afterFiveYears ? "Après 5 ans" : "Avant 5 ans",
-      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      ruleVersionId: "rule-pea-withdrawal-2026-v2",
       evidenceSourceId: "src-service-public-pea-2026",
       coverageLimitIds: ["coverage-pea-withdrawal-simple"],
       confidenceStatus: "indicative",
@@ -689,9 +752,9 @@ export function simulatePeaWithdrawalV2({
       order: 2,
       label: "IR indicatif sur les gains",
       inputValue: withdrawnGains,
-      formula: afterFiveYears ? "gains x 0 % après 5 ans" : "régime anticipé à vérifier",
+      formula: `gains × ${(profile.incomeTaxRate * 100).toLocaleString("fr-FR")} % ${afterFiveYears ? "(exonération d'IR après 5 ans)" : "(régime anticipé à vérifier)"}`,
       outputValue: incomeTax,
-      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      ruleVersionId: "rule-pea-withdrawal-2026-v2",
       evidenceSourceId: "src-service-public-pea-2026",
       coverageLimitIds: ["coverage-pea-withdrawal-simple"],
       confidenceStatus: afterFiveYears ? "indicative" : "needs_review",
@@ -702,9 +765,9 @@ export function simulatePeaWithdrawalV2({
       order: 3,
       label: "Prélèvements sociaux à contrôler",
       inputValue: withdrawnGains,
-      formula: `gains retirés x ${(socialContributionRate * 100).toFixed(1)} %`,
+      formula: `gains retirés × ${(resolvedSocialRate * 100).toLocaleString("fr-FR")} % — régime ${profile.regimeId}${profile.lfss2026Applies ? " (LFSS 2026)" : " (avant LFSS 2026)"}`,
       outputValue: socialContributions,
-      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      ruleVersionId: "rule-pea-withdrawal-2026-v2",
       evidenceSourceId: "src-service-public-pea-2026",
       coverageLimitIds: ["coverage-pea-withdrawal-simple"],
       confidenceStatus: "needs_review",
@@ -717,7 +780,7 @@ export function simulatePeaWithdrawalV2({
       inputValue: partialWithdrawal ? "Retrait partiel" : "Retrait total",
       formula: "après 5 ans + retrait partiel = pas de clôture",
       outputValue: closesPlan ? "Clôture à prévoir" : "Plan maintenu",
-      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      ruleVersionId: "rule-pea-withdrawal-2026-v2",
       evidenceSourceId: "src-service-public-pea-2026",
       coverageLimitIds: ["coverage-pea-withdrawal-simple"],
       confidenceStatus: "needs_review",
@@ -741,8 +804,12 @@ export function simulatePeaWithdrawalV2({
       afterFiveYears,
       partialWithdrawal,
       closesPlan,
+      asOfDate,
+      peaRegimeId: profile.regimeId,
+      lfss2026Applies: profile.lfss2026Applies,
+      incomeTaxRate: profile.incomeTaxRate,
       incomeTax,
-      socialContributionRate,
+      socialContributionRate: resolvedSocialRate,
       socialContributions,
       estimatedTax,
     },

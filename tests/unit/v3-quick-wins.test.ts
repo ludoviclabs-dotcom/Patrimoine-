@@ -6,9 +6,22 @@ import { evidenceSources } from "../../lib/evidence/sources";
 import { ruleVersions } from "../../lib/rules/rule-versions";
 import { getAllTaxRuns, getV3TaxRuns } from "../../lib/tax/engines";
 import { computeIrBareme2026, simulateIrBareme2026 } from "../../lib/tax/engines/ir";
-import { computePfuVsBareme, simulatePfuVsBareme } from "../../lib/tax/engines/pfu-arbitrage";
+import {
+  computePfuVsBareme,
+  simulatePfuVsBareme,
+  PFU_SOCIAL_RATE_2026,
+  PFU_TOTAL_RATE_2026,
+} from "../../lib/tax/engines/pfu-arbitrage";
 import { computePvImmo, simulatePvImmoV3 } from "../../lib/tax/engines/pv-immo";
-import { simulateIrPfuCdhr, simulateRealEstateGainV2 } from "../../lib/tax/v2-engines";
+import {
+  computePfuByCategory,
+  getInvestmentIncomeProfile,
+} from "../../lib/tax/investment-income-profiles";
+import {
+  simulateIrPfuCdhr,
+  simulatePeaWithdrawalV2,
+  simulateRealEstateGainV2,
+} from "../../lib/tax/v2-engines";
 import { assertSimulationHasProof, goldenCases } from "../../lib/validation/golden-cases";
 
 describe("V3 quick wins — IR barème 2026", () => {
@@ -303,6 +316,195 @@ describe("V3 quick wins — PFU vs barème", () => {
     const run = simulatePfuVsBareme();
     expect(assertSimulationHasProof(run)).toBe(true);
     expect(run.coverageLimitIds).toContain("coverage-pfu-assurance-vie-30");
+  });
+});
+
+// --- GOLDEN CASES profils de taux par catégorie (TAX-P0-002) ----------------
+// Source : REGLEMENTATION_AOUT_2026.md § 3.1 à § 3.4 (matrice par produit),
+// CGI art. 200 A, LFSS 2026 art. 12. Le taux global de 31,4 % ne doit jamais
+// être stocké ni appliqué comme constante universelle : la composante sociale
+// dépend du produit, et la hausse LFSS 2026 (17,2 % → 18,6 %) est datée.
+describe("V3.6 — profils PFU par catégorie (TAX-P0-002)", () => {
+  const GROSS = 10_000;
+
+  it("golden 1 — catégorie standard au régime nominal 2026 : dividendes 31,4 %", () => {
+    const result = computePfuByCategory({
+      kind: "dividend",
+      grossTaxableGain: GROSS,
+      asOfDate: "2026-06-01",
+    });
+    expect(result.regimeId).toBe("pfu-dividend-2026");
+    expect(result.aggregateRate).toBe(0.314);
+    expect(result.totalTax).toBe(3_140);
+  });
+
+  it("golden 2 — composante IR vérifiée séparément : 12,8 %", () => {
+    const result = computePfuByCategory({
+      kind: "dividend",
+      grossTaxableGain: GROSS,
+      asOfDate: "2026-06-01",
+    });
+    expect(result.incomeTaxRate).toBe(0.128);
+    expect(result.incomeTax).toBe(1_280);
+  });
+
+  it("golden 3 — composante prélèvements sociaux vérifiée séparément : 18,6 %", () => {
+    const result = computePfuByCategory({
+      kind: "dividend",
+      grossTaxableGain: GROSS,
+      asOfDate: "2026-06-01",
+    });
+    expect(result.socialLevyRate).toBe(0.186);
+    expect(result.socialLevies).toBe(1_860);
+  });
+
+  it("golden 4 — le total est la somme des composantes, pas un taux agrégé appliqué en bloc", () => {
+    const result = computePfuByCategory({
+      kind: "dividend",
+      grossTaxableGain: GROSS,
+      asOfDate: "2026-06-01",
+    });
+    expect(result.incomeTax + result.socialLevies).toBe(result.totalTax);
+    expect(result.totalTax).toBe(3_140);
+  });
+
+  it("golden 5 — catégorie au régime social dérogatoire : assurance-vie maintenue à 17,2 %", () => {
+    const av = computePfuByCategory({
+      kind: "life-insurance",
+      grossTaxableGain: GROSS,
+      asOfDate: "2026-06-01",
+    });
+    expect(av.socialLevyRate).toBe(0.172);
+    expect(av.socialLevies).toBe(1_720);
+    expect(av.totalTax).toBe(3_000);
+    expect(av.needsReview).toBe(true);
+
+    // L'abattement d'IR ne réduit pas la base des prélèvements sociaux.
+    const withAllowance = computePfuByCategory({
+      kind: "life-insurance",
+      grossTaxableGain: GROSS,
+      incomeTaxAllowance: 4_600,
+      asOfDate: "2026-06-01",
+    });
+    expect(withAllowance.incomeTaxBase).toBe(5_400);
+    expect(withAllowance.socialLevyBase).toBe(GROSS);
+    expect(withAllowance.socialLevies).toBe(1_720);
+  });
+
+  it("golden 6 — date AVANT la hausse LFSS 2026 : prélèvements sociaux 17,2 %, PFU 30 %", () => {
+    const result = computePfuByCategory({
+      kind: "dividend",
+      grossTaxableGain: GROSS,
+      asOfDate: "2025-06-01",
+    });
+    expect(result.lfss2026Applies).toBe(false);
+    expect(result.socialLevyRate).toBe(0.172);
+    expect(result.aggregateRate).toBe(0.3);
+    expect(result.totalTax).toBe(3_000);
+  });
+
+  it("golden 7 — date À COMPTER du 01/01/2026 : prélèvements sociaux 18,6 %, PFU 31,4 %", () => {
+    const pivot = computePfuByCategory({
+      kind: "dividend",
+      grossTaxableGain: GROSS,
+      asOfDate: "2026-01-01",
+    });
+    expect(pivot.lfss2026Applies).toBe(true);
+    expect(pivot.socialLevyRate).toBe(0.186);
+    expect(pivot.totalTax).toBe(3_140);
+
+    // Bascule au jour près : la veille relève encore du régime antérieur.
+    const eve = computePfuByCategory({
+      kind: "dividend",
+      grossTaxableGain: GROSS,
+      asOfDate: "2025-12-31",
+    });
+    expect(eve.lfss2026Applies).toBe(false);
+    expect(eve.socialLevyRate).toBe(0.172);
+  });
+
+  it("golden 8 — aucune constante globale ne peut contaminer une catégorie dérogatoire", () => {
+    // Les produits expressément maintenus à 17,2 % ne suivent jamais la hausse
+    // LFSS 2026, quelle que soit la date retenue.
+    for (const kind of ["life-insurance", "legacy-cel-pel-pep"] as const) {
+      for (const asOfDate of ["2025-06-01", "2026-06-01", "2027-01-01"]) {
+        const profile = getInvestmentIncomeProfile(kind, asOfDate);
+        expect(profile.socialLevyRate).toBe(0.172);
+        expect(profile.socialLevyRate).not.toBe(PFU_SOCIAL_RATE_2026);
+        expect(profile.aggregateRate).not.toBe(PFU_TOTAL_RATE_2026);
+      }
+    }
+
+    // Les constantes de compatibilité décrivent le droit commun et restent
+    // alignées sur le profil dividendes — elles en sont dérivées.
+    const dividend = getInvestmentIncomeProfile("dividend", "2026-06-01");
+    expect(PFU_SOCIAL_RATE_2026).toBe(dividend.socialLevyRate);
+    expect(PFU_TOTAL_RATE_2026).toBe(dividend.aggregateRate);
+  });
+
+  it("golden 9 — PEA : prélèvements sociaux 18,6 %, IR exonéré après cinq ans", () => {
+    // Le PEA n'est PAS dérogatoire : il suit la hausse LFSS 2026.
+    const after = computePfuByCategory({
+      kind: "pea-after-five-years",
+      grossTaxableGain: GROSS,
+      asOfDate: "2026-06-01",
+    });
+    expect(after.incomeTaxRate).toBe(0);
+    expect(after.socialLevyRate).toBe(0.186);
+    expect(after.totalTax).toBe(1_860);
+
+    const before = computePfuByCategory({
+      kind: "pea-before-five-years",
+      grossTaxableGain: GROSS,
+      asOfDate: "2026-06-01",
+    });
+    expect(before.incomeTaxRate).toBe(0.128);
+    expect(before.socialLevyRate).toBe(0.186);
+    expect(before.totalTax).toBe(3_140);
+  });
+
+  it("golden 10 — le moteur PEA applique 18,6 % par défaut (et non 17,2 %)", () => {
+    const run = simulatePeaWithdrawalV2({ yearsHeld: 7, withdrawnGains: 40_000 });
+    expect(run.computedResult?.socialContributionRate).toBe(0.186);
+    expect(run.computedResult?.socialContributions).toBe(7_440);
+    expect(run.computedResult?.incomeTax).toBe(0);
+    expect(run.steps.every((step) => step.ruleVersionId === "rule-pea-withdrawal-2026-v2")).toBe(
+      true,
+    );
+
+    // Fait générateur antérieur au pivot : 17,2 % conservés.
+    const legacy = simulatePeaWithdrawalV2({
+      yearsHeld: 7,
+      withdrawnGains: 40_000,
+      asOfDate: "2025-06-01",
+    });
+    expect(legacy.computedResult?.socialContributionRate).toBe(0.172);
+    expect(legacy.computedResult?.socialContributions).toBe(6_880);
+  });
+
+  it("golden 11 — le pré-diagnostic dirigeant sépare IR et PS et reste compatible", () => {
+    const run = simulateIrPfuCdhr({ capitalIncome: 120_000 });
+    expect(run.computedResult?.pfuIncomeTax).toBe(15_360);
+    expect(run.computedResult?.pfuSocialLevies).toBe(22_320);
+    expect(run.computedResult?.pfuTax).toBe(37_680);
+    expect(run.computedResult?.pfuRegimeId).toBe("pfu-dividend-2026");
+
+    // Compatibilité : l'override historique reste honoré à l'identique.
+    expect(
+      simulateIrPfuCdhr({ capitalIncome: 120_000, pfuRate: 0.314 }).computedResult?.pfuTax,
+    ).toBe(37_680);
+  });
+
+  it("golden 12 — l'arbitrage PFU/barème dérive ses taux du profil et suit la date", () => {
+    const result2026 = computePfuVsBareme({ dividends: 1_000, tmi: 0.3 });
+    expect(result2026.pfuSocialRate).toBe(0.186);
+    expect(result2026.pfuAggregateRate).toBe(0.314);
+    expect(result2026.pfuTotal).toBe(314);
+
+    const result2025 = computePfuVsBareme({ dividends: 1_000, tmi: 0.3, asOfDate: "2025-06-01" });
+    expect(result2025.pfuSocialRate).toBe(0.172);
+    expect(result2025.pfuAggregateRate).toBe(0.3);
+    expect(result2025.pfuTotal).toBe(300);
   });
 });
 

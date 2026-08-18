@@ -50,7 +50,7 @@ comme réellement présents dans le code.
 |---|---|---|---|---|---|---|
 | Dutreil — réduction art. 790 | Réduction traitée comme abrogée après le 21/02/2026 (`donationBeforeFeb2026`) | Art. 790 CGI toujours en vigueur, sans condition de date | Golden case verrouillait la règle erronée | § 7.5, § 17 TAX-P0-001 | MISMATCH | **P0 — corrigé** |
 | Dutreil — pivot 21/02/2026 | `individualCommitmentYears >= 6` en dur ; exclusions LF 2026 appliquées à toute date | 4 ans avant le 21/02/2026, 6 ans à compter ; exclusions non rétroactives | Absent | § 17 TAX-P0-007 | MISMATCH | **P0 — corrigé** |
-| PFU | Constante globale 31,4 % (12,8 + 18,6) appliquée à toute assiette | Profil de taux par catégorie de revenu ; assurance-vie maintenue à 17,2 % (PFU 30 %) | Absent | § 17 TAX-P0-002 | MISMATCH | **P0 — non corrigé** |
+| PFU | Constante globale 31,4 % (12,8 + 18,6) appliquée à toute assiette | Profil de taux par catégorie de revenu ; assurance-vie maintenue à 17,2 % (PFU 30 %) | Absent → 12 golden cases (PF-01C1) | § 17 TAX-P0-002 | MISMATCH | **P0 — corrigé (PF-01C1)** |
 | Apport-cession | 70 % / 36 mois en dur, sans date du fait générateur | Règle datée : 60 %/2 ans avant le 21/02/2026, 70 %/3 ans à compter | Absent | § 8.2, § 17 TAX-P0-003 | PARTIAL | **P0 — non corrigé** |
 | Taxe holding | `(somptuaires + financiers + immobilier + liquidités) × 20 %` | Liste fermée art. 235 ter C, assiette et taux à qualifier | Absent | § 9, § 17 TAX-P0-004 | MISMATCH | **P0 — non corrigé** |
 | Résidence principale | Booléen `isMainResidence` → exonération 100 % automatique | Questionnaire factuel ; `professional-review` si délai > 1 an | Absent → 7 golden cases (PF-01B) | § 17 TAX-P0-006 | MISMATCH | **P0 — corrigé (PF-01B)** |
@@ -169,6 +169,63 @@ comme réellement présents dans le code.
   `components/v3/forms/pv-immo-form.tsx`.
 - **Statut** : **FIXED**, 7 golden cases ajoutés.
 
+### TAX-P0-002 — PFU traité comme constante globale (PF-01C1)
+
+- **Root cause** : le taux agrégé de 31,4 % était la **source primaire** du
+  calcul et non une valeur dérivée. Chaîne complète constatée :
+  `PFU_TOTAL_RATE_2026 = 0.314` et `PFU_SOCIAL_RATE_2026 = 0.186`
+  (`pfu-arbitrage.ts`) → appliqués indistinctement à toute assiette dans
+  `computePfuVsBareme` → réexportés et consommés par `exit-tax.ts` → dupliqués
+  en littéraux `0.314` dans `simulateApportCessionV2` et
+  `simulateIrPfuCdhr({ pfuRate = 0.314 })` → libellés « 31,4 % » figés dans les
+  `calculation_steps`, le rule-diff, et le cockpit Claire et Marc.
+  Aucune notion de catégorie de revenu ni de date de fait générateur n'existait.
+- **Comportement précédent** : un unique taux agrégé, non daté, non catégorisé.
+  Corollaire mesuré : `simulatePeaWithdrawalV2` retenait par défaut **17,2 %**
+  de prélèvements sociaux alors que le PEA n'est pas un produit dérogatoire et
+  suit la hausse LFSS 2026 à **18,6 %** — sous-imposition de 1,4 point.
+- **Comportement corrigé** : nouveau registre
+  `lib/tax/investment-income-profiles.ts` transcrivant la matrice par produit du
+  référentiel (§ 3.2). Chaque catégorie porte ses composantes **IR et
+  prélèvements sociaux séparées** ; le taux agrégé est **dérivé** et réservé à
+  l'affichage. La résolution se fait par catégorie **et** par date : le pivot
+  LFSS 2026 (01/01/2026) fait passer les prélèvements sociaux de 17,2 % à
+  18,6 %, sauf pour les produits expressément dérogatoires (assurance-vie,
+  CEL/PEL/PEP historiques) qui restent à 17,2 % des deux côtés.
+- **Catégories supportées** : `dividend`, `interest`, `securities-capital-gain`,
+  `private-crypto-gain`, `pea-before-five-years`, `pea-after-five-years`,
+  `life-insurance`, `legacy-cel-pel-pep`, `disability-savings-annuity`
+  (transcription intégrale de la table § 3.2 — aucune valeur déduite de la
+  mémoire du modèle). Wirées aux moteurs : dividendes, plus-values mobilières,
+  PEA avant/après cinq ans. Les autres sont disponibles et testées mais aucun
+  moteur ne les route encore (`NOT_IMPLEMENTED` côté parcours).
+- **Compatibilité** : `PFU_INCOME_TAX_RATE`, `PFU_SOCIAL_RATE_2026` et
+  `PFU_TOTAL_RATE_2026` sont conservés mais **dérivés** du profil dividendes ;
+  ils décrivent le droit commun et ne sont plus la source du calcul. Le
+  paramètre historique `pfuRate` de `simulateIrPfuCdhr` reste accepté comme
+  override explicite et produit un résultat identique ; laissé vide, le taux est
+  dérivé du profil. Idem pour `socialContributionRate` du moteur PEA.
+- **Rule IDs / versions** : `rule-pfu-arbitrage-2026-v2` (PFU-ARBITRAGE-2026.08-V2),
+  `rule-ir-pfu-cdhr-2026-v3` (IR-PFU-CDHR-2026.08-V3),
+  `rule-pea-withdrawal-2026-v2` (PEA-2026.08-V2) — les prédécesseurs v1/v2
+  passent en `archived`, l'historique n'est pas réécrit.
+- **Source** : `REGLEMENTATION_AOUT_2026.md` § 3.1 à § 3.4 et § 17
+  (TAX-P0-002) ; CGI art. 200 A ; LFSS 2026 art. 12 ; implémentation de
+  référence `MOTEURS_FISCAUX_2026.ts` `PFU_2026_RATE_PROFILES` (L328-384) et
+  `computePfu2026` (L411-462).
+- **Démo Claire et Marc** : le scénario porte sur des revenus de capitaux du
+  dirigeant (dividendes), catégorie de droit commun. Le libellé « 31,4 % » est
+  donc **juridiquement correct** et a été conservé, mais il est désormais
+  **dérivé** du profil `dividend` au lieu d'être une chaîne figée
+  (`cabinet-hero.tsx`). Le calcul du dossier est inchangé (37 680 € sur
+  120 000 €), désormais décomposé en 15 360 € d'IR et 22 320 € de PS.
+- **Fichiers corrigés** : `lib/tax/investment-income-profiles.ts` (nouveau),
+  `lib/tax/engines/pfu-arbitrage.ts`, `lib/tax/engines/exit-tax.ts`,
+  `lib/tax/v2-engines.ts`, `lib/rules/rule-versions.ts`,
+  `lib/evidence/pfu-rule-diff.ts`, `lib/validation/golden-cases.ts`,
+  `components/v2/cabinet-hero.tsx`.
+- **Statut** : **FIXED**, 12 golden cases ajoutés.
+
 ## 5. Golden cases
 
 Le golden case existant `tests/unit/v3-1-transmission.test.ts` **verrouillait la
@@ -204,6 +261,23 @@ Golden cases ajoutés en PF-01B pour TAX-P0-006 (7 nouveaux tests, 191 → 198) 
 | 6. `needs_review` ne bénéficie jamais d'une exonération silencieuse | sur 3 scénarios : imposition normale systématique |
 | 7. Étape dédiée `pvi-step-main-residence` et compatibilité non-résidence-principale | étape présente et `needs_review` si déclarée sans preuve ; absente sinon |
 
+Golden cases ajoutés en PF-01C1 pour TAX-P0-002 (12 nouveaux tests, 198 → 210) :
+
+| Cas | Attendu |
+|---|---|
+| 1. Catégorie standard, régime nominal 2026 | dividendes 10 000 € → 3 140 €, taux agrégé 0,314 |
+| 2. Composante IR isolée | 12,8 % → 1 280 € |
+| 3. Composante prélèvements sociaux isolée | 18,6 % → 1 860 € |
+| 4. Total = somme des composantes | 1 280 + 1 860 = 3 140 € |
+| 5. Catégorie au régime social dérogatoire | assurance-vie PS 17,2 % → 1 720 €, total 3 000 € ; l'abattement d'IR ne réduit pas la base PS |
+| 6. Date AVANT la hausse LFSS 2026 | PS 17,2 %, agrégat 30 %, total 3 000 € |
+| 7. Date À COMPTER du 01/01/2026 + bascule au jour près | 31/12/2025 → 17,2 % ; 01/01/2026 → 18,6 % |
+| 8. Anti-contamination | assurance-vie et CEL/PEL/PEP à 17,2 % à toute date ; constantes de compatibilité alignées sur le seul profil dividendes |
+| 9. PEA (non dérogatoire) | après 5 ans : IR 0 %, PS 18,6 % ; avant 5 ans : IR 12,8 %, PS 18,6 % |
+| 10. Moteur PEA, défaut corrigé | 40 000 € → PS 7 440 € à 18,6 % (et non 6 880 € à 17,2 %) ; fait générateur 2025 → 6 880 € |
+| 11. Pré-diagnostic dirigeant | IR 15 360 € et PS 22 320 € séparés, total 37 680 € ; override `pfuRate` toujours honoré |
+| 12. Arbitrage PFU/barème daté | 2026 → 314 € ; 2025 → 300 € |
+
 ### Écart d'arrondi documenté (non corrigé, volontaire)
 
 Sur le cas de référence à 1 M€ du référentiel
@@ -222,17 +296,16 @@ absorbé silencieusement.
 
 ## 6. P0 confirmés et NON corrigés
 
-Ces quatre P0 restent **confirmés présents dans le code** mais volontairement
-hors périmètre des runs PF-01/PF-01B : chacun demande une modification de fond
-sur un moteur distinct, et le protocole impose de corriger « un moteur à la
-fois ». TAX-P0-006, initialement dans cette liste, a été corrigé en PF-01B
-(voir § 4).
+Ces trois P0 restent **confirmés présents dans le code** mais volontairement
+hors périmètre des runs PF-01/PF-01B/PF-01C1 : chacun demande une modification de
+fond sur un moteur distinct, et le protocole impose de corriger « un moteur à la
+fois ». TAX-P0-006 (PF-01B) et TAX-P0-002 (PF-01C1), initialement dans cette
+liste, ont été corrigés — voir § 4.
 
 | ID | Constat vérifié dans le code | Emplacement |
 |---|---|---|
-| TAX-P0-002 | `PFU_SOCIAL_RATE_2026 = 0.186` appliqué à toute assiette ; aucune catégorie de revenu en entrée. L'assurance-vie (17,2 %) n'est signalée que par une `coverage limit`, pas calculée. | `lib/tax/engines/pfu-arbitrage.ts` L22-23, L52-55 |
-| TAX-P0-003 | `requiredReinvestment = saleProceeds * 0.7` et `reinvestmentMonths <= 36` en dur, sans date de cession : le régime 2026 serait appliqué rétroactivement aux cessions antérieures au 21/02/2026. | `lib/tax/v2-engines.ts` L435-436 |
-| TAX-P0-004 | `holdingTax = taxableLuxuryInventory * 0.2` où l'inventaire additionne intégralement liquidités et actifs financiers : assiette ouverte, non conforme à la liste fermée de l'art. 235 ter C. | `lib/tax/v2-engines.ts` L529-531 |
+| TAX-P0-003 | `requiredReinvestment = saleProceeds * 0.7` et `reinvestmentMonths <= 36` en dur, sans date de cession : le régime 2026 serait appliqué rétroactivement aux cessions antérieures au 21/02/2026. | `lib/tax/v2-engines.ts`, `simulateApportCessionV2` |
+| TAX-P0-004 | `holdingTax = taxableLuxuryInventory * 0.2` où l'inventaire additionne intégralement liquidités et actifs financiers : assiette ouverte, non conforme à la liste fermée de l'art. 235 ter C. | `lib/tax/v2-engines.ts`, `simulateHoldingTaxV2` |
 | TAX-P0-005 | Échéance stockée en chaîne statique `"1er septembre 2026"` ; aucun état passé/futur calculé par rapport à la date courante. | `lib/simulations/e-invoicing.ts` L12 |
 
 ## 7. Revue juridique requise / `needs_review`
@@ -243,8 +316,13 @@ fois ». TAX-P0-006, initialement dans cette liste, a été corrigé en PF-01B
   proscrire. À traiter avec un statut `needs_review` dédié.
 - **Écart d'arrondi DMTG** (§ 5) : arbitrage à confirmer entre la convention
   par tranche du dépôt et la convention du référentiel.
+- **PEA et hausse LFSS 2026** : la correction porte le taux social par défaut du
+  moteur PEA de 17,2 % à 18,6 % (le PEA ne figure pas parmi les produits
+  dérogatoires de la table § 3.2). Les dossiers PEA liquidés sous
+  `rule-pea-withdrawal-2026-v1` sous-estimaient les prélèvements sociaux et
+  doivent être recalculés.
 - Aucune situation `[BLOCKED — SOURCE VERIFICATION REQUIRED]` n'a été
-  rencontrée : les trois corrections (PF-01 + PF-01B) reposent sur le
+  rencontrée : les quatre corrections (PF-01 + PF-01B + PF-01C1) reposent sur le
   référentiel approuvé du 18/08/2026, qui documente lui-même le constat et la
   correction attendue.
 
@@ -260,11 +338,11 @@ fois ». TAX-P0-006, initialement dans cette liste, a été corrigé en PF-01B
 
 ## 9. Validation finale
 
-État après PF-01B (TAX-P0-006 inclus) :
+État après PF-01C1 (TAX-P0-002 inclus) :
 
 | Commande | Résultat |
 |---|---|
-| `npm test` | PASS — 20 fichiers, **198 tests**, 0 échec (183 baseline PF-01, 191 après PF-01, +7 nets en PF-01B) |
+| `npm test` | PASS — 20 fichiers, **210 tests**, 0 échec (183 baseline PF-01 → 191 PF-01 → 198 PF-01B → +12 nets en PF-01C1) |
 | `npx tsc --noEmit` | PASS (exit 0) |
 | `npm run lint` | PASS (exit 0) |
 | `npm run build` | PASS (exit 0) |

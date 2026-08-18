@@ -120,6 +120,16 @@ export const ruleVersions: RuleVersion[] = [
     version: "PFU-ARBITRAGE-2026.06-V1",
     title: "PFU 31,4 % vs barème : abattements 40 %/50 %/65 %, PS 18,6 % et CSG déductible",
     effectiveFrom: "2026-01-01",
+    status: "archived",
+    evidenceSourceIds: ["src-service-public-pfu-2026", "src-legifrance-lfss-2026-ps-capital"],
+  },
+  {
+    id: "rule-pfu-arbitrage-2026-v2",
+    ruleSet: "pfu-arbitrage",
+    version: "PFU-ARBITRAGE-2026.08-V2",
+    title:
+      "PFU par profil de catégorie : composantes IR/PS séparées, pivot LFSS 2026 et dérogations 17,2 % (assurance-vie, CEL/PEL/PEP)",
+    effectiveFrom: "2026-01-01",
     status: "active",
     evidenceSourceIds: ["src-service-public-pfu-2026", "src-legifrance-lfss-2026-ps-capital"],
   },
@@ -268,6 +278,16 @@ export const ruleVersions: RuleVersion[] = [
     version: "IR-PFU-CDHR-2026.05-V2",
     title: "IR, PFU 30/31,4 % et CDHR : pré-diagnostic dirigeant",
     effectiveFrom: "2026-01-01",
+    status: "archived",
+    evidenceSourceIds: ["src-service-public-pfu-2026", "src-economie-cdhr-2026"],
+  },
+  {
+    id: "rule-ir-pfu-cdhr-2026-v3",
+    ruleSet: "ir-pfu-cdhr",
+    version: "IR-PFU-CDHR-2026.08-V3",
+    title:
+      "IR, PFU par catégorie (composantes IR/PS séparées) et CDHR : pré-diagnostic dirigeant",
+    effectiveFrom: "2026-01-01",
     status: "active",
     evidenceSourceIds: ["src-service-public-pfu-2026", "src-economie-cdhr-2026"],
   },
@@ -349,8 +369,18 @@ export const ruleVersions: RuleVersion[] = [
     version: "PEA-2026.06-V1",
     title: "PEA : retrait après cinq ans, IR et prélèvements sociaux à distinguer",
     effectiveFrom: "2026-06-04",
-    status: "draft",
+    status: "archived",
     evidenceSourceIds: ["src-service-public-pea-2026"],
+  },
+  {
+    id: "rule-pea-withdrawal-2026-v2",
+    ruleSet: "pea",
+    version: "PEA-2026.08-V2",
+    title:
+      "PEA : retrait avant/après cinq ans, prélèvements sociaux 18,6 % (hausse LFSS 2026, PEA non dérogatoire)",
+    effectiveFrom: "2026-01-01",
+    status: "active",
+    evidenceSourceIds: ["src-service-public-pea-2026", "src-legifrance-lfss-2026-ps-capital"],
   },
   {
     id: "rule-per-deduction-2026-v1",

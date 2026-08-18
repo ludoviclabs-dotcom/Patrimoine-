@@ -69,6 +69,9 @@ describe("V2.3 patrimonial model", () => {
   });
 
   it("keeps PEA after five years as IR-exempt but social-contribution controlled", () => {
+    // Override explicite du taux social : documente le chemin d'override, pas le
+    // défaut 2026. Depuis TAX-P0-002 le défaut dérivé du profil PEA est 18,6 %
+    // (voir les golden cases 9 et 10 dans v3-quick-wins.test.ts).
     const run = simulatePeaWithdrawalV2({
       yearsHeld: 7,
       withdrawnGains: 40_000,

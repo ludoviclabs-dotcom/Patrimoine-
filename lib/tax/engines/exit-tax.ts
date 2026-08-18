@@ -1,7 +1,7 @@
 import { demoTenant } from "../../demo-data/v1";
 import { demoHousehold } from "../../demo-data/household";
 import { createTaxRunFactory, makeStep } from "../engine-kit";
-import { PFU_TOTAL_RATE_2026 } from "./pfu-arbitrage";
+import { getInvestmentIncomeProfile } from "../investment-income-profiles";
 
 /**
  * Exit tax — art. 167 bis CGI, vérifié le 11/06/2026 (Légifrance
@@ -38,7 +38,12 @@ export function computeExitTaxSignal({
   const gainsThresholdMet = latentGains >= EXIT_TAX_GAINS_THRESHOLD;
   const ownershipThresholdMet = ownershipPercent >= EXIT_TAX_OWNERSHIP_THRESHOLD;
   const inScope = residencyConditionMet && (gainsThresholdMet || ownershipThresholdMet);
-  const indicativeTaxAtPfu = inScope ? Math.round(latentGains * PFU_TOTAL_RATE_2026) : 0;
+  // Les plus-values latentes sont imposées comme une cession de titres : taux
+  // dérivé du profil de catégorie, pas d'une constante globale (TAX-P0-002).
+  const securitiesGainProfile = getInvestmentIncomeProfile("securities-capital-gain");
+  const indicativeTaxAtPfu = inScope
+    ? Math.round(latentGains * securitiesGainProfile.aggregateRate)
+    : 0;
   const automaticDeferral = destinationInEea;
   const reliefYears = shareValue > EXIT_TAX_EXTENDED_RELIEF_THRESHOLD ? 5 : 2;
 
@@ -52,6 +57,8 @@ export function computeExitTaxSignal({
     gainsThresholdMet,
     ownershipThresholdMet,
     inScope,
+    pfuRegimeId: securitiesGainProfile.regimeId,
+    pfuAggregateRate: securitiesGainProfile.aggregateRate,
     indicativeTaxAtPfu,
     automaticDeferral,
     reliefYears,
@@ -93,7 +100,7 @@ export function simulateExitTaxSignal(input: ExitTaxInput = {}) {
       order: 2,
       label: "Imposition indicative des PV latentes",
       inputValue: result.latentGains,
-      formula: "PV latentes × PFU 31,4 % (option barème possible)",
+      formula: `PV latentes × PFU ${(result.pfuAggregateRate * 100).toLocaleString("fr-FR")} % (régime plus-values mobilières, option barème possible)`,
       outputValue: result.indicativeTaxAtPfu,
       ruleVersionId: RULE_ID,
       evidenceSourceId: SOURCE,

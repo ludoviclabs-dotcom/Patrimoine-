@@ -1,5 +1,9 @@
 import { demoTenant } from "../demo-data/v1";
 import { getEvidenceSource, getSourceSnapshot } from "./sources";
+import {
+  getInvestmentIncomeProfile,
+  PFU_LFSS_2026_PIVOT_DATE,
+} from "../tax/investment-income-profiles";
 import { simulateIrPfuCdhr } from "../tax/v2-engines";
 import type { AuditLogEntry, RuleDiffImpact } from "../types";
 
@@ -12,10 +16,14 @@ const previousHash = "sp-entreprendre-pfu-a18796-2025-30-0";
 export function getPfuRegulatoryDiff(): RuleDiffImpact {
   const source = getEvidenceSource(sourceId);
   const snapshot = getSourceSnapshot(sourceId);
-  const currentRun = simulateIrPfuCdhr({ pfuRate: 0.314 });
+  // Taux dérivés du profil de catégorie de part et d'autre du pivot LFSS 2026,
+  // et non de constantes littérales (correction P0 TAX-P0-002).
+  const currentRun = simulateIrPfuCdhr();
   const capitalIncome = Number(currentRun.computedResult?.capitalIncome ?? 120_000);
-  const amountBefore = Math.round(capitalIncome * 0.3);
-  const amountAfter = Math.round(capitalIncome * 0.314);
+  const beforeProfile = getInvestmentIncomeProfile("dividend", "2025-12-31");
+  const afterProfile = getInvestmentIncomeProfile("dividend", PFU_LFSS_2026_PIVOT_DATE);
+  const amountBefore = Math.round(capitalIncome * beforeProfile.aggregateRate);
+  const amountAfter = Math.round(capitalIncome * afterProfile.aggregateRate);
   const delta = amountAfter - amountBefore;
 
   return {

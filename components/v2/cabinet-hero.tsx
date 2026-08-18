@@ -5,6 +5,22 @@ import { Badge } from "@/components/ui/badge";
 import { getPfuRegulatoryDiff } from "@/lib/evidence/pfu-rule-diff";
 import { formatEuro } from "@/lib/format";
 import { getCompletenessScore } from "@/lib/quality/completeness";
+import {
+  getAggregateRate,
+  PRE_LFSS_2026_SOCIAL_LEVY_RATE,
+  PFU_STANDARD_INCOME_TAX_RATE,
+} from "@/lib/tax/investment-income-profiles";
+
+/**
+ * Le dossier démo porte sur des revenus de capitaux du dirigeant (dividendes) :
+ * le régime de droit commun s'applique. Les taux affichés sont dérivés du profil
+ * de catégorie et non d'une constante universelle (correction P0 TAX-P0-002).
+ */
+const demoPfuRatePercent = (getAggregateRate("dividend") * 100).toLocaleString("fr-FR");
+const demoPreLfssRatePercent = (
+  (PFU_STANDARD_INCOME_TAX_RATE + PRE_LFSS_2026_SOCIAL_LEVY_RATE) *
+  100
+).toLocaleString("fr-FR");
 
 const workflowSteps = [
   {
@@ -20,7 +36,7 @@ const workflowSteps = [
   {
     label: "Simulation",
     status: "Alerte PFU",
-    detail: "Le passage à 31,4 % déclenche un recalcul du dossier.",
+    detail: `Le passage à ${demoPfuRatePercent} % sur les dividendes déclenche un recalcul du dossier.`,
   },
   {
     label: "Preuves",
@@ -62,7 +78,11 @@ export function CabinetHero() {
           </Link>
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <HeroMetric label="Complétude" value={`${completeness.score}%`} detail="Dossier exploitable" />
-            <HeroMetric label="Alerte PFU" value="31,4 %" detail="Taux 2026 à contrôler" />
+            <HeroMetric
+              label="Alerte PFU"
+              value={`${demoPfuRatePercent} %`}
+              detail="Dividendes 2026 à contrôler"
+            />
             <HeroMetric label="Impact" value={formatEuro(pfuDiff.delta)} detail="Écart à recalculer" />
             <HeroMetric label="Prochaine action" value="Revue expert" detail="Avant rapport signé" />
           </div>
@@ -83,7 +103,11 @@ export function CabinetHero() {
           </p>
           <dl className="mt-5 space-y-3 text-sm">
             <SummaryRow icon={CircleCheck} label="Dossier" value={`${completeness.score}% complet`} />
-            <SummaryRow icon={GitCompareArrows} label="PFU 2026" value="30 % vers 31,4 %" />
+            <SummaryRow
+              icon={GitCompareArrows}
+              label="PFU 2026 (dividendes)"
+              value={`${demoPreLfssRatePercent} % vers ${demoPfuRatePercent} %`}
+            />
             <SummaryRow icon={FileText} label="Impact" value={`${formatEuro(pfuDiff.delta)} à expliquer`} />
             <SummaryRow icon={ShieldCheck} label="Livrable" value="Validation cabinet obligatoire" />
           </dl>
