@@ -370,6 +370,19 @@ export const ruleVersions: RuleVersion[] = [
     ],
   },
   {
+    id: "rule-holding-animatrice-2026-v1",
+    ruleSet: "dutreil",
+    version: "HOLDING-ANIMATRICE-2026.08-V1",
+    title:
+      "Qualification holding animatrice (CGI art. 787 B, al. 1-2) : faisceau de faits, jamais un score",
+    effectiveFrom: "2024-01-01",
+    status: "active",
+    evidenceSourceIds: [
+      "src-legifrance-cgi-787b-holding-animatrice-2026",
+      "src-jurisprudence-cass-com-2025-24-17415",
+    ],
+  },
+  {
     id: "rule-assurance-vie-990i-757b-2026-v1",
     ruleSet: "assurance-vie",
     version: "AV-990I-757B-2026.06-V1",

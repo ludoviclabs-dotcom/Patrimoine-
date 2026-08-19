@@ -14,9 +14,15 @@ dans `docs/agent/PF02_GOLDEN_COVERAGE.md` et `docs/rule-governance.md` :
   multi-liens, démembrement, assurance-vie 757 B) et invariants de
   gouvernance des règles `draft`. Aucun autre moteur, aucun montant fiscal
   hors périmètre de l'arrondi n'a été modifié.
+- **PF-02B3** — qualification holding animatrice (CGI art. 787 B). Portée
+  stricte : la qualification holding animatrice, et son intégration dans
+  `simulateDutreilV2` uniquement lorsqu'elle alimente l'éligibilité. Les
+  règles quantitatives Dutreil déjà sécurisées (engagement collectif,
+  fonction de direction, engagement individuel 4/6 ans, exclusions LF 2026,
+  réduction art. 790) n'ont pas été modifiées.
 
-Aucun des deux runs n'a touché l'infrastructure (Postgres, Auth, UI, PDF,
-watcher, IA) ni la holding animatrice, laissées à un run ultérieur.
+Aucun des trois runs n'a touché l'infrastructure (Postgres, Auth, UI, PDF,
+watcher, IA).
 
 ---
 
@@ -447,6 +453,167 @@ règle `draft` qui n'existe pas encore.
 
 ---
 
+## Holding animatrice (PF-02B3)
+
+### 1. Audit préalable
+
+Recherche exhaustive dans `lib/`, `components/`, `app/` (hors correspondances
+CSS `animate-*`) : **aucune** occurrence de « holding animatrice », `isHoldingCompany`,
+`holdingType` ou logique de qualification équivalente n'existait avant ce run.
+`simulateDutreilV2` acceptait `eligibleOperatingValue` comme une donnée déjà
+qualifiée, sans aucun contrôle sur le point de savoir si l'entité transmise
+était elle-même une holding réellement animatrice — confirmant l'écart
+documenté depuis PF-01 (« Holding animatrice : not modelled »).
+
+### 2. Sources vérifiées le 19/08/2026
+
+Aucune source secondaire retenue comme autorité — seuls le texte légal
+consolidé et la décision elle-même, consultés directement :
+
+- **[CGI art. 787 B — Légifrance (LEGIARTI000047623071)](https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047623071)**,
+  texte consolidé depuis la LF 2024. Al. 1 : « N'est pas considérée comme une
+  activité industrielle, commerciale, artisanale, agricole ou libérale
+  l'exercice par une société d'une activité de gestion de son propre
+  patrimoine mobilier ou immobilier. » Al. 2 : « Est néanmoins considérée
+  comme exerçant une activité commerciale la société qui, outre la gestion
+  d'un portefeuille de participations, a pour activité principale la
+  participation active à la conduite de la politique de son groupe constitué
+  de sociétés contrôlées directement ou indirectement, exerçant une activité
+  industrielle, commerciale, artisanale, agricole ou libérale, et auxquelles
+  elle rend, le cas échéant et à titre purement interne, des services
+  spécifiques, administratifs, juridiques, comptables, financiers et
+  immobiliers. » Ce second alinéa code **quatre critères cumulatifs**
+  (activité principale, participation active, contrôle, filiales
+  opérationnelles) et **un élément de soutien facultatif** (« le cas
+  échéant » — prestations internes).
+- **[Cass. com., 17 décembre 2025, n° 24-17.415 — Légifrance (JURITEXT000053196991)](https://www.legifrance.gouv.fr/juri/id/JURITEXT000053196991)**,
+  publié au bulletin, pourvoi rejeté. § 10 : « en cas de transmission par
+  décès, c'est au jour du décès, fait générateur de l'impôt, et non au jour
+  de la déclaration de succession, que le caractère opérationnel des
+  sociétés, dont les titres sont transmis, doit être apprécié. » § 13 : « Il
+  appartient au redevable, qui entend bénéficier de l'exonération prévue à
+  l'article 787 B du code général des impôts, de rapporter la preuve que les
+  filiales de la société holding... exercent une activité commerciale. » La
+  holding en cause (dénommée MCFG dans la décision) a été jugée **non
+  animatrice** : ses filiales, des SCI valorisées sur leur rendement locatif,
+  n'exerçaient pas d'activité opérationnelle éligible — confirmant
+  l'exclusion de l'al. 1 dès lors que les filiales contrôlées restent de
+  simples véhicules patrimoniaux.
+- `docs/reference/2026-08/REGLEMENTATION_AOUT_2026.md` § 7.4 et § 12.3 :
+  synthèse locale conforme aux deux sources ci-dessus ; § 12.3 précise
+  qu'aucune doctrine BOFiP 2026 pleinement alignée n'est confirmée dans le
+  gel du 18/08/2026 (`pending_doctrine`) et qu'« un ratio d'actifs
+  opérationnels » ne doit « jamais » devenir « un safe harbor automatique ».
+
+### 3. Modèle — faisceau de faits, jamais un score
+
+Nouveau module `lib/tax/holding-animatrice.ts`, `assessHoldingAnimatrice(facts)`.
+Les faits structurés représentables :
+
+| Fait | Champ | Fondement |
+|---|---|---|
+| Contrôle de filiales | `subsidiariesControlled` | Art. 787 B, al. 2 |
+| Participation à la politique du groupe | `groupPolicyActivelyLed` | Art. 787 B, al. 2 |
+| Animation effective (filiales réellement opérationnelles, au fait générateur) | `operationalSubsidiariesActivityProven` | Art. 787 B, al. 2 ; Cass. com. § 10 et § 13 |
+| Activité principale | `animationIsPrincipalActivity` | Art. 787 B, al. 2 (« a pour activité principale ») |
+| Prestations internes éventuelles | `internalServicesProvided` | Art. 787 B, al. 2 (« le cas échéant ») — soutien facultatif, jamais déterminant seul |
+| Période observée | `taxableEventDate` | Cass. com. § 10 — informatif, n'entre dans aucune branche de décision |
+| Éléments de preuve | `contemporaneousEvidenceTypes` (liste fermée : procès-verbaux, conventions, reporting, décisions, prestations, moyens humains) | § 7.4 ; Cass. com. § 13 (charge de la preuve) |
+| Ratio d'actifs opérationnels | `operationalAssetRatio` | § 7.4 — un indice, **n'entre dans aucune condition de qualification** de la fonction |
+| Validation déjà obtenue | `professionalValidationConfirmed` | Jamais présumée, jamais déduite des autres faits |
+
+**Aucun score** n'est calculé : les quatre critères cumulatifs de l'al. 2 sont
+évalués en `AND` strict, jamais pondérés. Logique :
+
+1. Un critère cumulatif expressément à `false` → `NOT_QUALIFIED` (exclusion
+   de l'al. 1 applicable).
+2. Un critère cumulatif non renseigné (`undefined`) → `NEEDS_REVIEW` (données
+   insuffisantes ; aucune qualification n'est présumée).
+3. Les quatre critères à `true` mais aucune preuve contemporaine rassemblée
+   → `NEEDS_REVIEW` (une allégation seule ne suffit jamais, charge de la
+   preuve sur le contribuable).
+4. Les quatre critères à `true`, preuves rassemblées, mais validation
+   professionnelle non confirmée → `NEEDS_REVIEW`.
+5. Les quatre critères à `true`, preuves rassemblées, validation
+   professionnelle confirmée → `QUALIFIED`.
+
+Chaque conclusion retourne `factsConsidered`, `missingFacts`, `ruleVersionId`
+(`rule-holding-animatrice-2026-v1`), `sourceRefs` (les deux sources
+ci-dessus) et `reviewReason` (toujours renseigné, y compris pour `QUALIFIED`
+et `NOT_QUALIFIED`).
+
+### 4. Intégration Dutreil — additive, jamais rétroactive sur les règles quantitatives
+
+`simulateDutreilV2` accepte un nouveau paramètre optionnel
+`holdingAnimatrice?: { isHoldingCompany: boolean; facts?: HoldingAnimatriceFacts }`.
+Absent (comportement historique) ou `isHoldingCompany: false` → aucun impact,
+runs strictement inchangés (non-régression vérifiée : cas de référence 2 M€
+toujours à 78 194 € / 39 097 €, cf. PF-02B2).
+
+Lorsque `isHoldingCompany: true` :
+
+- `QUALIFIED` → l'abattement de 75 % s'applique normalement.
+- `NOT_QUALIFIED` ou `NEEDS_REVIEW` → l'abattement de 75 % **n'est jamais
+  accordé** (`exemptValue = 0`), suivant exactement le précédent TAX-P0-006
+  (exonération résidence principale) : un statut incertain ne vaut jamais
+  présomption favorable.
+- La réduction de 50 % de l'art. 790 CGI suit la même logique
+  (`eligibleConsideringHoldingAnimatrice`, pas la seule éligibilité
+  quantitative) : des titres de holding non qualifiée animatrice ne sont pas
+  des « titres éligibles Dutreil » au sens de l'art. 790.
+- Les conditions quantitatives (engagement collectif, fonction de direction,
+  engagement individuel 4/6 ans, exclusions LF 2026) restent **strictement
+  inchangées** dans tous les cas.
+- Une nouvelle étape `dutreil-step-holding-animatrice` (`confidenceStatus:
+  needs_review` systématique) n'est ajoutée que lorsque la qualification est
+  engagée.
+
+Gouvernance : `rule-holding-animatrice-2026-v1` (ruleSet `dutreil`) active,
+`effectiveFrom: 2024-01-01` (date d'entrée en vigueur de la définition
+codifiée par la LF 2024). Deux nouvelles sources : `src-legifrance-cgi-787b-holding-animatrice-2026`
+et `src-jurisprudence-cass-com-2025-24-17415`. Nouvelle limite de couverture
+`coverage-dutreil-holding-animatrice` (`partially_covered` : chaînes de
+contrôle complexes, quasi-usufruit sur titres et animation partagée entre
+plusieurs holdings restent hors périmètre, retombent sur `NEEDS_REVIEW`).
+Allowlist `MULTI_ACTIVE_RULESETS` du test de gouvernance mise à jour pour
+déclarer la coexistence de `rule-dutreil-2026-v4` et
+`rule-holding-animatrice-2026-v1` sur le même jeu de règles `dutreil`.
+
+### 5. Golden cases
+
+14 nouveaux tests (`tests/unit/pf02b3-holding-animatrice.test.ts`) :
+
+| Catégorie | Cas | Attendu |
+|---|---|---|
+| Faits suffisants | Quatre critères établis, preuves rassemblées, validation confirmée | `QUALIFIED` |
+| Purement passive | Filiales non prouvées opérationnelles (SCI patrimoniales), critères écartés | `NOT_QUALIFIED`, motif citant l'art. 787 B, al. 1 |
+| Activité mixte | Ratio d'actifs 55 % favorable mais validation professionnelle absente | `NEEDS_REVIEW` — le ratio n'apparaît jamais dans le motif de la décision |
+| Données incomplètes | Trois des quatre critères cumulatifs non renseignés | `NEEDS_REVIEW`, `missingFacts` liste les trois |
+| Contradiction déclaratif/preuves | Quatre critères déclarés réunis, tableau de preuves vide | `NEEDS_REVIEW`, motif citant Cass. com. 24-17.415 |
+| Absence de preuve | Preuves jamais renseignées (`undefined`) | `NEEDS_REVIEW` |
+| Non-régression Dutreil | `holdingAnimatrice` absent | Résultats identiques au cas de référence PF-02B2 (78 194 € / 39 097 €) |
+| Société opérationnelle directe | `isHoldingCompany: false` | Comportement inchangé |
+| Intégration QUALIFIED | Holding qualifiée | Abattement 1 500 000 € accordé normalement |
+| Intégration NOT_QUALIFIED | Holding passive | Abattement refusé, droits alignés sur le montant sans pacte |
+| Intégration NEEDS_REVIEW | Preuves manquantes | Abattement non présumé, jamais accordé par défaut |
+| Traçabilité | Tout appel | `factsConsidered`, `missingFacts`, `ruleVersionId`, `sourceRefs`, `reviewReason` toujours renseignés |
+
+### 6. Limitations connues
+
+- Chaînes de contrôle complexes (sous-holdings multiples), quasi-usufruit sur
+  titres transmis, animation partagée entre plusieurs holdings : hors
+  périmètre, retombent sur `NEEDS_REVIEW` via les critères cumulatifs non
+  renseignés (comportement sûr, pas une lacune silencieuse).
+- Aucune doctrine BOFiP 2026 pleinement alignée n'est confirmée
+  (`pending_doctrine`, REGLEMENTATION_AOUT_2026.md § 12.3) : une revue
+  juridique reste recommandée avant toute promotion de la doctrine
+  administrative applicable.
+- Le ratio d'actifs opérationnels est capturé (`operationalAssetRatio`) mais
+  n'entre dans **aucune** branche de décision — délibéré, pour ne jamais
+  devenir un safe harbor automatique (§ 7.4 et § 12.3).
+
+---
+
 ## Validation
 
 ### PF-02B1 (IFI)
@@ -478,6 +645,17 @@ avec le fiscal, non un choix de dépendance.
 | `git diff --check` | PASS (exit 0) |
 | `npm run e2e` | NON EXÉCUTÉ — même limitation d'environnement ; aucune modification n'a touché à l'UI dans ce run. |
 
+### PF-02B3 (holding animatrice)
+
+| Commande | Résultat |
+|---|---|
+| `npm test` | PASS — 24 fichiers, **323 tests**, 0 échec (309 avant PF-02B3, +14) |
+| `npx tsc --noEmit` | PASS (exit 0) |
+| `npm run lint` | PASS (exit 0, un avertissement d'import inutilisé corrigé en cours de run) |
+| `npm run build` | PASS (exit 0) |
+| `git diff --check` | PASS (exit 0) |
+| `npm run e2e` | NON EXÉCUTÉ — même limitation d'environnement ; aucune modification n'a touché à l'UI dans ce run. |
+
 ## Recalculation candidates
 
 - **PF-02B1** : aucun résultat IFI recalculé. Les nouvelles branches sont
@@ -494,3 +672,13 @@ avec le fiscal, non un choix de dépendance.
   757 B liquidé avant ce run (surévaluation systématique d'environ 1 € par
   dossier). Aucun résultat historique n'a été réécrit ; la reprise reste une
   décision humaine, dossier par dossier.
+- **PF-02B3** : aucun résultat existant recalculé. Le nouveau paramètre
+  `holdingAnimatrice` est entièrement additif et absent de tous les dossiers
+  Dutreil déjà liquidés (le champ n'existait pas avant ce run) : aucun run
+  historique ne peut donc l'avoir engagé. Aucune entrée ajoutée à
+  `docs/agent/RECALCULATION_CANDIDATES.md`. À l'usage, tout dossier Dutreil
+  portant sur des titres de holding **devrait désormais renseigner**
+  `holdingAnimatrice` pour bénéficier du contrôle — un dossier existant qui
+  ne le fait pas continue de recevoir l'abattement de 75 % sans ce contrôle
+  supplémentaire, exactement comme avant PF-02B3 (aucune régression, mais
+  aucune protection nouvelle tant que le paramètre n'est pas engagé).

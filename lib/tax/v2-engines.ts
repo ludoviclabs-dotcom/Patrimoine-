@@ -27,6 +27,11 @@ import {
 } from "./holding-tax-assets";
 import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
 import {
+  assessHoldingAnimatrice,
+  type HoldingAnimatriceAssessment,
+  type HoldingAnimatriceFacts,
+} from "./holding-animatrice";
+import {
   getInvestmentIncomeProfile,
   PFU_LFSS_2026_PIVOT_DATE,
   type FinancialIncomeKind,
@@ -304,6 +309,7 @@ export function simulateDutreilV2({
   priorDonations = 0,
   transmissionDate = "2026-06-11",
   transmissionKind = "gift",
+  holdingAnimatrice,
 }: {
   companyValue?: number;
   eligibleOperatingValue?: number;
@@ -324,6 +330,14 @@ export function simulateDutreilV2({
   transmissionDate?: string;
   /** La réduction de l'art. 790 CGI ne vise que les donations, pas les successions. */
   transmissionKind?: "gift" | "inheritance";
+  /**
+   * PF-02B3 : renseigner uniquement lorsque les titres transmis sont ceux
+   * d'une société holding (par opposition à une société opérationnelle
+   * directe). `facts` alimente `assessHoldingAnimatrice` (CGI art. 787 B,
+   * al. 1-2) ; absent = comportement inchangé (société opérationnelle
+   * directe, aucun impact sur l'éligibilité).
+   */
+  holdingAnimatrice?: { isHoldingCompany: boolean; facts?: HoldingAnimatriceFacts };
 } = {}) {
   // Comparaison lexicographique valide entre dates ISO de même format.
   const lf2026RegimeApplied = transmissionDate >= DUTREIL_LF2026_PIVOT_DATE;
@@ -336,7 +350,19 @@ export function simulateDutreilV2({
     collectiveCommitmentSigned &&
     managementCommitmentSigned &&
     individualCommitmentYears >= requiredIndividualCommitmentYears;
-  const exemptValue = eligible ? Math.round(eligibleBase * 0.75) : 0;
+  // PF-02B3 : la qualification holding animatrice n'alimente l'éligibilité que
+  // lorsqu'elle est explicitement engagée (transmission de titres de holding).
+  // Ne modifie jamais les conditions quantitatives ci-dessus. Tant qu'elle
+  // n'est pas QUALIFIED, l'abattement de 75 % n'est jamais accordé — un
+  // NEEDS_REVIEW ne vaut jamais présomption favorable (même logique que
+  // l'exonération résidence principale, TAX-P0-006).
+  const holdingAnimatriceAssessment: HoldingAnimatriceAssessment | null = holdingAnimatrice?.isHoldingCompany
+    ? assessHoldingAnimatrice(holdingAnimatrice.facts ?? {})
+    : null;
+  const holdingAnimatriceBlocksExemption =
+    holdingAnimatriceAssessment !== null && holdingAnimatriceAssessment.qualification !== "QUALIFIED";
+  const eligibleConsideringHoldingAnimatrice = eligible && !holdingAnimatriceBlocksExemption;
+  const exemptValue = eligibleConsideringHoldingAnimatrice ? Math.round(eligibleBase * 0.75) : 0;
   const taxableBeforeOtherAllowances = companyValue - exemptValue;
 
   // Chaînage DMTG : droits avec et sans pacte (ligne directe, rappel 15 ans).
@@ -350,8 +376,12 @@ export function simulateDutreilV2({
   // l'ancien article 790 I). Toujours en vigueur au 18/08/2026 : la LF 2026 ne
   // l'a pas abrogée. Conditions : donation en pleine propriété de titres
   // éligibles Dutreil et donateur de moins de 70 ans. Aucune condition de date.
+  // PF-02B3 : des titres de holding non (encore) qualifiée animatrice ne sont
+  // pas des « titres éligibles Dutreil » au sens de l'art. 790 — la réduction
+  // suit donc `eligibleConsideringHoldingAnimatrice`, pas la seule éligibilité
+  // quantitative.
   const fiftyPercentReductionApplicable =
-    transmissionKind === "gift" && eligible && fullOwnership && donorAge < 70;
+    transmissionKind === "gift" && eligibleConsideringHoldingAnimatrice && fullOwnership && donorAge < 70;
   const rightsBeforeArticle790PerChild = withDutreilPerChild.tax;
   const rightsWithDutreilPerChild = fiftyPercentReductionApplicable
     ? Math.round(rightsBeforeArticle790PerChild * 0.5)
@@ -452,6 +482,27 @@ export function simulateDutreilV2({
     }),
   ];
 
+  if (holdingAnimatriceAssessment) {
+    steps.push(
+      makeStep({
+        id: "dutreil-step-holding-animatrice",
+        order: 7,
+        label: "Qualification holding animatrice (CGI art. 787 B)",
+        inputValue: holdingAnimatriceAssessment.factsConsidered.join("; ") || "Aucun fait renseigné",
+        formula: "faisceau de faits cumulatifs art. 787 B, al. 2 — jamais un score",
+        outputValue: `${holdingAnimatriceAssessment.qualification} — ${holdingAnimatriceAssessment.reviewReason}`,
+        ruleVersionId: holdingAnimatriceAssessment.ruleVersionId,
+        evidenceSourceId: holdingAnimatriceAssessment.sourceRefs[0],
+        coverageLimitIds: ["coverage-dutreil-holding-animatrice"],
+        confidenceStatus: "needs_review",
+        nextAction:
+          holdingAnimatriceAssessment.missingFacts.length > 0
+            ? `Faits manquants à réunir : ${holdingAnimatriceAssessment.missingFacts.join(", ")}.`
+            : "Faire confirmer la qualification par un avocat fiscaliste avant toute communication au client.",
+      }),
+    );
+  }
+
   return taxRun({
     module: "dutreil",
     scenario: "dutreil",
@@ -492,6 +543,9 @@ export function simulateDutreilV2({
       rightsWithDutreil,
       rightsWithoutDutreil,
       dutreilSavings,
+      holdingAnimatriceQualification: holdingAnimatriceAssessment?.qualification ?? null,
+      holdingAnimatriceReviewReason: holdingAnimatriceAssessment?.reviewReason ?? null,
+      eligibleConsideringHoldingAnimatrice,
     },
   });
 }

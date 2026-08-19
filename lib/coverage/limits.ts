@@ -196,6 +196,15 @@ export const coverageLimits: CoverageLimit[] = [
     requiredProfessional: "notaire",
   },
   {
+    id: "coverage-dutreil-holding-animatrice",
+    module: "dutreil",
+    label: "Qualification holding animatrice (art. 787 B)",
+    status: "partially_covered",
+    explanation:
+      "Faisceau de faits structurés couvrant les quatre critères cumulatifs de l'art. 787 B, al. 2 (activité principale, participation active, contrôle, filiales opérationnelles), les preuves contemporaines et la validation professionnelle. Le moteur ne qualifie jamais seul une holding : une conclusion QUALIFIED exige des faits complets, des preuves et une validation professionnelle déjà obtenue. Les holdings à chaîne de contrôle complexe, quasi-usufruit sur titres, ou animation partagée entre plusieurs holdings restent hors périmètre et retombent sur NEEDS_REVIEW.",
+    requiredProfessional: "avocat",
+  },
+  {
     id: "coverage-apport-cession-150-0-b-ter",
     module: "apport-cession",
     label: "Apport-cession 150-0 B ter",

@@ -18,6 +18,7 @@ HEAD before PF-01C4: b8cb7050d4aeceed6c16e2d2bc09597d472a9149
 HEAD before PF-02: b3b2dade33d1fad80286c5ff98edf130e703d935
 HEAD before PF-02B1: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
 HEAD before PF-02B2: b293984899e589b019cc6cf1c90f3da3effbea5a
+HEAD before PF-02B3: e04fbd78b3d2191410b0c3a6687524f634cb4a70
 git diff --check: PASS (exit 0, no whitespace/conflict-marker errors)
 
 ## Current milestone
@@ -26,12 +27,15 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-02B3 — Harden holding animatrice qualification. P0 register closed: 7 of 7
-fixed, 0 remaining. PF-02 COMPLETE. PF-02B1 COMPLETE (IFI démembrement, dettes
-avancées, actifs professionnels). PF-02B2 COMPLETE (arrondi DMTG corrigé,
-gouvernance des règles draft renforcée). PF-03 (Postgres/migrations/RLS and
-beyond) remains reserved and unrenamed, per explicit instruction, until the
-PF-02B fiscal sub-series concludes.
+**PF-03 — PostgreSQL, migrations and tenant isolation.** The PF-02B fiscal
+sub-series is closed: P0 register 7/7 fixed, PF-02 COMPLETE, PF-02B1 COMPLETE
+(IFI), PF-02B2 COMPLETE (DMTG rounding, draft-rule governance), PF-02B3
+COMPLETE (holding animatrice qualification). Every remaining fiscal-core gap
+identified since PF-01 is now either FIXED or explicitly modelled as
+`NEEDS_REVIEW`/`NOT_IMPLEMENTED` with a documented reason — see "Known
+technical debt" below for the P1/P2 backlog carried forward as ordinary
+follow-up, not as an open fiscal-core gap. PF-02B-PUBLISH is the immediate
+next task before PF-03 implementation begins (see "Next recommended task").
 
 ## Completed
 
@@ -56,6 +60,64 @@ PF-02B fiscal sub-series concludes.
 - **PF-02B2 COMPLETE — arrondi DMTG corrigé (arrondi par tranche → arrondi
   final unique, BOI-ENR-DG-30) ; gouvernance des règles draft renforcée par
   des invariants automatisés.**
+- **PF-02B3 COMPLETE — qualification holding animatrice (CGI art. 787 B) :
+  faisceau de faits structurés, jamais un score, jamais une décision
+  automatique favorable.**
+
+## PF-02B3 — Holding animatrice qualification (COMPLETE)
+
+Full report: `docs/agent/PF02B_FISCAL_COMPLETENESS.md` (section « Holding
+animatrice »).
+
+Prior audit confirmed the gap was real: zero occurrences of "holding
+animatrice", `isHoldingCompany`, or equivalent qualification logic anywhere
+in `lib/`/`components/`/`app/` — `simulateDutreilV2` took `eligibleOperatingValue`
+as an already-qualified input, with no check on whether the transmitted
+entity was itself a genuine animating holding.
+
+New module `lib/tax/holding-animatrice.ts`, `assessHoldingAnimatrice(facts)`,
+sourced directly (no secondary authority) from: **CGI art. 787 B, al. 1-2**
+(Légifrance LEGIARTI000047623071, consolidated since LF 2024 — the four
+cumulative criteria: activité principale, participation active, contrôle,
+filiales opérationnelles, plus an optional supporting fact, prestations
+internes, per "le cas échéant") and **Cass. com., 17 décembre 2025,
+n° 24-17.415** (Légifrance JURITEXT000053196991, published, appeal rejected
+— § 10: operational character assessed at the taxable event date, not the
+declaration date; § 13: burden of proof on the taxpayer; the holding in that
+case, MCFG, was found not animatrice because its subsidiaries were rental
+SCIs, not operational).
+
+Strict cumulative logic, no score: any core criterion explicitly `false` →
+`NOT_QUALIFIED`; any core criterion `undefined` → `NEEDS_REVIEW`; all four
+`true` but no contemporaneous evidence gathered → `NEEDS_REVIEW`; all four
+`true` and evidenced but no professional validation confirmed →
+`NEEDS_REVIEW`; only when all four are established, evidenced, and
+professionally validated → `QUALIFIED`. `operationalAssetRatio` is captured
+but deliberately never enters any decision branch, so it can never become an
+automatic safe harbor (REGLEMENTATION_AOUT_2026.md § 7.4 and § 12.3).
+
+Additive integration into `simulateDutreilV2` via a new optional
+`holdingAnimatrice?: { isHoldingCompany: boolean; facts?: HoldingAnimatriceFacts }`
+parameter — absent or `isHoldingCompany: false` leaves every existing run
+byte-for-byte unchanged (verified: the 2 M€ reference case still resolves to
+78 194 €/39 097 €, per PF-02B2). When engaged, only `QUALIFIED` grants the
+75 % exemption and the art. 790 50 % reduction; `NOT_QUALIFIED` and
+`NEEDS_REVIEW` both deny the exemption outright (`exemptValue = 0`) — the
+same "never presume a favorable outcome" pattern as TAX-P0-006 (main
+residence). Quantitative Dutreil conditions (collective/management
+commitments, 4/6-year individual commitment, LF 2026 exclusions)
+untouched. `rule-holding-animatrice-2026-v1` active (ruleSet `dutreil`,
+`effectiveFrom: 2024-01-01`), coexisting with `rule-dutreil-2026-v4` under a
+declared `MULTI_ACTIVE_RULESETS` justification. 14 new golden cases
+(`tests/unit/pf02b3-holding-animatrice.test.ts`) covering qualified,
+passive, mixed-activity, incomplete-data, declarative/evidence
+contradiction, no-evidence, and all three Dutreil-integration outcomes.
+
+Note: this is a new *capability*, not a retroactive check — a Dutreil run
+that doesn't pass `holdingAnimatrice` (including every run produced before
+this task) keeps behaving exactly as before, unaffected. The parameter must
+be explicitly engaged, same pattern as PF-02B1's IFI fields and PF-01B's
+`mainResidenceQualification`.
 
 ## PF-02B2 — DMTG rounding and draft-rule governance (COMPLETE)
 
@@ -328,10 +390,11 @@ None.
 
 ## Tests
 
-Unit: PASS — 23 files, 309 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
+Unit: PASS — 24 files, 323 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
 210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → 244 PF-01C4 → 279 PF-02 → 301 PF-02B1
-→ +8 net in PF-02B2: +7 draft-rule governance invariants, +1 golden 1 M€
-Dutreil reproduisant DUTREIL-2026-ARTICLE-790), 0 failing
+→ 309 PF-02B2 → +14 net in PF-02B3: assessHoldingAnimatrice golden cases +
+Dutreil integration non-regression/QUALIFIED/NOT_QUALIFIED/NEEDS_REVIEW),
+0 failing
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -346,9 +409,19 @@ are tracked separately — closing PF-01 covers the P0 register, not that backlo
 
 ## Regulatory verification required
 
-- Holding animatrice: not modelled. Requires a faisceau-d'indices approach with
-  `needs_review`, per REGLEMENTATION_AOUT_2026.md § 7.4 and
-  Cass. com., 17 déc. 2025, n° 24-17.415.
+- Holding animatrice qualification: **RESOLVED in PF-02B3**. Modelled as a
+  structured fact-based assessment (`assessHoldingAnimatrice`), sourced
+  directly from CGI art. 787 B, al. 1-2 (Légifrance LEGIARTI000047623071,
+  consolidated since LF 2024) and Cass. com., 17 décembre 2025, n° 24-17.415
+  (Légifrance JURITEXT000053196991, verified primary source, not a secondary
+  summary). Strict cumulative logic, never a score; `QUALIFIED` requires all
+  four statutory criteria established, evidenced, and professionally
+  validated — anything less denies the Dutreil exemption outright rather
+  than presuming it. Full detail in
+  `docs/agent/PF02B_FISCAL_COMPLETENESS.md` § « Holding animatrice ». Complex
+  chained-holding structures remain out of scope and safely resolve to
+  `NEEDS_REVIEW` (see Known technical debt below) — not a regression, a
+  documented, deliberate limitation.
 - Holding tax, foreign company: FOREIGN HOLDING PATH NOT_IMPLEMENTED. Requires
   the French participation fraction, dismemberment and anti-avoidance clause
   (§ 9.6); the engine abstains rather than generalising the French computation.
@@ -380,7 +453,8 @@ are tracked separately — closing PF-01 covers the P0 register, not that backlo
 
 ## Known technical debt
 
-P1 (need legal interpretation — separate runs, out of PF-02B1 scope):
+P1 (need legal interpretation — separate runs, only remaining item is
+holding tax foreign-company):
 - IFI: quasi-usufruit and chained/successive dismemberment; professional-asset
   *eligibility* conditions (only the declared-flag pass-through is
   implemented, per PF-02B1); individual per-debt eligibility conditions for
@@ -389,7 +463,10 @@ P1 (need legal interpretation — separate runs, out of PF-02B1 scope):
   barème, the 75 % global cap, démembrement general rule + the two documented
   art. 968 exceptions, in fine/no-term/related-party debts and the 60 % debt
   cap are now IMPLEMENTED (PF-02B1) — see `docs/agent/PF02B_FISCAL_COMPLETENESS.md`.
-- Holding animatrice: not modelled (faisceau d'indices + `needs_review`).
+- Holding animatrice: **now modelled** (PF-02B3) for the single-holding case;
+  complex chained-holding structures, quasi-usufruit on transmitted shares,
+  and animation shared across several holdings remain out of scope and
+  safely resolve to `NEEDS_REVIEW` via missing core facts — not a silent gap.
 - Holding tax: foreign-company path `NOT_IMPLEMENTED`.
 
 P2 (structural, low risk):
@@ -398,12 +475,16 @@ P2 (structural, low risk):
 - Status of the nine `draft` rules referenced by engines (confirmed still
   `draft` in PF-02B2, each with a documented, specific reason).
 - Possible extension of the static fiscal-constant audit to `lib/**`.
+- `holdingAnimatrice` is opt-in on `simulateDutreilV2`: no existing UI/demo
+  caller currently supplies it, so no live dossier benefits from the new
+  check yet. Wiring a UI qualification form is a product task, not a fiscal
+  gap — the deterministic engine and its safeguards are ready.
 
 ## Next recommended task
 
-PF-02B3 — Harden holding animatrice qualification (faisceau d'indices,
-Cass. com. 17 déc. 2025 n° 24-17.415, REGLEMENTATION_AOUT_2026.md § 7.4).
-Not started in this run.
+PF-02B-PUBLISH, as explicitly instructed. PF-03 — PostgreSQL, migrations and
+tenant isolation — is the priority immediately after that (see "Current
+priority" above); do not start PF-03 implementation in this run.
 
 ## Handoff notes
 
