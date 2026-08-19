@@ -33,6 +33,7 @@ const runB = "99999999-9999-4999-8999-999999999992";
 const evidenceId = "pf03b-official-source";
 const ruleId = "pf03b-global-rule-v1";
 const tenantBRuleId = "pf03b-tenant-b-rule-v1";
+const clerkIdentity = "12121212-1212-4121-8121-121212121212";
 
 const tenantTables = [
   "tenants",
@@ -59,6 +60,9 @@ const tenantTables = [
   "consents",
   "dpia_records",
   "rule_versions",
+  "auth_provider_organizations",
+  "auth_provider_memberships",
+  "auth_webhook_events",
 ] as const;
 
 const contextA = createInternalTenantContext({
@@ -232,6 +236,35 @@ async function seedRuleAndSimulationRuns() {
   }
 }
 
+async function seedClerkAuthorizationFixture() {
+  await admin`
+    insert into user_identities
+      (id, provider, provider_subject, email_normalized, display_name)
+    values (${clerkIdentity}, 'clerk', 'user_clerk_a', 'clerk-a@example.test', 'Clerk A')
+  `;
+  await admin`
+    insert into memberships
+      (tenant_id, user_identity_id, role, status, activated_at)
+    values (${tenantA}, ${clerkIdentity}, 'conseiller', 'active', now())
+  `;
+  await admin`
+    insert into auth_provider_organizations
+      (provider, provider_organization_id, tenant_id, slug, display_name)
+    values
+      ('clerk', 'org_clerk_a', ${tenantA}, 'cabinet-a', 'Cabinet A'),
+      ('clerk', 'org_clerk_wrong_tenant', ${tenantB}, 'cabinet-b', 'Cabinet B'),
+      ('clerk', 'org_clerk_without_membership', ${tenantA}, 'cabinet-a-2', 'Cabinet A 2')
+  `;
+  await admin`
+    insert into auth_provider_memberships
+      (provider, provider_organization_id, provider_subject, provider_role, observed_status)
+    values
+      ('clerk', 'org_clerk_a', 'user_clerk_a', 'org:member', 'active'),
+      ('clerk', 'org_clerk_wrong_tenant', 'user_clerk_a', 'org:member', 'active'),
+      ('clerk', 'org_clerk_without_membership', 'user_clerk_without_membership', 'org:member', 'active')
+  `;
+}
+
 beforeAll(async () => {
   const databaseUrl = process.env.PF03_TEST_DATABASE_URL;
   if (!databaseUrl) {
@@ -252,6 +285,7 @@ beforeAll(async () => {
   await seedClaireMarcDemo(adminDb);
   await seedSecondTenantAndLinkedRecords();
   await seedRuleAndSimulationRuns();
+  await seedClerkAuthorizationFixture();
 
   application = postgres(applicationUrl(databaseUrl), {
     max: 1,
@@ -280,18 +314,21 @@ describe("PF-03B PostgreSQL RLS tenant isolation", () => {
     const roles = await admin<{ rolname: string; rolsuper: boolean; rolbypassrls: boolean }[]>`
       select rolname, rolsuper, rolbypassrls
       from pg_roles
-      where rolname in ('patrimoine_app', 'patrimoine_fixture_service')
+      where rolname in ('patrimoine_app', 'patrimoine_fixture_service', 'patrimoine_webhook_service')
       order by rolname
     `;
     const [serviceMembership] = await admin<{
       application_has_service_role: boolean;
       deployment_has_service_role: boolean;
+      application_has_webhook_role: boolean;
     }[]>`
       select
         pg_has_role('pf03_test_app', 'patrimoine_fixture_service', 'member')
           as application_has_service_role,
         pg_has_role(current_user, 'patrimoine_fixture_service', 'member')
-          as deployment_has_service_role
+          as deployment_has_service_role,
+        pg_has_role('pf03_test_app', 'patrimoine_webhook_service', 'member')
+          as application_has_webhook_role
     `;
 
     expect(rows).toHaveLength(tenantTables.length);
@@ -299,10 +336,12 @@ describe("PF-03B PostgreSQL RLS tenant isolation", () => {
     expect(roles).toEqual([
       { rolname: "patrimoine_app", rolsuper: false, rolbypassrls: false },
       { rolname: "patrimoine_fixture_service", rolsuper: false, rolbypassrls: false },
+      { rolname: "patrimoine_webhook_service", rolsuper: false, rolbypassrls: false },
     ]);
     expect(serviceMembership).toEqual({
       application_has_service_role: false,
       deployment_has_service_role: true,
+      application_has_webhook_role: false,
     });
   });
 
@@ -399,6 +438,28 @@ describe("PF-03B PostgreSQL RLS tenant isolation", () => {
     await expect(
       createTenantResourceRepository(applicationDb).findDossier(mismatched, dossierA),
     ).rejects.toThrow("TENANT_MEMBERSHIP_REQUIRED");
+  });
+
+  it("resolves Clerk only through the active internal membership and tenant mapping", async () => {
+    const resolve = (userId: string, organizationId: string) => application.begin(async (transaction) => {
+      await transaction.unsafe("set local role patrimoine_app");
+      return transaction<{ tenant_id: string; identity_id: string; role: string }[]>`
+        select * from app_security.resolve_clerk_context(${userId}, ${organizationId})
+      `;
+    });
+
+    await expect(resolve("unknown_clerk_user", "org_clerk_a")).resolves.toEqual([]);
+    await expect(resolve("user_clerk_without_membership", "org_clerk_without_membership")).resolves.toEqual([]);
+    await expect(resolve("user_clerk_a", "org_clerk_wrong_tenant")).resolves.toEqual([]);
+    await expect(resolve("user_clerk_a", "org_clerk_a")).resolves.toEqual([
+      { tenant_id: tenantA, identity_id: clerkIdentity, role: "conseiller" },
+    ]);
+
+    await admin`
+      update memberships set status = 'disabled', revoked_at = now()
+      where tenant_id = ${tenantA} and user_identity_id = ${clerkIdentity}
+    `;
+    await expect(resolve("user_clerk_a", "org_clerk_a")).resolves.toEqual([]);
   });
 
   it("rejects a composite foreign key crossing the tenant boundary", async () => {

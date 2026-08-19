@@ -145,6 +145,69 @@ export const memberships = pgTable(
   ],
 );
 
+// External identity-provider data is deliberately separate from memberships.
+// A Clerk Organization is only an observed mapping until an internal tenant
+// administrator links it; memberships remain the business authorization source.
+export const authProviderOrganizations = pgTable(
+  "auth_provider_organizations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    provider: varchar("provider", { length: 32 }).notNull(),
+    providerOrganizationId: varchar("provider_organization_id", { length: 191 }).notNull(),
+    tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "restrict" }),
+    slug: varchar("slug", { length: 191 }),
+    displayName: varchar("display_name", { length: 160 }),
+    observedStatus: varchar("observed_status", { length: 24 }).notNull().default("active"),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("auth_provider_organizations_provider_org_unique").on(
+      table.provider,
+      table.providerOrganizationId,
+    ),
+    index("auth_provider_organizations_tenant_idx").on(table.tenantId),
+  ],
+);
+
+export const authProviderMemberships = pgTable(
+  "auth_provider_memberships",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    provider: varchar("provider", { length: 32 }).notNull(),
+    providerOrganizationId: varchar("provider_organization_id", { length: 191 }).notNull(),
+    providerSubject: varchar("provider_subject", { length: 191 }).notNull(),
+    providerRole: varchar("provider_role", { length: 96 }),
+    observedStatus: varchar("observed_status", { length: 24 }).notNull().default("active"),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("auth_provider_memberships_provider_org_subject_unique").on(
+      table.provider,
+      table.providerOrganizationId,
+      table.providerSubject,
+    ),
+    index("auth_provider_memberships_provider_subject_idx").on(table.provider, table.providerSubject),
+  ],
+);
+
+// Immutable event receipts form the webhook audit trail without persisting a
+// raw Clerk payload (which can contain unnecessary personal data).
+export const authWebhookEvents = pgTable(
+  "auth_webhook_events",
+  {
+    provider: varchar("provider", { length: 32 }).notNull(),
+    eventId: varchar("event_id", { length: 191 }).notNull(),
+    eventType: varchar("event_type", { length: 96 }).notNull(),
+    payloadSha256: varchar("payload_sha256", { length: 64 }).notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ name: "auth_webhook_events_provider_event_pk", columns: [table.provider, table.eventId] })],
+);
+
 export const users = pgTable(
   "users",
   {

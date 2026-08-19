@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 const tenantContextBrand: unique symbol = Symbol("tenant-context");
 
 export type TenantContextRole = "admin" | "conseiller" | "expert" | "client" | "auditeur";
-export type TenantContextSource = "demo-fixture" | "internal-test" | "server-config";
+export type TenantContextSource = "demo-fixture" | "internal-test" | "server-config" | "clerk-session";
 
 export type TenantContext = Readonly<{
   tenantId: string;
