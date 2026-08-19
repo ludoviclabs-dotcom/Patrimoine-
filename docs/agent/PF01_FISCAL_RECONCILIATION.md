@@ -51,7 +51,7 @@ comme réellement présents dans le code.
 | Dutreil — réduction art. 790 | Réduction traitée comme abrogée après le 21/02/2026 (`donationBeforeFeb2026`) | Art. 790 CGI toujours en vigueur, sans condition de date | Golden case verrouillait la règle erronée | § 7.5, § 17 TAX-P0-001 | MISMATCH | **P0 — corrigé** |
 | Dutreil — pivot 21/02/2026 | `individualCommitmentYears >= 6` en dur ; exclusions LF 2026 appliquées à toute date | 4 ans avant le 21/02/2026, 6 ans à compter ; exclusions non rétroactives | Absent | § 17 TAX-P0-007 | MISMATCH | **P0 — corrigé** |
 | PFU | Constante globale 31,4 % (12,8 + 18,6) appliquée à toute assiette | Profil de taux par catégorie de revenu ; assurance-vie maintenue à 17,2 % (PFU 30 %) | Absent → 12 golden cases (PF-01C1) | § 17 TAX-P0-002 | MISMATCH | **P0 — corrigé (PF-01C1)** |
-| Apport-cession | 70 % / 36 mois en dur, sans date du fait générateur | Règle datée : 60 %/2 ans avant le 21/02/2026, 70 %/3 ans à compter | Absent | § 8.2, § 17 TAX-P0-003 | PARTIAL | **P0 — non corrigé** |
+| Apport-cession | 70 % / 36 mois en dur, sans date du fait générateur | Règle datée : 60 %/2 ans avant le 21/02/2026, 70 %/3 ans à compter | Absent → 9 golden cases (PF-01C2) | § 8.2, § 17 TAX-P0-003 | PARTIAL | **P0 — corrigé (PF-01C2)** |
 | Taxe holding | `(somptuaires + financiers + immobilier + liquidités) × 20 %` | Liste fermée art. 235 ter C, assiette et taux à qualifier | Absent | § 9, § 17 TAX-P0-004 | MISMATCH | **P0 — non corrigé** |
 | Résidence principale | Booléen `isMainResidence` → exonération 100 % automatique | Questionnaire factuel ; `professional-review` si délai > 1 an | Absent → 7 golden cases (PF-01B) | § 17 TAX-P0-006 | MISMATCH | **P0 — corrigé (PF-01B)** |
 | E-facturation | Échéance en chaîne statique `"1er septembre 2026"` | État daté, bascule au 1er septembre | Absent | § 17 TAX-P0-005 | PARTIAL | **P0 — non corrigé** |
@@ -226,6 +226,63 @@ comme réellement présents dans le code.
   `components/v2/cabinet-hero.tsx`.
 - **Statut** : **FIXED**, 12 golden cases ajoutés.
 
+### TAX-P0-003 — Apport-cession 150-0 B ter non versionné par date (PF-01C2)
+
+- **Root cause** : `simulateApportCessionV2` ne recevait **aucune date**.
+  `requiredReinvestment = saleProceeds * 0.7` et `reinvestmentMonths <= 36`
+  étaient des constantes en dur, et la condition de conservation était figée à
+  `conservationYears >= 5`. Toute cession, y compris antérieure au 21/02/2026,
+  se voyait donc appliquer le régime LF 2026 — une **rétro-application** du
+  droit nouveau à des faits générateurs antérieurs.
+- **Date opérative retenue** : la **date de cession des titres apportés**
+  (`disposalDate`), et non la date de l'apport. La LF 2026 art. 11 s'applique
+  aux cessions réalisées à compter du lendemain de la publication de la loi,
+  soit le **21/02/2026**. La version consolidée de l'article sur Légifrance est
+  elle-même datée du 21 février 2026, ce qui corrobore le pivot.
+- **Champ ajouté** : `disposalDate?: string` (ISO `YYYY-MM-DD`). Aucun champ
+  existant n'a été détourné : la date d'apport n'a pas été réutilisée sous un
+  autre nom. **En son absence, le moteur s'abstient** — `regimeId`,
+  `reinvestmentMinimumRate` et `requiredReinvestment` restent `null`,
+  `undetermined = true`, toutes les étapes passent en `needs_review` et
+  `resultAmount` n'est pas renseigné. Le régime 2026 n'est jamais présumé.
+- **Régime antérieur (cessions du 01/01/2019 au 20/02/2026)** : remploi minimal
+  **60 %**, délai **2 ans**, conservation **12 mois**.
+  Règle `rule-apport-cession-2019-v1` (APPORT-CESSION-2019.08-V1).
+- **Régime LF 2026 (cessions à compter du 21/02/2026)** : remploi minimal
+  **70 %**, délai **3 ans**, conservation **5 ans**.
+  Règle `rule-apport-cession-2026-v3` (APPORT-CESSION-2026.08-V3).
+- **Régime historique (cessions antérieures au 01/01/2019)** : remploi 50 %,
+  délai 2 ans repris du référentiel, mais **durée de conservation non
+  documentée** → le moteur ne l'invente pas : `minimumHoldingPeriodMonths` reste
+  `null`, la condition n'est pas évaluée et le résultat devient `undetermined`.
+  Règle `rule-apport-cession-pre-2019-v1`, statut `draft`, source marquée
+  `[À VÉRIFIER BOFIP]`.
+- **Sources** : `REGLEMENTATION_AOUT_2026.md` § 8.1 et § 8.2 ; § 17
+  (TAX-P0-003) ; CGI art. 150-0 B ter, versions consolidées **contrôlées sur
+  legifrance.gouv.fr** (version au 21/02/2026 : 70 % / trois ans / cinq ans ;
+  version antérieure : 60 % / deux ans / douze mois) ; LF 2026 n° 2026-103 du
+  19/02/2026, art. 11 ; implémentation de référence `MOTEURS_FISCAUX_2026.ts`
+  `getApportCessionRegime` (L1938-1954).
+- **Résolution de la date** : comparaison lexicographique de dates ISO de même
+  format, ordonnée **au jour près**. Aucune comparaison fondée sur l'année n'est
+  utilisée — un test dédié vérifie qu'une cession du 15/01/2026 relève encore du
+  régime antérieur.
+- **Calculation steps** : une étape `apport-step-regime` a été ajoutée en tête,
+  exposant la date opérative, le régime retenu, le seuil, le délai, la
+  conservation et les références légales. Les libellés des étapes suivantes
+  dérivent du régime résolu ; plus aucun texte « 70 % / 36 mois » figé.
+- **RECALCULATION CANDIDATE** : les runs `apport-cession` produits avant cette
+  correction ont tous été liquidés au régime 70 %/3 ans/5 ans, quelle que soit
+  la date de cession réelle. Les dossiers portant sur une cession **antérieure
+  au 21/02/2026** ont donc été évalués contre un seuil trop élevé et une
+  conservation trop longue. Aucune migration automatique n'est lancée dans ce
+  run ; les résultats historiques ne sont pas réécrits. La fixture de démonstration
+  porte désormais une date de cession explicite (`2026-06-11`), ce qui laisse son
+  résultat inchangé (840 000 €).
+- **Fichiers corrigés** : `lib/tax/apport-cession-regimes.ts` (nouveau),
+  `lib/tax/v2-engines.ts`, `lib/rules/rule-versions.ts`.
+- **Statut** : **FIXED**, 9 golden cases ajoutés.
+
 ## 5. Golden cases
 
 Le golden case existant `tests/unit/v3-1-transmission.test.ts` **verrouillait la
@@ -278,6 +335,20 @@ Golden cases ajoutés en PF-01C1 pour TAX-P0-002 (12 nouveaux tests, 198 → 210
 | 11. Pré-diagnostic dirigeant | IR 15 360 € et PS 22 320 € séparés, total 37 680 € ; override `pfuRate` toujours honoré |
 | 12. Arbitrage PFU/barème daté | 2026 → 314 € ; 2025 → 300 € |
 
+Golden cases ajoutés en PF-01C2 pour TAX-P0-003 (9 nouveaux tests, 210 → 219) :
+
+| Cas | Attendu |
+|---|---|
+| A. Seuil PRÉ-réforme (cession 20/02/2026) | 599 900 € → insuffisant ; 600 000 € → seuil atteint (60 % de 1 M€) |
+| B. Seuil POST-réforme (cession 21/02/2026) | 699 900 € → insuffisant ; 700 000 € → seuil atteint (70 % de 1 M€) |
+| C. Délai PRÉ-réforme | 24 mois → respecté ; 25 mois → dépassé |
+| D. Délai POST-réforme | 36 mois → respecté ; 37 mois → dépassé |
+| E. Date opérative (apport antérieur dans les deux cas) | cession 20/02 → régime 60 %/24 m/12 m ; cession 21/02 → 70 %/36 m/60 m ; un même remploi de 650 000 € est conforme avant et insuffisant après |
+| E bis. Bascule au jour près | 20/02/2026 et 15/01/2026 → régime antérieur ; 21/02/2026 → LF 2026 ; 31/12/2018 → pre-2019 |
+| F. Conservation | 1 an suffit avant la réforme ; insuffisant après (5 ans requis) |
+| G. Date de cession manquante | `regimeId`, seuil et délai `null`, `undetermined`, toutes les étapes `needs_review`, `resultAmount` non renseigné |
+| H. Cession antérieure à 2019 | seuil 50 % repris, conservation `null` non inventée, résultat `undetermined` |
+
 ### Écart d'arrondi documenté (non corrigé, volontaire)
 
 Sur le cas de référence à 1 M€ du référentiel
@@ -296,15 +367,14 @@ absorbé silencieusement.
 
 ## 6. P0 confirmés et NON corrigés
 
-Ces trois P0 restent **confirmés présents dans le code** mais volontairement
-hors périmètre des runs PF-01/PF-01B/PF-01C1 : chacun demande une modification de
-fond sur un moteur distinct, et le protocole impose de corriger « un moteur à la
-fois ». TAX-P0-006 (PF-01B) et TAX-P0-002 (PF-01C1), initialement dans cette
-liste, ont été corrigés — voir § 4.
+Ces deux P0 restent **confirmés présents dans le code** mais volontairement hors
+périmètre des runs PF-01 à PF-01C2 : chacun demande une modification de fond sur
+un moteur distinct, et le protocole impose de corriger « un moteur à la fois ».
+TAX-P0-006 (PF-01B), TAX-P0-002 (PF-01C1) et TAX-P0-003 (PF-01C2),
+initialement dans cette liste, ont été corrigés — voir § 4.
 
 | ID | Constat vérifié dans le code | Emplacement |
 |---|---|---|
-| TAX-P0-003 | `requiredReinvestment = saleProceeds * 0.7` et `reinvestmentMonths <= 36` en dur, sans date de cession : le régime 2026 serait appliqué rétroactivement aux cessions antérieures au 21/02/2026. | `lib/tax/v2-engines.ts`, `simulateApportCessionV2` |
 | TAX-P0-004 | `holdingTax = taxableLuxuryInventory * 0.2` où l'inventaire additionne intégralement liquidités et actifs financiers : assiette ouverte, non conforme à la liste fermée de l'art. 235 ter C. | `lib/tax/v2-engines.ts`, `simulateHoldingTaxV2` |
 | TAX-P0-005 | Échéance stockée en chaîne statique `"1er septembre 2026"` ; aucun état passé/futur calculé par rapport à la date courante. | `lib/simulations/e-invoicing.ts` L12 |
 
@@ -321,10 +391,16 @@ liste, ont été corrigés — voir § 4.
   dérogatoires de la table § 3.2). Les dossiers PEA liquidés sous
   `rule-pea-withdrawal-2026-v1` sous-estimaient les prélèvements sociaux et
   doivent être recalculés.
-- Aucune situation `[BLOCKED — SOURCE VERIFICATION REQUIRED]` n'a été
-  rencontrée : les quatre corrections (PF-01 + PF-01B + PF-01C1) reposent sur le
-  référentiel approuvé du 18/08/2026, qui documente lui-même le constat et la
-  correction attendue.
+- **Apport-cession antérieur à 2019** : la durée de conservation applicable aux
+  cessions antérieures au 01/01/2019 n'est documentée ni par le référentiel
+  (marqué `[À VÉRIFIER BOFIP]`) ni par les versions consultées. Le moteur
+  s'abstient (`minimumHoldingPeriodMonths: null`) au lieu de supposer une durée.
+  Statut pour cette sous-règle : `[BLOCKED — SOURCE VERIFICATION REQUIRED]`.
+- Aucune autre situation `[BLOCKED — SOURCE VERIFICATION REQUIRED]` n'a été
+  rencontrée : les cinq corrections (PF-01 + PF-01B + PF-01C1 + PF-01C2)
+  reposent sur le référentiel approuvé du 18/08/2026 et, pour l'apport-cession,
+  sur une vérification complémentaire des versions consolidées de l'art.
+  150-0 B ter sur legifrance.gouv.fr.
 
 ## 8. Backlog P1 / P2 (non implémenté)
 
@@ -338,11 +414,11 @@ liste, ont été corrigés — voir § 4.
 
 ## 9. Validation finale
 
-État après PF-01C1 (TAX-P0-002 inclus) :
+État après PF-01C2 (TAX-P0-003 inclus) :
 
 | Commande | Résultat |
 |---|---|
-| `npm test` | PASS — 20 fichiers, **210 tests**, 0 échec (183 baseline PF-01 → 191 PF-01 → 198 PF-01B → +12 nets en PF-01C1) |
+| `npm test` | PASS — 20 fichiers, **219 tests**, 0 échec (183 baseline PF-01 → 191 PF-01 → 198 PF-01B → 210 PF-01C1 → +9 nets en PF-01C2) |
 | `npx tsc --noEmit` | PASS (exit 0) |
 | `npm run lint` | PASS (exit 0) |
 | `npm run build` | PASS (exit 0) |

@@ -101,7 +101,11 @@ describe("V2 cabinet fiscal product layer", () => {
     expect(simulateRealEstateGainV2({ yearsHeld: 9 }).resultAmount).toBeGreaterThan(0);
     expect(simulateTransmissionV2({ assetValue: 300_000, children: 2 }).resultAmount).toBeGreaterThanOrEqual(0);
     expect(simulateDutreilV2().computedResult?.exemptValue).toBe(592_500);
-    expect(simulateApportCessionV2().computedResult?.requiredReinvestment).toBe(840_000);
+    // TAX-P0-003 : la date de cession est désormais explicite — le régime n'est
+    // plus présumé. 1 200 000 € × 70 % (régime LF 2026) = 840 000 €.
+    expect(
+      simulateApportCessionV2({ disposalDate: "2026-06-11" }).computedResult?.requiredReinvestment,
+    ).toBe(840_000);
     expect(simulateHoldingTaxV2().computedResult?.holdingTax).toBe(84_000);
   });
 

@@ -12,6 +12,7 @@ import {
   PER_TNS_MAX_2026,
 } from "../../lib/tax/engines/per";
 import { computeSciIrVsIs, simulateSciIrVsIs } from "../../lib/tax/engines/sci-arbitrage";
+import { resolveApportCessionRegime } from "../../lib/tax/apport-cession-regimes";
 import {
   simulateApportCessionV2,
   simulateHoldingTaxV2,
@@ -140,7 +141,8 @@ describe("V3.2 — exit tax (signal)", () => {
 
 describe("V3.2 — polish apport-cession et taxe holding", () => {
   it("conserve le golden 840 000 € et ajoute la comparaison cession directe", () => {
-    const run = simulateApportCessionV2();
+    // TAX-P0-003 : date de cession explicite (régime LF 2026), plus de régime présumé.
+    const run = simulateApportCessionV2({ disposalDate: "2026-06-11" });
     expect(run.computedResult?.requiredReinvestment).toBe(840_000);
     expect(run.computedResult?.directSaleTaxAtPfu).toBe(188_400);
     expect(run.steps.some((step) => step.id === "apport-step-direct-sale")).toBe(true);
@@ -152,6 +154,177 @@ describe("V3.2 — polish apport-cession et taxe holding", () => {
     expect(run.steps.some((step) => step.id === "holding-step-ifi-exoneration")).toBe(true);
     const deadline = run.steps.find((step) => step.id === "holding-step-deadline");
     expect(deadline?.outputValue).toBe("Printemps 2027");
+  });
+});
+
+// --- GOLDEN CASES versionnement 150-0 B ter par date de cession (TAX-P0-003) --
+// Sources : REGLEMENTATION_AOUT_2026.md § 8.1 et § 8.2 ; CGI art. 150-0 B ter,
+// versions consolidées contrôlées sur legifrance.gouv.fr ; LF 2026
+// n° 2026-103 du 19/02/2026, art. 11 (application aux cessions réalisées à
+// compter du 21/02/2026).
+// Le régime est sélectionné par la DATE DE CESSION des titres apportés, jamais
+// par la date d'apport ni par l'année d'exécution du moteur.
+describe("V3.7 — régime 150-0 B ter versionné par date de cession (TAX-P0-003)", () => {
+  const PROCEEDS = 1_000_000;
+
+  it("golden A — seuil PRÉ-réforme : 60 % requis au 20/02/2026", () => {
+    const base = {
+      saleProceeds: PROCEEDS,
+      reinvestmentMonths: 12,
+      conservationYears: 1,
+      disposalDate: "2026-02-20",
+    };
+    const under = simulateApportCessionV2({ ...base, reinvestedAmount: 599_900 });
+    expect(under.computedResult?.requiredReinvestment).toBe(600_000);
+    expect(under.computedResult?.meetsThreshold).toBe(false);
+    expect(under.computedResult?.compliant).toBe(false);
+
+    const at = simulateApportCessionV2({ ...base, reinvestedAmount: 600_000 });
+    expect(at.computedResult?.meetsThreshold).toBe(true);
+    expect(at.computedResult?.compliant).toBe(true);
+  });
+
+  it("golden B — seuil POST-réforme : 70 % requis au 21/02/2026", () => {
+    const base = {
+      saleProceeds: PROCEEDS,
+      reinvestmentMonths: 12,
+      conservationYears: 5,
+      disposalDate: "2026-02-21",
+    };
+    const under = simulateApportCessionV2({ ...base, reinvestedAmount: 699_900 });
+    expect(under.computedResult?.requiredReinvestment).toBe(700_000);
+    expect(under.computedResult?.meetsThreshold).toBe(false);
+
+    const at = simulateApportCessionV2({ ...base, reinvestedAmount: 700_000 });
+    expect(at.computedResult?.meetsThreshold).toBe(true);
+    expect(at.computedResult?.compliant).toBe(true);
+  });
+
+  it("golden C — délai PRÉ-réforme : deux ans (24 mois)", () => {
+    const base = {
+      saleProceeds: PROCEEDS,
+      reinvestedAmount: 600_000,
+      conservationYears: 1,
+      disposalDate: "2026-02-20",
+    };
+    expect(
+      simulateApportCessionV2({ ...base, reinvestmentMonths: 24 }).computedResult?.meetsDeadline,
+    ).toBe(true);
+    expect(
+      simulateApportCessionV2({ ...base, reinvestmentMonths: 25 }).computedResult?.meetsDeadline,
+    ).toBe(false);
+  });
+
+  it("golden D — délai POST-réforme : trois ans (36 mois)", () => {
+    const base = {
+      saleProceeds: PROCEEDS,
+      reinvestedAmount: 700_000,
+      conservationYears: 5,
+      disposalDate: "2026-02-21",
+    };
+    expect(
+      simulateApportCessionV2({ ...base, reinvestmentMonths: 36 }).computedResult?.meetsDeadline,
+    ).toBe(true);
+    expect(
+      simulateApportCessionV2({ ...base, reinvestmentMonths: 37 }).computedResult?.meetsDeadline,
+    ).toBe(false);
+  });
+
+  it("golden E — date opérative : apport antérieur, la CESSION commande le régime", () => {
+    // Apport bien antérieur à la réforme dans les deux cas : seule la date de
+    // cession déplace le régime. C'est le cœur de TAX-P0-003.
+    const before = simulateApportCessionV2({
+      saleProceeds: PROCEEDS,
+      reinvestedAmount: 650_000,
+      reinvestmentMonths: 12,
+      conservationYears: 1,
+      disposalDate: "2026-02-20",
+    });
+    expect(before.computedResult?.regimeId).toBe("2019-to-2026-02-20");
+    expect(before.computedResult?.reinvestmentMinimumRate).toBe(0.6);
+    expect(before.computedResult?.reinvestmentDeadlineMonths).toBe(24);
+    expect(before.computedResult?.minimumHoldingPeriodMonths).toBe(12);
+    expect(before.steps.every((s) => s.ruleVersionId === "rule-apport-cession-2019-v1")).toBe(true);
+
+    const after = simulateApportCessionV2({
+      saleProceeds: PROCEEDS,
+      reinvestedAmount: 650_000,
+      reinvestmentMonths: 12,
+      conservationYears: 5,
+      disposalDate: "2026-02-21",
+    });
+    expect(after.computedResult?.regimeId).toBe("from-2026-02-21");
+    expect(after.computedResult?.reinvestmentMinimumRate).toBe(0.7);
+    expect(after.computedResult?.reinvestmentDeadlineMonths).toBe(36);
+    expect(after.computedResult?.minimumHoldingPeriodMonths).toBe(60);
+    expect(after.steps.every((s) => s.ruleVersionId === "rule-apport-cession-2026-v3")).toBe(true);
+
+    // Même remploi de 650 000 € : conforme avant la réforme, insuffisant après.
+    expect(before.computedResult?.meetsThreshold).toBe(true);
+    expect(after.computedResult?.meetsThreshold).toBe(false);
+  });
+
+  it("golden E bis — la bascule se joue au jour près, pas à l'année", () => {
+    expect(resolveApportCessionRegime("2026-02-20").regimeId).toBe("2019-to-2026-02-20");
+    expect(resolveApportCessionRegime("2026-02-21").regimeId).toBe("from-2026-02-21");
+    // Une cession de janvier 2026 relève encore du régime antérieur : une
+    // sélection fondée sur la seule année serait fausse.
+    expect(resolveApportCessionRegime("2026-01-15").regimeId).toBe("2019-to-2026-02-20");
+    expect(resolveApportCessionRegime("2018-12-31").regimeId).toBe("pre-2019");
+    expect(resolveApportCessionRegime("2019-01-01").regimeId).toBe("2019-to-2026-02-20");
+  });
+
+  it("golden F — conservation : douze mois avant la réforme, cinq ans après", () => {
+    // Un an de conservation suffit sous l'ancien texte...
+    expect(
+      simulateApportCessionV2({
+        saleProceeds: PROCEEDS,
+        reinvestedAmount: 600_000,
+        reinvestmentMonths: 12,
+        conservationYears: 1,
+        disposalDate: "2026-02-20",
+      }).computedResult?.meetsHoldingPeriod,
+    ).toBe(true);
+    // ...mais pas sous le régime LF 2026, qui exige cinq ans.
+    expect(
+      simulateApportCessionV2({
+        saleProceeds: PROCEEDS,
+        reinvestedAmount: 700_000,
+        reinvestmentMonths: 12,
+        conservationYears: 1,
+        disposalDate: "2026-02-21",
+      }).computedResult?.meetsHoldingPeriod,
+    ).toBe(false);
+  });
+
+  it("golden G — date de cession manquante : abstention, jamais le régime 2026 par défaut", () => {
+    const run = simulateApportCessionV2();
+    expect(run.computedResult?.regimeId).toBeNull();
+    expect(run.computedResult?.requiredReinvestment).toBeNull();
+    expect(run.computedResult?.reinvestmentMinimumRate).toBeNull();
+    expect(run.computedResult?.reinvestmentDeadlineMonths).toBeNull();
+    expect(run.computedResult?.undetermined).toBe(true);
+    expect(run.computedResult?.compliant).toBe(false);
+    expect(run.resultAmount).toBeUndefined();
+    expect(run.resultLabel).toMatch(/indéterminé/i);
+    expect(run.steps.every((step) => step.confidenceStatus === "needs_review")).toBe(true);
+  });
+
+  it("golden H — cessions antérieures à 2019 : conservation non documentée, revue exigée", () => {
+    const run = simulateApportCessionV2({
+      saleProceeds: PROCEEDS,
+      reinvestedAmount: 500_000,
+      reinvestmentMonths: 12,
+      conservationYears: 5,
+      disposalDate: "2018-12-31",
+    });
+    expect(run.computedResult?.regimeId).toBe("pre-2019");
+    expect(run.computedResult?.reinvestmentMinimumRate).toBe(0.5);
+    // Durée de conservation non documentée pour cette période : abstention.
+    expect(run.computedResult?.minimumHoldingPeriodMonths).toBeNull();
+    expect(run.computedResult?.meetsHoldingPeriod).toBeNull();
+    expect(run.computedResult?.undetermined).toBe(true);
+    expect(run.computedResult?.compliant).toBe(false);
   });
 });
 

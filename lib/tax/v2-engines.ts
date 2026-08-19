@@ -14,6 +14,7 @@ import {
   PER_DEDUCTION_AGE_LIMIT,
   type PerStatus,
 } from "./engines/per";
+import { resolveApportCessionRegime } from "./apport-cession-regimes";
 import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
 import {
   getInvestmentIncomeProfile,
@@ -499,6 +500,7 @@ export function simulateApportCessionV2({
   reinvestmentMonths = 30,
   conservationYears = 5,
   deferredGain = 600_000,
+  disposalDate,
 }: {
   saleProceeds?: number;
   reinvestedAmount?: number;
@@ -506,9 +508,30 @@ export function simulateApportCessionV2({
   conservationYears?: number;
   /** Plus-value en report (assiette de la comparaison cession directe). */
   deferredGain?: number;
+  /**
+   * Date de cession des titres apportés (ISO `YYYY-MM-DD`) — date juridiquement
+   * opérative qui sélectionne la version de l'art. 150-0 B ter (TAX-P0-003).
+   * Ce n'est PAS la date de l'apport. En son absence, le moteur s'abstient :
+   * aucun régime n'est présumé, surtout pas celui de la LF 2026.
+   */
+  disposalDate?: string;
 } = {}) {
-  const requiredReinvestment = Math.round(saleProceeds * 0.7);
-  const compliant = reinvestedAmount >= requiredReinvestment && reinvestmentMonths <= 36 && conservationYears >= 5;
+  const regime = disposalDate === undefined ? null : resolveApportCessionRegime(disposalDate);
+  const requiredReinvestment =
+    regime === null ? null : Math.round(saleProceeds * regime.reinvestmentMinimumRate);
+  const conservationMonths = conservationYears * 12;
+
+  // Chaque condition est évaluée séparément ; `null` signifie « non vérifiable
+  // en l'état » et n'est jamais assimilé à une condition remplie.
+  const meetsThreshold = requiredReinvestment === null ? null : reinvestedAmount >= requiredReinvestment;
+  const meetsDeadline = regime === null ? null : reinvestmentMonths <= regime.reinvestmentDeadlineMonths;
+  const meetsHoldingPeriod =
+    regime === null || regime.minimumHoldingPeriodMonths === null
+      ? null
+      : conservationMonths >= regime.minimumHoldingPeriodMonths;
+  const conditions = [meetsThreshold, meetsDeadline, meetsHoldingPeriod];
+  const compliant = conditions.every((condition) => condition === true);
+  const undetermined = conditions.some((condition) => condition === null);
   // Comparaison cession directe : la plus-value de cession de titres relève du
   // régime de droit commun ; le taux est dérivé du profil de catégorie et non
   // d'une constante globale (correction P0 TAX-P0-002). Le complément CEHR 4 % +
@@ -519,38 +542,75 @@ export function simulateApportCessionV2({
     deferredGain * (securitiesGainProfile.aggregateRate + CEHR_CDHR_INDICATIVE_UPLIFT),
   );
 
+  // Provenance des étapes. Lorsqu'aucun régime n'est résolu, cet identifiant
+  // désigne la version courante du jeu de règles qui a produit l'ABSTENTION —
+  // il ne signifie pas que le régime LF 2026 a été appliqué : `regimeId`,
+  // `reinvestmentMinimumRate` et `requiredReinvestment` restent alors `null`.
+  const ruleVersionId = regime?.ruleVersionId ?? "rule-apport-cession-2026-v3";
+
   const steps = [
     makeStep({
-      id: "apport-step-reinvestment",
+      id: "apport-step-regime",
       order: 1,
-      label: "Réinvestissement minimal",
-      inputValue: saleProceeds,
-      formula: "produit de cession x 70 %",
-      outputValue: requiredReinvestment,
-      ruleVersionId: "rule-apport-cession-2026-v2",
+      label: "Régime 150-0 B ter applicable",
+      inputValue: disposalDate ?? "date de cession non renseignée",
+      formula:
+        "la version de l'art. 150-0 B ter est sélectionnée par la DATE DE CESSION des titres apportés (pivot LF 2026 au 21/02/2026), et non par la date d'apport",
+      outputValue: regime
+        ? `${regime.label} — ${Math.round(regime.reinvestmentMinimumRate * 100)} % dans ${regime.reinvestmentDeadlineMonths} mois`
+        : "Indéterminé : date de cession requise",
+      ruleVersionId,
       evidenceSourceId: "src-legifrance-apport-cession-2026",
       coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
+      confidenceStatus: regime && !regime.requiresSourceVerification ? "indicative" : "needs_review",
+      nextAction: regime
+        ? `Sources : ${regime.sourceRefs.join(" ; ")}.`
+        : "Renseigner la date de cession des titres apportés : aucun régime n'est présumé sans elle.",
+    }),
+    makeStep({
+      id: "apport-step-reinvestment",
+      order: 2,
+      label: "Réinvestissement minimal",
+      inputValue: saleProceeds,
+      formula: regime
+        ? `produit de cession × ${Math.round(regime.reinvestmentMinimumRate * 100)} %`
+        : "seuil indéterminé sans date de cession",
+      outputValue: requiredReinvestment ?? "Indéterminé",
+      ruleVersionId,
+      evidenceSourceId: "src-legifrance-apport-cession-2026",
+      coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
+      confidenceStatus: requiredReinvestment === null ? "needs_review" : "indicative",
     }),
     makeStep({
       id: "apport-step-status",
-      order: 2,
+      order: 3,
       label: "Maintien indicatif du report",
       inputValue: `${reinvestedAmount} / ${reinvestmentMonths} mois / ${conservationYears} ans`,
-      formula: "70 % + 36 mois + conservation 5 ans",
-      outputValue: compliant ? "Conditions indicatives réunies" : "Correction requise",
-      ruleVersionId: "rule-apport-cession-2026-v2",
+      formula: regime
+        ? `${Math.round(regime.reinvestmentMinimumRate * 100)} % + ${regime.reinvestmentDeadlineMonths} mois${
+            regime.minimumHoldingPeriodMonths === null
+              ? " + conservation non documentée pour cette période"
+              : ` + conservation ${regime.minimumHoldingPeriodMonths} mois`
+          }`
+        : "conditions non évaluables sans date de cession",
+      outputValue: undetermined
+        ? "Indéterminé — revue requise"
+        : compliant
+          ? "Conditions indicatives réunies"
+          : "Correction requise",
+      ruleVersionId,
       evidenceSourceId: "src-legifrance-apport-cession-2026",
       coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
       confidenceStatus: "needs_review",
     }),
     makeStep({
       id: "apport-step-direct-sale",
-      order: 3,
+      order: 4,
       label: "Comparaison cession directe sans report",
       inputValue: `PV en report ${deferredGain} €`,
-      formula: "PFU 31,4 % — jusqu'à ~38,4 % avec CEHR 4 % et CDHR (plancher 20 %, moteur ir.ts)",
+      formula: `PFU ${(securitiesGainProfile.aggregateRate * 100).toLocaleString("fr-FR")} % — majoration indicative CEHR/CDHR (chiffrage exact : moteur ir.ts)`,
       outputValue: `${directSaleTaxAtPfu} € à ${directSaleTaxWithCehrCdhr} €`,
-      ruleVersionId: "rule-apport-cession-2026-v2",
+      ruleVersionId,
       evidenceSourceId: "src-legifrance-lfss-2026-ps-capital",
       coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
       confidenceStatus: "needs_review",
@@ -562,16 +622,30 @@ export function simulateApportCessionV2({
     module: "apport-cession",
     scenario: "apport-cession",
     steps,
-    resultLabel: compliant ? "Report à documenter" : "Report fragilisé",
-    resultAmount: requiredReinvestment,
+    resultLabel: undetermined
+      ? "Régime indéterminé : date de cession requise"
+      : compliant
+        ? "Report à documenter"
+        : "Report fragilisé",
+    resultAmount: requiredReinvestment ?? undefined,
     evidenceSourceIds: ["src-legifrance-apport-cession-2026", "src-legifrance-lfss-2026-ps-capital"],
     reviewerRequired: "avocat",
     computedResult: {
       saleProceeds,
       reinvestedAmount,
+      disposalDate: disposalDate ?? null,
+      regimeId: regime?.regimeId ?? null,
+      regimeRuleVersionId: regime?.ruleVersionId ?? null,
+      reinvestmentMinimumRate: regime?.reinvestmentMinimumRate ?? null,
+      reinvestmentDeadlineMonths: regime?.reinvestmentDeadlineMonths ?? null,
+      minimumHoldingPeriodMonths: regime?.minimumHoldingPeriodMonths ?? null,
       requiredReinvestment,
       reinvestmentMonths,
       conservationYears,
+      meetsThreshold,
+      meetsDeadline,
+      meetsHoldingPeriod,
+      undetermined,
       compliant,
       deferredGain,
       directSaleTaxAtPfu,
@@ -1411,7 +1485,9 @@ export const v2TaxRuns = [
   simulateRealEstateGainV2(),
   simulateTransmissionV2(),
   simulateDutreilV2(),
-  simulateApportCessionV2(),
+  // Le dossier démo porte sur une cession postérieure au pivot LF 2026 : la
+  // date opérative est explicite dans la fixture, jamais présumée par défaut.
+  simulateApportCessionV2({ disposalDate: "2026-06-11" }),
   simulateHoldingTaxV2(),
   simulatePeaWithdrawalV2(),
   simulatePerDeductionV2(),

@@ -342,6 +342,36 @@ export const ruleVersions: RuleVersion[] = [
     version: "APPORT-CESSION-2026.05-V2",
     title: "Apport-cession 150-0 B ter : réinvestissement 70 %, délai et conservation",
     effectiveFrom: "2026-02-21",
+    status: "archived",
+    evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
+  },
+  {
+    id: "rule-apport-cession-pre-2019-v1",
+    ruleSet: "apport-cession",
+    version: "APPORT-CESSION-PRE2019.08-V1",
+    title:
+      "Apport-cession 150-0 B ter, cessions antérieures au 01/01/2019 : remploi 50 %, délai 2 ans, conservation à vérifier",
+    effectiveFrom: "1970-01-01",
+    status: "draft",
+    evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
+  },
+  {
+    id: "rule-apport-cession-2019-v1",
+    ruleSet: "apport-cession",
+    version: "APPORT-CESSION-2019.08-V1",
+    title:
+      "Apport-cession 150-0 B ter, cessions du 01/01/2019 au 20/02/2026 : remploi 60 %, délai 2 ans, conservation 12 mois",
+    effectiveFrom: "2019-01-01",
+    status: "active",
+    evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
+  },
+  {
+    id: "rule-apport-cession-2026-v3",
+    ruleSet: "apport-cession",
+    version: "APPORT-CESSION-2026.08-V3",
+    title:
+      "Apport-cession 150-0 B ter, cessions à compter du 21/02/2026 : remploi 70 %, délai 3 ans, conservation 5 ans (régime sélectionné par la date de cession)",
+    effectiveFrom: "2026-02-21",
     status: "active",
     evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
   },
