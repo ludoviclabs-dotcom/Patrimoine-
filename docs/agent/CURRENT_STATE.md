@@ -7,6 +7,7 @@ Last updated: 2026-08-20
 Branch: codex/pf-03b-postgres-tenant-isolation
 HEAD before PF-03B: 7135daf954e27b3b77db96ec3d4b2be97b886b1a
 HEAD before PF-03A: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
+Merge commit (PR #9): ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
 HEAD before PF-01: afe1a79713eeb16935993d04d10d9f263569d1a6
 HEAD before PF-01B: a1a6d0cb2bb0ec7993aa99dd408b0838a126d3d8
 HEAD before PF-01C1: 8531cc900f6bf5eaccbdaa28949cba8f6c15a13c
@@ -14,6 +15,9 @@ HEAD before PF-01C2: b1263b2053ebcd5616fdaac1dc2c3c114b566a9a
 HEAD before PF-01C3: 7c7597a7805f01170c6319232cbaee6e5c7cd7a4
 HEAD before PF-01C4: b8cb7050d4aeceed6c16e2d2bc09597d472a9149
 HEAD before PF-02: b3b2dade33d1fad80286c5ff98edf130e703d935
+HEAD before PF-02B1: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
+HEAD before PF-02B2: b293984899e589b019cc6cf1c90f3da3effbea5a
+HEAD before PF-02B3: e04fbd78b3d2191410b0c3a6687524f634cb4a70
 git diff --check: PASS (exit 0, no whitespace/conflict-marker errors)
 
 ## Current milestone
@@ -22,9 +26,10 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-03-PUBLISH — publish the committed PF-03 branch and exercise the migration,
-credentials, backup/restore and smoke checks on the selected managed PostgreSQL
-environment. Clerk authenticated mapping remains PF-04 scope.
+PF-03-PUBLISH — Draft PR #11 combines the completed PF-02B fiscal work with
+PF-03 PostgreSQL tenant isolation. Resolve the documentary merge conflict,
+then complete managed-PostgreSQL migration, credentials, backup/restore and
+smoke evidence. Clerk authenticated mapping remains PF-04 scope.
 
 ## Completed
 
@@ -138,6 +143,178 @@ Files changed for PF-03A:
 - `lib/services/simulation-persistence.ts`, `lib/audit/repository.ts`;
 - `tests/unit/pf03a-data-foundation.test.ts`;
 - `docs/agent/PF03_DATA_FOUNDATION.md`, `docs/agent/CURRENT_STATE.md`.
+- PR #9 merged into `main` (bootstrap session confirmed HEAD, PF-00/01/02
+  state, and P1 inventory from a fresh worktree; no files modified in that run).
+- **PF-02B1 COMPLETE — IFI démembrement art. 968, dettes in fine/sans
+  terme/liées, plafond dettes 60 %, actifs professionnels déclarés.**
+- **PF-02B2 COMPLETE — arrondi DMTG corrigé (arrondi par tranche → arrondi
+  final unique, BOI-ENR-DG-30) ; gouvernance des règles draft renforcée par
+  des invariants automatisés.**
+- **PF-02B3 COMPLETE — qualification holding animatrice (CGI art. 787 B) :
+  faisceau de faits structurés, jamais un score, jamais une décision
+  automatique favorable.**
+
+## PF-02B3 — Holding animatrice qualification (COMPLETE)
+
+Full report: `docs/agent/PF02B_FISCAL_COMPLETENESS.md` (section « Holding
+animatrice »).
+
+Prior audit confirmed the gap was real: zero occurrences of "holding
+animatrice", `isHoldingCompany`, or equivalent qualification logic anywhere
+in `lib/`/`components/`/`app/` — `simulateDutreilV2` took `eligibleOperatingValue`
+as an already-qualified input, with no check on whether the transmitted
+entity was itself a genuine animating holding.
+
+New module `lib/tax/holding-animatrice.ts`, `assessHoldingAnimatrice(facts)`,
+sourced directly (no secondary authority) from: **CGI art. 787 B, al. 1-2**
+(Légifrance LEGIARTI000047623071, consolidated since LF 2024 — the four
+cumulative criteria: activité principale, participation active, contrôle,
+filiales opérationnelles, plus an optional supporting fact, prestations
+internes, per "le cas échéant") and **Cass. com., 17 décembre 2025,
+n° 24-17.415** (Légifrance JURITEXT000053196991, published, appeal rejected
+— § 10: operational character assessed at the taxable event date, not the
+declaration date; § 13: burden of proof on the taxpayer; the holding in that
+case, MCFG, was found not animatrice because its subsidiaries were rental
+SCIs, not operational).
+
+Strict cumulative logic, no score: any core criterion explicitly `false` →
+`NOT_QUALIFIED`; any core criterion `undefined` → `NEEDS_REVIEW`; all four
+`true` but no contemporaneous evidence gathered → `NEEDS_REVIEW`; all four
+`true` and evidenced but no professional validation confirmed →
+`NEEDS_REVIEW`; only when all four are established, evidenced, and
+professionally validated → `QUALIFIED`. `operationalAssetRatio` is captured
+but deliberately never enters any decision branch, so it can never become an
+automatic safe harbor (REGLEMENTATION_AOUT_2026.md § 7.4 and § 12.3).
+
+Additive integration into `simulateDutreilV2` via a new optional
+`holdingAnimatrice?: { isHoldingCompany: boolean; facts?: HoldingAnimatriceFacts }`
+parameter — absent or `isHoldingCompany: false` leaves every existing run
+byte-for-byte unchanged (verified: the 2 M€ reference case still resolves to
+78 194 €/39 097 €, per PF-02B2). When engaged, only `QUALIFIED` grants the
+75 % exemption and the art. 790 50 % reduction; `NOT_QUALIFIED` and
+`NEEDS_REVIEW` both deny the exemption outright (`exemptValue = 0`) — the
+same "never presume a favorable outcome" pattern as TAX-P0-006 (main
+residence). Quantitative Dutreil conditions (collective/management
+commitments, 4/6-year individual commitment, LF 2026 exclusions)
+untouched. `rule-holding-animatrice-2026-v1` active (ruleSet `dutreil`,
+`effectiveFrom: 2024-01-01`), coexisting with `rule-dutreil-2026-v4` under a
+declared `MULTI_ACTIVE_RULESETS` justification. 14 new golden cases
+(`tests/unit/pf02b3-holding-animatrice.test.ts`) covering qualified,
+passive, mixed-activity, incomplete-data, declarative/evidence
+contradiction, no-evidence, and all three Dutreil-integration outcomes.
+
+Note: this is a new *capability*, not a retroactive check — a Dutreil run
+that doesn't pass `holdingAnimatrice` (including every run produced before
+this task) keeps behaving exactly as before, unaffected. The parameter must
+be explicitly engaged, same pattern as PF-02B1's IFI fields and PF-01B's
+`mainResidenceQualification`.
+
+## PF-02B2 — DMTG rounding and draft-rule governance (COMPLETE)
+
+Full report: `docs/agent/PF02B_FISCAL_COMPLETENESS.md` (sections « DMTG —
+arrondi » et « Gouvernance des règles draft »).
+
+**Arrondi DMTG** : la V1 (`rule-dmtg-bareme-2026-v1`, désormais archivée)
+arrondissait chaque tranche du barème progressif à l'euro avant sommation
+(`perSliceRounding`). Vérification sur trois sources officielles
+(legifrance.gouv.fr art. 1657 — écarté, ne s'applique qu'aux impôts directs ;
+BOFiP BOI-ENR-DG-30 § 100 — arrondi une seule fois sur le montant final dû ;
+service-public.gouv.fr fiche F14205 — exemple chiffré officiel confirmant
+l'arrondi final unique, 18 194,35 € → 18 194 € et non 18 195 €) : les trois
+convergent, aucun `[BLOCKED]` nécessaire. `rule-dmtg-bareme-2026-v2` (active)
+calcule chaque tranche au centime exact et arrondit une seule fois, à la fin.
+Corrige le cas de référence Dutreil 1 M€ : 14 098 € → **14 097 €**, conforme
+au golden `DUTREIL-2026-ARTICLE-790` de `MOTEURS_FISCAUX_2026.ts`. Impact
+systématique (~1 €) sur tout dossier DMTG/Dutreil/démembrement/assurance-vie
+757 B — entrée n° 5 ajoutée à `docs/agent/RECALCULATION_CANDIDATES.md`,
+aucun résultat historique réécrit.
+
+**Gouvernance draft** : inventaire empirique (via `getAllTaxRuns()`, pas un
+grep textuel) — 9 des 19 règles `draft` du registre sont effectivement
+consommées par un moteur produisant des `calculation_steps` (transmission
+avec démembrement, PER, import bancaire démo, checklist succession, sortie
+anticipée PER résidence principale, stress test liquidité succession,
+adéquation produit démo, assurance-vie 990 I/757 B, arbitrage SCI IR/IS).
+Aucune promotion à `active` : chacune bute sur au moins un des quatre
+critères (source/date/golden/absence de question ouverte) — y compris
+l'assurance-vie, dossier le plus solide, bloqué par les clauses démembrées et
+contrats multiples non automatisés. Nouveau fichier
+`tests/unit/pf02b2-draft-rule-governance.test.ts` (7 invariants) : aucune
+étape référençant une règle `draft` n'affiche jamais `confidenceStatus:
+"validated"` ni `displayStatus: "validated_calculation"` ; tout run
+concerné porte `status: "needs_review"` et `professionalValidationRequired:
+true` ; l'inventaire empirique est verrouillé contre une dérive silencieuse.
+
+## PF-02B1 — IFI completeness gate (COMPLETE)
+
+Full report: `docs/agent/PF02B_FISCAL_COMPLETENESS.md`
+
+Scope: IFI only, per explicit instruction. No other engine, and no
+infrastructure (Postgres/Auth/UI/PDF/watcher/AI), was touched.
+
+Starting point clarified: décote, exact barème and the 75 % global cap
+(art. 979) were **already correct** before this run — verified mathematically
+equivalent to `docs/reference/2026-08/MOTEURS_FISCAUX_2026.ts` `computeIfi2026`
+— they only lacked boundary golden coverage, now added. The real gap was
+démembrement, advanced debts and professional assets.
+
+Implemented (all additive to `Asset`/`Liability`, zero behavior change when
+the new fields are absent — the Claire/Marc golden case is unchanged at
+1 110 000 €):
+- Démembrement (CGI art. 968): general rule (full value to the usufructuary,
+  nothing to the bare owner) by default; the art. 669 age-based split
+  (`getBareOwnershipRate`, already sourced in `lib/tax/engine-kit.ts`) applies
+  only when a closed, legally-grounded exception is declared
+  (`legal-usufruct-surviving-spouse` or
+  `sale-with-reserved-usufruct-unrelated-third-party`, confirmed on
+  Légifrance 19/08/2026) **and** the usufructuary's age is provided — an
+  exception claimed without an age never triggers a presumed split.
+- Debts (CGI art. 974): in fine / non-constant loans and no-term loans use the
+  statutory linear formulas (reusing `fullYearsBetweenIso` from
+  `lib/tax/holding-tax-assets.ts`, the same mechanism already sourced for
+  holding-tax debts in PF-01C3); related-party debt is excluded unless a
+  non-tax purpose is proven; missing capital/dates never get estimated —
+  the debt is simply not admitted and flagged. The 60 %-of-assets debt cap
+  (art. 974, IV) is implemented and reproduces the reference's own worked
+  example exactly (assets 6 M€, debt 5,5 M€ → 4,55 M€ admitted).
+- Professional assets (CGI art. 975): `Asset.isProfessionalAsset` — already
+  declared in the type but never consumed by the IFI engine — now excludes a
+  real-estate asset from the base, with a mandatory `needs_review` step
+  requiring annual documentation. Eligibility conditions themselves are not
+  automated; the declaration alone is never treated as proof.
+
+Rule governance: `rule-ifi-complete-2026-v3` (`IFI-2026.08-V3`) active,
+`rule-ifi-complete-2026-v2` archived (fiscal behavior changed — new
+deterministic branches added). New evidence source
+`src-legifrance-bofip-ifi-avance-2026` (Légifrance CGI art. 968/974/975 +
+BOFiP PAT-IFI-20-40-10/20 and PAT-IFI-30-10, verified 19/08/2026).
+`coverage-ifi-demembrement-complexe` upgraded `not_covered_v1` →
+`partially_covered`.
+
+22 new golden cases (`tests/unit/ifi.test.ts`, 279 → 301 tests): threshold
+boundaries (1 299 999 / 1 300 000 / 1 300 001 €), décote zone including the
+reference's own `IFI-DECOTE-1310000` golden (1 445 €), décote phase-out at
+1 400 000 €, the reference's own `IFI-DEBT-CAP-6M-5M5` golden (4,55 M€), in
+fine and no-term debt formulas, related-party debt proven/unproven,
+insufficient-data abstention, démembrement general rule and art. 669
+exception (both sides, both with and without a missing age), professional
+asset exclusion, SCI non-regression, and the 75 % cap at its exact boundary.
+
+Limitations left open (not this run's scope): quasi-usufruit and chained
+dismemberment, professional-asset eligibility conditions themselves (only the
+declared-flag pass-through was added), individual per-debt eligibility
+conditions for ordinary debt, trusts, complex non-residents, advanced
+holdings. All unchanged from before PF-02B1 and still `NOT_IMPLEMENTED` or
+generically `needs_review`.
+
+No recalculation candidate: every new branch is additive and inert unless the
+new fields are explicitly set, so no previously-produced IFI result changes.
+
+Environment note: this worktree had no `node_modules` installed (each Git
+worktree has its own, separate from the canonical repo). `npm install` was
+run to complete `tsc`/`build` validation — 532 packages, matching
+`package-lock.json` exactly, no version changed. Infrastructure, not a
+dependency decision.
 
 ## PF-02 — Rule governance and golden coverage (COMPLETE)
 
@@ -303,8 +480,9 @@ None.
 
 ## Tests
 
-Unit: PASS — 70 files, 895 tests, 0 failing. The total includes duplicate suites
-discovered under existing `.claude/worktrees`; root PF-03B adds 1 file / 5 tests.
+Unit: PASS — 72 files, 939 tests, 0 failing after the PF-02B/PF-03 merge
+resolution. The total includes duplicate suites discovered under existing
+`.claude/worktrees`.
 PostgreSQL/RLS: PASS — 1 file, 12 tests, 0 failing on a fresh native ephemeral
 PostgreSQL 18.4 cluster after migrations `0000` through `0004`.
 TypeScript: PASS — `npx tsc --noEmit` exit 0
@@ -328,9 +506,19 @@ candidates below remain open.
 
 ## Regulatory verification required
 
-- Holding animatrice: not modelled. Requires a faisceau-d'indices approach with
-  `needs_review`, per REGLEMENTATION_AOUT_2026.md § 7.4 and
-  Cass. com., 17 déc. 2025, n° 24-17.415.
+- Holding animatrice qualification: **RESOLVED in PF-02B3**. Modelled as a
+  structured fact-based assessment (`assessHoldingAnimatrice`), sourced
+  directly from CGI art. 787 B, al. 1-2 (Légifrance LEGIARTI000047623071,
+  consolidated since LF 2024) and Cass. com., 17 décembre 2025, n° 24-17.415
+  (Légifrance JURITEXT000053196991, verified primary source, not a secondary
+  summary). Strict cumulative logic, never a score; `QUALIFIED` requires all
+  four statutory criteria established, evidenced, and professionally
+  validated — anything less denies the Dutreil exemption outright rather
+  than presuming it. Full detail in
+  `docs/agent/PF02B_FISCAL_COMPLETENESS.md` § « Holding animatrice ». Complex
+  chained-holding structures remain out of scope and safely resolve to
+  `NEEDS_REVIEW` (see Known technical debt below) — not a regression, a
+  documented, deliberate limitation.
 - Holding tax, foreign company: FOREIGN HOLDING PATH NOT_IMPLEMENTED. Requires
   the French participation fraction, dismemberment and anti-avoidance clause
   (§ 9.6); the engine abstains rather than generalising the French computation.
@@ -339,39 +527,63 @@ candidates below remain open.
 - E-invoicing: a deferral decree remains legally possible. No hypothetical date
   was written into the engine; detecting such a change is the source-watcher's
   job (out of PF-01 scope).
-- DMTG rounding convention: **[BLOCKED — ROUNDING POLICY LEGAL REVIEW
-  REQUIRED]**. The repository rounds per bracket (reproducing the official
-  service-public example, 50 000 € → 8 195 €) while the reference rounds once on
-  an exact base. 1 € divergence on the 1 M€ Dutreil golden case (repo 14 098 €
-  vs reference 14 097 €). Both conventions are source-backed. The golden
-  expected was NOT changed to hide the gap; the repository convention stands
-  until a fiscal reviewer arbitrates. Policy documented in
-  `docs/agent/PF02_GOLDEN_COVERAGE.md` § 7.
-- Nine `draft` rules are referenced by engines producing calculation steps.
-  All those runs carry `professionalValidationRequired` and `needs_review`.
-  Promoting them to `active` is a governance decision requiring per-rule review,
-  not a technical fix — deliberately left open (PF02 report § 1).
+- DMTG rounding convention: **RESOLVED in PF-02B2**. Per-bracket rounding was
+  not source-backed by any official methodology — legifrance.gouv.fr art. 1657
+  does not apply to DMTG (impôts directs only), and BOFiP BOI-ENR-DG-30 § 100 +
+  service-public.gouv.fr's own worked example (fiche F14205, 18 194,35 € →
+  18 194 €, not 18 195 €) both confirm a single final rounding. Fixed in
+  `rule-dmtg-bareme-2026-v2`; the 1 M€ Dutreil golden case now matches the
+  reference exactly (14 097 €). Full arbitration in
+  `docs/agent/PF02B_FISCAL_COMPLETENESS.md` § « DMTG — arrondi ». Recalculation
+  candidate entry added (RECALCULATION_CANDIDATES.md § 5) — no historical
+  result rewritten.
+- Nine `draft` rules are referenced by engines producing calculation steps
+  (verified empirically in PF-02B2, not by grep). All those runs carry
+  `professionalValidationRequired` and `needs_review`, now protected by
+  automated invariants (`tests/unit/pf02b2-draft-rule-governance.test.ts`).
+  Promoting any of them to `active` remains a governance decision requiring
+  per-rule review — PF-02B2 confirmed none currently clears the bar (source +
+  effective date + golden coverage + no open factual/legal question), even
+  the strongest candidate (assurance-vie 990 I/757 B, blocked by unmodelled
+  dismembered beneficiary clauses and multi-contract allocation). Deliberately
+  left open.
 
 ## Known technical debt
 
-P1 (need legal interpretation — separate runs, out of PF-02 scope):
-- IFI V0: décote complète, plafonnement, démembrement, in-fine and family debts.
-- Holding animatrice: not modelled (faisceau d'indices + `needs_review`).
+P1 (need legal interpretation — separate runs, only remaining item is
+holding tax foreign-company):
+- IFI: quasi-usufruit and chained/successive dismemberment; professional-asset
+  *eligibility* conditions (only the declared-flag pass-through is
+  implemented, per PF-02B1); individual per-debt eligibility conditions for
+  ordinary debt (existence at 1 January, effective charge, justification) are
+  still a generic `needs_review`, not individually verified. Décote, exact
+  barème, the 75 % global cap, démembrement general rule + the two documented
+  art. 968 exceptions, in fine/no-term/related-party debts and the 60 % debt
+  cap are now IMPLEMENTED (PF-02B1) — see `docs/agent/PF02B_FISCAL_COMPLETENESS.md`.
+- Holding animatrice: **now modelled** (PF-02B3) for the single-holding case;
+  complex chained-holding structures, quasi-usufruit on transmitted shares,
+  and animation shared across several holdings remain out of scope and
+  safely resolve to `NEEDS_REVIEW` via missing core facts — not a silent gap.
 - Holding tax: foreign-company path `NOT_IMPLEMENTED`.
 
 P2 (structural, low risk):
 - Golden boundaries missing for SCI IR/IS and CEHR/CDHR (exit tax, IS and PER
   boundaries were added in PF-02).
-- DMTG rounding arbitration (blocked on legal review).
-- Status of the nine `draft` rules referenced by engines.
+- Status of the nine `draft` rules referenced by engines (confirmed still
+  `draft` in PF-02B2, each with a documented, specific reason).
 - Possible extension of the static fiscal-constant audit to `lib/**`.
+- `holdingAnimatrice` is opt-in on `simulateDutreilV2`: no existing UI/demo
+  caller currently supplies it, so no live dossier benefits from the new
+  check yet. Wiring a UI qualification form is a product task, not a fiscal
+  gap — the deterministic engine and its safeguards are ready.
 
 ## Next recommended task
 
-PF-03-PUBLISH — publish the PF-03 branch without code changes, provision the
-managed PostgreSQL login-role memberships, apply migrations, run the guarded
-synthetic seed only in an approved demo environment, and document backup/restore
-plus staging smoke evidence.
+PF-03-PUBLISH — complete the Draft PR checks, provision the managed PostgreSQL
+login-role memberships, apply migrations, run the guarded synthetic seed only
+in an approved demo environment, and document backup/restore plus staging smoke
+evidence. After PF-03 merges: PF-04 — Clerk Organizations, RBAC and authenticated
+tenant context.
 
 ## Handoff notes
 

@@ -13,9 +13,12 @@ import type { AuditLogEntry, RuleDiffImpact } from "../types";
  * abrogé par la LF 2026 (REGLEMENTATION_AOUT_2026.md § 7.5 et § 17).
  *
  * Sur le cas de référence (2 M€, donateur 65 ans, pleine propriété,
- * 1 bénéficiaire), les droits avec pacte reviennent de 78 195 € (V3, réduction
- * refusée à tort) à 39 098 € (V4, réduction art. 790 appliquée) : les dossiers
+ * 1 bénéficiaire), les droits avec pacte reviennent de 78 194 € (V3, réduction
+ * refusée à tort) à 39 097 € (V4, réduction art. 790 appliquée) : les dossiers
  * liquidés sous la V3 surévaluaient les droits et doivent être recalculés.
+ * (Montants exacts au 19/08/2026 après PF-02B2 : arrondi DMTG final unique à
+ * l'euro, BOI-ENR-DG-30 — la correction V3 → V4 elle-même est indépendante et
+ * inchangée, seul l'arrondi sous-jacent a été corrigé.)
  */
 
 const sourceId = "src-bofip-dmtg-reduction-790-2026";

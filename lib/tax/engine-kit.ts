@@ -4,11 +4,23 @@ import type { CalculationStep, TaxModule, TaxRun } from "../types";
  * Socle commun des moteurs fiscaux (v2 et v3).
  *
  * Extraction pure depuis lib/tax/v2-engines.ts : makeStep, la factory taxRun,
- * le barème progressif et le barème usufruit art. 669 CGI. Aucun changement de
- * comportement — les 13 moteurs v2 et leurs tests passent à l'identique.
- * Seul ajout : l'option `perSliceRounding` de calculateProgressiveTax, requise
- * pour reproduire les exemples officiels DMTG arrondis tranche par tranche
- * (50 000 € en ligne directe → 404 + 404 + 573 + 6 814 = 8 195 €).
+ * le barème progressif et le barème usufruit art. 669 CGI.
+ *
+ * PF-02B2 : `calculateProgressiveTax` ne pratique aucun arrondi intermédiaire
+ * par tranche — chaque tranche est calculée au centime exact, la somme n'est
+ * arrondie qu'une seule fois, à l'euro le plus proche, sur le total. C'est la
+ * convention confirmée par BOFiP (BOI-ENR-DG-30, § 100 : « les sommes ou
+ * valeurs servant de base aux droits... sont arrondies à l'euro le plus
+ * proche » puis « la même règle s'applique pour l'arrondissement des
+ * montants des droits... exigibles » — l'arrondi porte sur le montant final
+ * dû, pas sur chaque tranche) et par l'exemple officiel chiffré de
+ * service-public.gouv.fr (fiche F14205, donation de 200 000 € à un enfant,
+ * abattement 100 000 € : tranches à 403,60 € / 403,70 € / 573,45 € /
+ * 16 813,60 €, total exact 18 194,35 €, droits dus arrondis à 18 194 €).
+ * Une ancienne option `perSliceRounding` arrondissait chaque tranche avant
+ * sommation ; elle a été retirée le 19/08/2026 car elle produisait un écart
+ * de 1 € par rapport à cette référence officielle sur le cas Dutreil à 1 M€
+ * (voir `docs/agent/PF02B_FISCAL_COMPLETENESS.md`).
  */
 
 export type StepMeta = {
@@ -57,15 +69,13 @@ export function getBareOwnershipRate(age: number) {
 export function calculateProgressiveTax(
   base: number,
   brackets: ProgressiveBracket[] = directLineDonationBrackets,
-  options: { perSliceRounding?: boolean } = {},
 ) {
   let previousCeiling = 0;
   let tax = 0;
 
   for (const bracket of brackets) {
     const slice = Math.max(0, Math.min(base, bracket.ceiling) - previousCeiling);
-    const sliceTax = slice * bracket.rate;
-    tax += options.perSliceRounding ? Math.round(sliceTax) : sliceTax;
+    tax += slice * bracket.rate;
     previousCeiling = bracket.ceiling;
     if (base <= bracket.ceiling) break;
   }

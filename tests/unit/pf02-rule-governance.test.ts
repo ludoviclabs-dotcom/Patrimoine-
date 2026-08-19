@@ -36,6 +36,10 @@ const MULTI_ACTIVE_RULESETS: Record<string, string> = {
   "apport-cession": "Un régime par période (pré/post 21/02/2026), résolu par date de cession.",
   // Règles portant sur des objets différents au sein du même jeu.
   transmission: "Checklist transmission et barème DMTG sont deux règles distinctes.",
+  // Éligibilité quantitative Dutreil et qualification holding animatrice sont
+  // deux règles distinctes (PF-02B3) : la seconde n'alimente la première que
+  // lorsqu'elle est explicitement engagée (transmission de titres de holding).
+  dutreil: "Éligibilité Dutreil et qualification holding animatrice sont deux règles distinctes.",
   rgpd: "AIPD et pages légales sont deux règles distinctes.",
   "cif-orias": "DER et lettre de mission sont deux règles distinctes.",
 };

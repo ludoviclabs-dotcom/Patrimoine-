@@ -20,8 +20,21 @@ export const ruleVersions: RuleVersion[] = [
     version: "IFI-2026.05-V2",
     title: "IFI complet V2 : barème, décote, plafonnement, détention directe et dettes",
     effectiveFrom: "2026-01-01",
-    status: "active",
+    // Superseded by rule-ifi-complete-2026-v3 (PF-02B1) : ajoute le démembrement
+    // art. 968, les dettes in fine/sans terme/liées et le plafonnement des
+    // dettes > 60 % (art. 974, IV), sans changer les branches déjà actives.
+    status: "archived",
     evidenceSourceIds: ["src-service-public-ifi-2026"],
+  },
+  {
+    id: "rule-ifi-complete-2026-v3",
+    ruleSet: "ifi",
+    version: "IFI-2026.08-V3",
+    title:
+      "IFI complet V3 : barème, décote, plafonnement 75 %, démembrement art. 968, dettes in fine/sans terme/liées, plafond dettes 60 %, actifs professionnels déclarés",
+    effectiveFrom: "2026-01-01",
+    status: "active",
+    evidenceSourceIds: ["src-service-public-ifi-2026", "src-legifrance-bofip-ifi-avance-2026"],
   },
   {
     id: "rule-transmission-checklist-2026-v1",
@@ -103,8 +116,23 @@ export const ruleVersions: RuleVersion[] = [
     version: "DMTG-2026.06-V1",
     title: "DMTG art. 777 : barèmes multi-liens, abattements 779/790 et rappel fiscal 15 ans",
     effectiveFrom: "2026-06-11",
-    status: "active",
+    // Superseded by rule-dmtg-bareme-2026-v2 (PF-02B2) : la V1 arrondissait
+    // chaque tranche du barème avant sommation ("perSliceRounding"), ce qui ne
+    // reproduit PAS la méthode officielle (BOI-ENR-DG-30 § 100 ; exemple
+    // chiffré service-public.gouv.fr F14205) et surévaluait les droits d'1 €
+    // sur le cas Dutreil à 1 M€ (14 098 € au lieu de 14 097 €).
+    status: "archived",
     evidenceSourceIds: ["src-impots-dmtg-bareme-2026"],
+  },
+  {
+    id: "rule-dmtg-bareme-2026-v2",
+    ruleSet: "transmission",
+    version: "DMTG-2026.08-V2",
+    title:
+      "DMTG art. 777 : barèmes multi-liens, abattements 779/790, rappel fiscal 15 ans, arrondi final unique à l'euro",
+    effectiveFrom: "2026-06-11",
+    status: "active",
+    evidenceSourceIds: ["src-impots-dmtg-bareme-2026", "src-bofip-enr-dg-30-arrondi-2026"],
   },
   {
     id: "rule-demembrement-669-2026-v1",
@@ -339,6 +367,19 @@ export const ruleVersions: RuleVersion[] = [
       "src-legifrance-dutreil-2026",
       "src-impots-dmtg-bareme-2026",
       "src-bofip-dmtg-reduction-790-2026",
+    ],
+  },
+  {
+    id: "rule-holding-animatrice-2026-v1",
+    ruleSet: "dutreil",
+    version: "HOLDING-ANIMATRICE-2026.08-V1",
+    title:
+      "Qualification holding animatrice (CGI art. 787 B, al. 1-2) : faisceau de faits, jamais un score",
+    effectiveFrom: "2024-01-01",
+    status: "active",
+    evidenceSourceIds: [
+      "src-legifrance-cgi-787b-holding-animatrice-2026",
+      "src-jurisprudence-cass-com-2025-24-17415",
     ],
   },
   {

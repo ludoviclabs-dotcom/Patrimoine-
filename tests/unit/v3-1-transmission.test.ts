@@ -19,16 +19,21 @@ import { simulateDutreilV2, simulateTransmissionV2 } from "../../lib/tax/v2-engi
 import { assertSimulationHasProof } from "../../lib/validation/golden-cases";
 
 describe("V3.1 — DMTG multi-liens (art. 777)", () => {
-  it("reproduit l'exemple officiel ligne directe : 50 000 € → 8 195 € (404+404+573+6 814)", () => {
+  // PF-02B2 : aucun arrondi par tranche. Chaque tranche est calculée au
+  // centime exact, le total est arrondi une seule fois à l'euro le plus
+  // proche (BOFiP BOI-ENR-DG-30 § 100). Confirmé par l'exemple chiffré
+  // officiel service-public.gouv.fr F14205 sur une base de 100 000 € :
+  // 403,60 + 403,70 + 573,45 + 16 813,60 = 18 194,35 € → 18 194 € dus.
+  it("reproduit le barème ligne directe sur 50 000 € : 403,60 + 403,70 + 573,45 + 6 813,60 = 8 194,35 € -> 8 194 €", () => {
     const result = computeDmtg({ taxableAfterAllowance: 50_000, relationship: "direct-line" });
-    expect(result.tax).toBe(8_195);
+    expect(result.tax).toBe(8_194);
     expect(result.marginalRate).toBe(0.2);
   });
 
   it("applique le tableau III frères/sœurs : 35 % puis 45 % au-delà de 24 430 €", () => {
-    // 30 000 € : 24 430 × 35 % = 8 551 (8 550,5 arrondi) + 5 570 × 45 % = 2 507 (2 506,5 arrondi)
+    // 30 000 € : 24 430 × 35 % = 8 550,50 € + 5 570 × 45 % = 2 506,50 € = 11 057 € exact, arrondi une fois.
     const result = computeDmtg({ taxableAfterAllowance: 30_000, relationship: "sibling" });
-    expect(result.tax).toBe(8_551 + 2_507);
+    expect(result.tax).toBe(11_057);
     expect(result.marginalRate).toBe(0.45);
   });
 
@@ -74,8 +79,8 @@ describe("V3.1 — démembrement art. 669", () => {
     expect(result.usufructRate).toBe(0.4);
     expect(result.bareOwnershipValue).toBe(240_000);
     expect(result.taxableShare).toBe(140_000);
-    // 404 + 404 + 573 + (140 000 − 15 932) × 20 % = 1 381 + 24 814 = 26 195
-    expect(result.indicativeRights).toBe(26_195);
+    // 403,60 + 403,70 + 573,45 + (140 000 − 15 932) × 20 % (24 813,60) = 26 194,35 € -> 26 194 €
+    expect(result.indicativeRights).toBe(26_194);
   });
 
   it("calcule l'usufruit temporaire à 23 % par décennie entamée", () => {
@@ -125,12 +130,13 @@ describe("V3.1 — Dutreil v4 (chaînage DMTG)", () => {
 
   it("chiffre l'économie vs sans pacte : 2 M€, donateur 65 ans → > 370 000 €", () => {
     const run = simulateDutreilV2(base);
-    // Sans pacte : 1 900 000 € taxables → 617 394 €.
-    // Avec pacte : 400 000 € taxables → 78 195 €, puis réduction art. 790 → 39 098 €.
+    // Sans pacte : 1 900 000 € taxables → 617 394 € (arrondi final unique, inchangé).
+    // Avec pacte : 400 000 € taxables → 78 194,35 € -> 78 194 €, puis réduction
+    // art. 790 (50 %) → 39 097 € (PF-02B2 : arrondi final unique, BOI-ENR-DG-30).
     expect(run.computedResult?.rightsWithoutDutreil).toBe(617_394);
-    expect(run.computedResult?.rightsBeforeArticle790).toBe(78_195);
-    expect(run.computedResult?.rightsWithDutreil).toBe(39_098);
-    expect(run.computedResult?.dutreilSavings).toBe(578_296);
+    expect(run.computedResult?.rightsBeforeArticle790).toBe(78_194);
+    expect(run.computedResult?.rightsWithDutreil).toBe(39_097);
+    expect(run.computedResult?.dutreilSavings).toBe(578_297);
     expect(Number(run.computedResult?.dutreilSavings)).toBeGreaterThan(370_000);
   });
 
@@ -144,13 +150,13 @@ describe("V3.1 — Dutreil v4 (chaînage DMTG)", () => {
     const run = simulateDutreilV2({ ...base, transmissionDate: "2026-06-01" });
     expect(run.computedResult?.fiftyPercentReductionApplicable).toBe(true);
     expect(run.computedResult?.article790ReductionRate).toBe(0.5);
-    expect(run.computedResult?.rightsWithDutreil).toBe(39_098);
+    expect(run.computedResult?.rightsWithDutreil).toBe(39_097);
   });
 
   it("golden — art. 790 : réduction 50 % également acquise AVANT le 21/02/2026", () => {
     const run = simulateDutreilV2({ ...base, transmissionDate: "2026-01-15" });
     expect(run.computedResult?.fiftyPercentReductionApplicable).toBe(true);
-    expect(run.computedResult?.rightsWithDutreil).toBe(39_098);
+    expect(run.computedResult?.rightsWithDutreil).toBe(39_097);
   });
 
   it("golden — art. 790 : non-régression du taux de 50 % au 18/08/2026", () => {
@@ -169,7 +175,7 @@ describe("V3.1 — Dutreil v4 (chaînage DMTG)", () => {
     ).toBe(false);
     // Sans réduction, les droits restent à leur montant plein.
     expect(simulateDutreilV2({ ...base, donorAge: 70 }).computedResult?.rightsWithDutreil).toBe(
-      78_195,
+      78_194,
     );
   });
 
@@ -230,6 +236,28 @@ describe("V3.1 — Dutreil v4 (chaînage DMTG)", () => {
     expect(simulateDutreilV2(luxury).computedResult?.exemptValue).toBe(1_350_000);
   });
 
+  // --- GOLDEN CASE arrondi (PF-02B2) -----------------------------------------
+  // Reproduit à l'identique le cas DUTREIL-2026-ARTICLE-790 de
+  // docs/reference/2026-08/MOTEURS_FISCAUX_2026.ts (société 1 M€, donation
+  // postérieure au 21/02/2026, donateur 65 ans, pleine propriété,
+  // 1 bénéficiaire) : le référentiel attend 14 097 €. Avant PF-02B2, le
+  // dépôt calculait 14 098 € (arrondi par tranche). Voir
+  // docs/agent/PF02B_FISCAL_COMPLETENESS.md.
+  it("golden — cas référentiel 1 M€ : réduction art. 790 → 14 097 € (arrondi final unique)", () => {
+    const run = simulateDutreilV2({
+      companyValue: 1_000_000,
+      eligibleOperatingValue: 1_000_000,
+      nonEligibleAssets: 0,
+      children: 1,
+      donorAge: 65,
+      fullOwnership: true,
+      transmissionDate: "2026-06-01",
+      transmissionKind: "gift",
+    });
+    expect(run.computedResult?.rightsBeforeArticle790).toBe(28_194);
+    expect(run.computedResult?.rightsWithDutreil).toBe(14_097);
+  });
+
   it("préserve les invariants v2 (exonération 75 %, exclusions)", () => {
     expect(simulateDutreilV2().computedResult?.exemptValue).toBe(592_500);
     expect(simulateDutreilV2({ individualCommitmentYears: 5 }).computedResult?.exemptValue).toBe(0);
@@ -239,9 +267,10 @@ describe("V3.1 — Dutreil v4 (chaînage DMTG)", () => {
 
   it("documente le diff v3 → v4 (rétablissement de la réduction art. 790)", () => {
     const diff = getDutreilRegulatoryDiff();
-    // V3 : droits pleins 78 195 € → V4 : 39 098 € après réduction art. 790.
-    expect(diff.amountBefore).toBe(78_195);
-    expect(diff.amountAfter).toBe(39_098);
+    // V3 : droits pleins 78 194 € → V4 : 39 097 € après réduction art. 790
+    // (PF-02B2 : arrondi final unique à l'euro, BOI-ENR-DG-30).
+    expect(diff.amountBefore).toBe(78_194);
+    expect(diff.amountAfter).toBe(39_097);
     expect(diff.delta).toBe(-39_097);
     expect(diff.status).toBe("review_required");
   });
@@ -284,9 +313,10 @@ describe("V3.1 — assurance-vie 990 I / 757 B", () => {
       gainsAfter70: 40_000,
       relationship: "direct-line",
     });
-    // 130 500 − 30 500 = 100 000 € → DMTG ligne directe = 404+404+573+16 814 = 18 195 €
+    // 130 500 − 30 500 = 100 000 € → DMTG ligne directe = 403,60+403,70+573,45+16 813,60
+    // = 18 194,35 € -> 18 194 € (golden officiel service-public.gouv.fr F14205).
     expect(result.taxablePremiums757B).toBe(100_000);
-    expect(result.tax757B).toBe(18_195);
+    expect(result.tax757B).toBe(18_194);
     expect(result.tax990ITotal).toBe(0);
   });
 
@@ -309,16 +339,19 @@ describe("V3.1 — assurance-vie 990 I / 757 B", () => {
 });
 
 describe("V3.1 — intégration produit", () => {
-  it("documente le diff de règle DMTG (arrondi par tranche)", () => {
+  it("documente le diff de règle DMTG (correction de l'arrondi par tranche, PF-02B2)", () => {
     const diff = getDmtgRegulatoryDiff();
-    expect(diff.amountBefore).toBe(16_388);
-    expect(diff.amountAfter).toBe(16_390);
-    expect(diff.delta).toBe(2);
+    // L'ancienne V1 arrondissait chaque tranche avant sommation (16 390 € sur
+    // le cas 300 000 €/2 enfants) ; la V2 applique l'arrondi final unique à
+    // l'euro (BOI-ENR-DG-30 § 100), soit 16 388 €.
+    expect(diff.amountBefore).toBe(16_390);
+    expect(diff.amountAfter).toBe(16_388);
+    expect(diff.delta).toBe(-2);
     expect(diff.status).toBe("review_required");
   });
 
   it("déclare règles, sources, limites et catalogue", () => {
-    expect(ruleVersions.some((rule) => rule.id === "rule-dmtg-bareme-2026-v1" && rule.status === "active")).toBe(true);
+    expect(ruleVersions.some((rule) => rule.id === "rule-dmtg-bareme-2026-v2" && rule.status === "active")).toBe(true);
     expect(ruleVersions.some((rule) => rule.id === "rule-demembrement-669-2026-v1" && rule.status === "active")).toBe(true);
     expect(evidenceSources.some((source) => source.id === "src-impots-dmtg-bareme-2026")).toBe(true);
     expect(evidenceSources.some((source) => source.id === "src-legifrance-cgi-669-2026")).toBe(true);
