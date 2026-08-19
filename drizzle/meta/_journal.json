@@ -36,6 +36,13 @@
       "when": 1787356800000,
       "tag": "0004_pf03b_postgres_rls_tenant_isolation",
       "breakpoints": false
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787443200000,
+      "tag": "0005_pf03c_managed_postgresql_operational_readiness",
+      "breakpoints": false
     }
   ]
 }

@@ -257,3 +257,105 @@ The suite verifies in both directions:
   Replacing their demo identity boundary with Clerk is PF-04 scope.
 - Private Blob isolation and binary document access remain a later document
   milestone; PF-03 isolates PostgreSQL document metadata only.
+
+## PF-03C — Managed deployment gate
+
+### Status
+
+**IMPLEMENTED:** a provider-neutral managed PostgreSQL operational gate is now
+part of the repository. It keeps Drizzle, applies forward-only migrations with
+an administrative connection, verifies migration state/roles/forced RLS, tests
+a controlled staging read/write path, provides a non-sensitive server health
+endpoint, and supplies backup/restore verification commands.
+
+**VERIFIED_LOCALLY:** the native PostgreSQL 18.4 suite covers migrations
+`0000` through `0005`, the controlled `NOBYPASSRLS` roles, forced RLS and
+tenant read/write isolation. Repository/unit, TypeScript, lint and production
+build validation are recorded in `CURRENT_STATE.md` for this change.
+
+**PRODUCTION_VERIFICATION_PENDING:** no managed provider, staging database,
+credential or user data was supplied to this task. Managed migration, runtime
+credential, smoke, provider-backup and restore evidence must be recorded by an
+operator before the deployment gate is marked operationally proven.
+
+### Environment variables and roles
+
+No secret is committed. In Vercel, set `PERSISTENCE_MODE=DATABASE` and expose
+only `DATABASE_URL` to the running application. Keep `DATABASE_ADMIN_URL` in a
+separate protected deployment/CI or operator environment; it must not be
+available to the Next.js runtime.
+
+| Value / role | Purpose | Minimum constraint |
+|---|---|---|
+| `DATABASE_URL` | Application runtime login | `LOGIN`, `NOSUPERUSER`, `NOBYPASSRLS`, `NOINHERIT`; member of `patrimoine_app`; no direct table grants. |
+| `DATABASE_ADMIN_URL` | Migration and explicitly guarded synthetic seed login | Separate from runtime; may perform DDL and is the migration `CURRENT_USER`. Never use it in server routes. |
+| `patrimoine_app` | Controlled runtime group role | `NOLOGIN`, `NOSUPERUSER`, `NOINHERIT`, `NOBYPASSRLS`; RLS-scoped table permissions only. |
+| `patrimoine_fixture_service` | Synthetic Claire/Marc seed group role | `NOLOGIN`, `NOSUPERUSER`, `NOINHERIT`, `NOBYPASSRLS`; only assumed in the guarded seed transaction. |
+
+After the first migration creates the group roles, the provider administrator
+creates a distinct runtime login and grants it only `patrimoine_app`. The
+deployment login is never granted the runtime credential, and the runtime
+login is never granted `patrimoine_fixture_service`. The application rejects a
+superuser, a `BYPASSRLS` role, a direct `patrimoine_app` login, or a login that
+cannot assume `patrimoine_app` before any tenant repository operation.
+
+`drizzle.config.ts` now reads only `DATABASE_ADMIN_URL`; runtime
+`DATABASE_URL` can therefore never be selected accidentally by a Drizzle CLI
+operation. Neither migration nor seed is invoked during Next.js startup.
+
+### Fresh managed-database procedure
+
+Run these commands only from the approved deployment operator/CI environment,
+with the provider URLs held in its secret store:
+
+1. Provision an empty managed PostgreSQL database and a separate deployment
+   login. Set `DATABASE_ADMIN_URL` there.
+2. Run `npm run db:migrate`. It applies Drizzle migrations `0000` through the
+   repository latest migration (`0005` at PF-03C), then verifies the schema
+   migration journal, controlled roles and all `FORCE ROW LEVEL SECURITY`
+   tables. Migrations are forward-only; a failure emits a non-sensitive JSON
+   code with `forward_only_no_automatic_rollback` and does not attempt unsafe
+   rollback.
+3. Create the non-superuser runtime login, grant it membership only in
+   `patrimoine_app`, and set its URL as `DATABASE_URL` in the Vercel runtime
+   environment. Do not add `DATABASE_ADMIN_URL` there.
+4. With both credentials available to the operator, run `npm run db:verify`.
+   It proves migration count, group-role flags, forced RLS, runtime login
+   safety, ability to assume `patrimoine_app`, and the PF-03C readiness marker.
+5. In a dedicated staging database with an approved synthetic membership only,
+   set `ALLOW_PF03_SMOKE_WRITE=true`, `PF03_SMOKE_TENANT_ID`,
+   `PF03_SMOKE_IDENTITY_ID` and `PF03_SMOKE_ROLE`, then run `npm run db:smoke`.
+   It appends one sanitized audit record, reads it back under RLS and never
+   deletes it. The command always refuses production.
+
+`GET /api/health` performs the same runtime reachability, role and PF-03C
+migration/RLS-marker checks. It returns only `{ "status": "ok" }` or
+`{ "status": "not_ready" }`; URLs, role names, tenant IDs and SQL errors are
+never returned.
+
+### Backup and restore procedure
+
+Use provider-native encrypted backups/snapshots according to the chosen managed
+PostgreSQL provider. Native backup is not sufficient evidence by itself: retain
+the following reproducible restore check.
+
+1. Use only an approved staging/synthetic database while this gate has no safe
+   staging data. Do not export live user data merely to prove the procedure.
+2. Set `DATABASE_ADMIN_URL` and a protected file path outside Git in
+   `PF03_BACKUP_FILE`; run `npm run db:backup`. It calls `pg_dump` in custom
+   format without ownership/privilege replay and checks that a non-empty backup
+   exists.
+3. Provision a separate temporary restore database in the same controlled
+   provider scope. Set `ALLOW_PF03_RESTORE=true`,
+   `PF03_RESTORE_DATABASE_URL` and the same `PF03_BACKUP_FILE`; run
+   `npm run db:restore:verify`. It refuses production, restores with
+   `pg_restore`, confirms migration count, forced RLS and non-sensitive row
+   counts (tenants, dossiers, assets, liabilities, audits).
+4. Point protected operator-only `DATABASE_ADMIN_URL` and `DATABASE_URL` at
+   the restored temporary database and run `npm run db:verify` to prove the
+   application login/role path as well. Destroy the temporary database under
+   the provider retention procedure after evidence is retained.
+
+The backup and restore commands require standard PostgreSQL client tools
+(`pg_dump`, `pg_restore`) on the operator/CI runner. They do not create or
+drop a database and do not run automatically on Vercel.
