@@ -11,6 +11,7 @@ HEAD before PF-01C1: 8531cc900f6bf5eaccbdaa28949cba8f6c15a13c
 HEAD before PF-01C2: b1263b2053ebcd5616fdaac1dc2c3c114b566a9a
 HEAD before PF-01C3: 7c7597a7805f01170c6319232cbaee6e5c7cd7a4
 HEAD before PF-01C4: b8cb7050d4aeceed6c16e2d2bc09597d472a9149
+HEAD before PF-02: b3b2dade33d1fad80286c5ff98edf130e703d935
 git diff --check: PASS (exit 0, no whitespace/conflict-marker errors)
 
 ## Current milestone
@@ -19,8 +20,8 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-02 — Harden rule versions and fiscal golden-case coverage
-(P0 register closed: 7 of 7 fixed, 0 remaining)
+PF-03 — Resolve P1 fiscal gaps (IFI completeness, holding animatrice, foreign
+holding path). P0 register closed: 7 of 7 fixed, 0 remaining. PF-02 COMPLETE.
 
 ## Completed
 
@@ -37,6 +38,47 @@ PF-02 — Harden rule versions and fiscal golden-case coverage
 - PF-01C3 — TAX-P0-004 (holding-tax base not a closed statutory list) fixed.
 - PF-01C4 — TAX-P0-005 (e-invoicing timeline not date-aware) fixed.
 - **PF-01 COMPLETE — 7 of 7 P0 fixed.**
+- **PF-02 COMPLETE — rule governance invariants + golden coverage hardened.**
+
+## PF-02 — Rule governance and golden coverage (COMPLETE)
+
+Full report: `docs/agent/PF02_GOLDEN_COVERAGE.md`
+Recalculation register: `docs/agent/RECALCULATION_CANDIDATES.md`
+
+No fiscal amount was changed in PF-02. It hardens the infrastructure that makes
+amounts traceable, and fills the golden gaps left by PF-01.
+
+Registry audit: 55 rules (24 active → 23, 12 archived → 13, 19 draft). Clean on
+every hard invariant — no duplicate ids, no active rule without a source, no
+dangling source ref, no step without a `ruleVersionId`, no engine referencing an
+unknown or archived rule.
+
+One anomaly found and fixed: `rule-ifi-simplified-2026-v1` and
+`rule-ifi-complete-2026-v2` were both `active` with the same `effectiveFrom` and
+the same scope, while the IFI engine referenced only V2. V1 archived — no
+existing calculation changed. Invariant B is what surfaced it.
+
+Governance invariants added (13 tests, `tests/unit/pf02-rule-governance.test.ts`):
+active-rule completeness, no duplicate ids, no undeclared second active rule per
+ruleSet (explicit allowlist), archived rules stay resolvable, every run has
+calculation steps, every step has a valid and non-archived `ruleVersionId`, no
+placeholder sources, no inverted date range, a boundary date resolves exactly
+one temporal version.
+
+Abstention and historical-reproducibility invariants added
+(`tests/unit/pf02-abstention-and-history.test.ts`): a missing operative date,
+missing qualification fact or unsupported sub-regime never yields an exemption,
+a default rate, the current rule version or a confirmed result; and every dated
+engine can select a prior regime from an explicit date (PFU 01/01/2026,
+150-0 B ter 21/02/2026, holding tax 31/12/2026, e-invoicing 2026/2027).
+
+Golden coverage added (P2): exit tax boundaries (800 k€, 50 %, 6/10 years,
+2,57 M€ relief), IS boundaries (42 500 €, 10 M€ turnover, 763 000 € social
+contribution), PER boundaries (PASS floors, 37 680 / 88 911 € caps, age-70
+block).
+
+Static fiscal-constant audit: no hardcoded rate or threshold in `components/`
+or `app/` — the guard fails the suite if one is reintroduced.
 
 ## PF-01 → PF-01C4 — Fiscal reconciliation (COMPLETE, 7 of 7 P0 fixed)
 
@@ -162,8 +204,9 @@ None.
 
 ## Tests
 
-Unit: PASS — 20 files, 244 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
-210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → +10 net in PF-01C4), 0 failing
+Unit: PASS — 22 files, 279 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
+210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → 244 PF-01C4 → +35 net in PF-02),
+0 failing
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -189,20 +232,37 @@ are tracked separately — closing PF-01 covers the P0 register, not that backlo
 - E-invoicing: a deferral decree remains legally possible. No hypothetical date
   was written into the engine; detecting such a change is the source-watcher's
   job (out of PF-01 scope).
-- DMTG rounding convention: the repository rounds per bracket (reproducing the
-  official service-public example, 50 000 € → 8 195 €) while the reference
-  rounds once on an exact base. 1 € divergence on the 1 M€ Dutreil golden case
-  (repo 14 098 € vs reference 14 097 €). Explicit arbitration required; the
-  repository convention was deliberately left unchanged.
+- DMTG rounding convention: **[BLOCKED — ROUNDING POLICY LEGAL REVIEW
+  REQUIRED]**. The repository rounds per bracket (reproducing the official
+  service-public example, 50 000 € → 8 195 €) while the reference rounds once on
+  an exact base. 1 € divergence on the 1 M€ Dutreil golden case (repo 14 098 €
+  vs reference 14 097 €). Both conventions are source-backed. The golden
+  expected was NOT changed to hide the gap; the repository convention stands
+  until a fiscal reviewer arbitrates. Policy documented in
+  `docs/agent/PF02_GOLDEN_COVERAGE.md` § 7.
+- Nine `draft` rules are referenced by engines producing calculation steps.
+  All those runs carry `professionalValidationRequired` and `needs_review`.
+  Promoting them to `active` is a governance decision requiring per-rule review,
+  not a technical fix — deliberately left open (PF02 report § 1).
 
 ## Known technical debt
 
-- IFI V0: décote, plafonnement, démembrement, in-fine and family debts absent.
-- Golden coverage missing for exit tax, SCI IR/IS, PER.
+P1 (need legal interpretation — separate runs, out of PF-02 scope):
+- IFI V0: décote complète, plafonnement, démembrement, in-fine and family debts.
+- Holding animatrice: not modelled (faisceau d'indices + `needs_review`).
+- Holding tax: foreign-company path `NOT_IMPLEMENTED`.
+
+P2 (structural, low risk):
+- Golden boundaries missing for SCI IR/IS and CEHR/CDHR (exit tax, IS and PER
+  boundaries were added in PF-02).
+- DMTG rounding arbitration (blocked on legal review).
+- Status of the nine `draft` rules referenced by engines.
+- Possible extension of the static fiscal-constant audit to `lib/**`.
 
 ## Next recommended task
 
-PF-02 — Harden rule versions and fiscal golden-case coverage.
+PF-03 — Resolve P1 fiscal gaps, starting with IFI completeness (décote,
+plafonnement, démembrement, in-fine and family debts).
 
 ## Handoff notes
 

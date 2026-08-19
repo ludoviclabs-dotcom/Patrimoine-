@@ -7,7 +7,11 @@ export const ruleVersions: RuleVersion[] = [
     version: "IFI-2026.03",
     title: "IFI simplifié : résidence principale, immobilier taxable et dette immobilière",
     effectiveFrom: "2026-01-01",
-    status: "active",
+    // Superseded by rule-ifi-complete-2026-v2 (même date d'effet, même périmètre).
+    // Le moteur `lib/simulations/ifi.ts` référence exclusivement la V2 : laisser
+    // deux versions actives sur la même portée temporelle était une anomalie de
+    // gouvernance (PF-02), sans effet sur un calcul existant.
+    status: "archived",
     evidenceSourceIds: ["src-service-public-ifi-2026"],
   },
   {
