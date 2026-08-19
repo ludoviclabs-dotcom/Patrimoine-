@@ -72,6 +72,21 @@ Statut initial de toutes les entrées : `IDENTIFIED_NOT_MIGRATED`.
 | Statut de migration | `IDENTIFIED_NOT_MIGRATED` |
 | Validation humaine requise | Oui — avocat fiscaliste, avec recatégorisation de l'inventaire d'actifs. |
 
+## 5. DMTG — arrondi par tranche (PF-02B2)
+
+| Champ | Valeur |
+|---|---|
+| Moteur | `computeDmtg` (`lib/tax/engines/dmtg.ts`), consommé par `computeDmtgForShare`, `simulateTransmissionV2`, `simulateDutreilV2`, `simulateDemembrement`, `computeAssuranceVieTransmission` (taxation 757 B) |
+| Règle concernée | `rule-dmtg-bareme-2026-v1` → corrigée par `rule-dmtg-bareme-2026-v2` |
+| Run correctif | PF-02B2 |
+| Comportement erroné | Chaque tranche du barème progressif était arrondie à l'euro avant sommation (`perSliceRounding`). Cette convention ne reproduit pas la méthode officielle. |
+| Comportement corrigé | Chaque tranche est calculée au centime exact ; le total est arrondi une seule fois à l'euro le plus proche (BOFiP BOI-ENR-DG-30 § 100 ; exemple chiffré officiel service-public.gouv.fr F14205, vérifié le 19/08/2026). |
+| Période potentiellement affectée | Tout dossier DMTG, Dutreil (chaînage art. 790), démembrement (droits sur la nue-propriété) ou assurance-vie 757 B liquidé avant PF-02B2. |
+| Sens de l'erreur | **Surévaluation des droits** — l'arrondi par tranche produit un total systématiquement supérieur ou égal à l'arrondi final unique (jamais inférieur, l'arrondi de chaque tranche ne pouvant que remonter la fraction perdue à la sommation). Écart observé : 1 € sur le cas de référence Dutreil à 1 M€ (14 098 € au lieu de 14 097 €) ; 1 € sur le cas 2 M€ (78 195 € au lieu de 78 194 € avant réduction art. 790, 39 098 € au lieu de 39 097 € après) ; 1 € sur le cas transmission par défaut (16 390 € au lieu de 16 388 € pour deux enfants) ; 1 € sur l'assurance-vie 757 B (18 195 € au lieu de 18 194 € sur une base de 100 000 €). |
+| Sévérité | Faible en montant (1 à quelques euros par dossier) mais systématique sur tous les dossiers DMTG/Dutreil/démembrement/757 B. |
+| Statut de migration | `IDENTIFIED_NOT_MIGRATED` |
+| Validation humaine requise | Oui — notaire ou avocat fiscaliste, dossier par dossier ; l'écart est mineur mais affecte potentiellement un grand nombre de dossiers. |
+
 ---
 
 ## Entrées connexes, sans recalcul requis

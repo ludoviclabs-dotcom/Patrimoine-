@@ -116,8 +116,23 @@ export const ruleVersions: RuleVersion[] = [
     version: "DMTG-2026.06-V1",
     title: "DMTG art. 777 : barèmes multi-liens, abattements 779/790 et rappel fiscal 15 ans",
     effectiveFrom: "2026-06-11",
-    status: "active",
+    // Superseded by rule-dmtg-bareme-2026-v2 (PF-02B2) : la V1 arrondissait
+    // chaque tranche du barème avant sommation ("perSliceRounding"), ce qui ne
+    // reproduit PAS la méthode officielle (BOI-ENR-DG-30 § 100 ; exemple
+    // chiffré service-public.gouv.fr F14205) et surévaluait les droits d'1 €
+    // sur le cas Dutreil à 1 M€ (14 098 € au lieu de 14 097 €).
+    status: "archived",
     evidenceSourceIds: ["src-impots-dmtg-bareme-2026"],
+  },
+  {
+    id: "rule-dmtg-bareme-2026-v2",
+    ruleSet: "transmission",
+    version: "DMTG-2026.08-V2",
+    title:
+      "DMTG art. 777 : barèmes multi-liens, abattements 779/790, rappel fiscal 15 ans, arrondi final unique à l'euro",
+    effectiveFrom: "2026-06-11",
+    status: "active",
+    evidenceSourceIds: ["src-impots-dmtg-bareme-2026", "src-bofip-enr-dg-30-arrondi-2026"],
   },
   {
     id: "rule-demembrement-669-2026-v1",

@@ -2,18 +2,25 @@
 
 Date : 2026-08-19
 Branche : `claude/patrimoine-fiscal-bootstrap-a045d2`
-HEAD de départ : `ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88` (PR #9 mergée dans `main`)
-Contexte : PF-00/PF-01/PF-02 clôturés, registre P0 fermé (7 sur 7). Ce run
-(PF-02B1) traite exclusivement le backlog P1 IFI identifié dans
-`docs/agent/PF02_GOLDEN_COVERAGE.md` § 10 et `docs/rule-governance.md`.
+HEAD de départ (PF-02B1) : `ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88` (PR #9 mergée dans `main`)
+Contexte : PF-00/PF-01/PF-02 clôturés, registre P0 fermé (7 sur 7). Ce
+document couvre deux runs successifs sur le même backlog P1/P2 identifié
+dans `docs/agent/PF02_GOLDEN_COVERAGE.md` et `docs/rule-governance.md` :
 
-Portée stricte : **IFI uniquement**. Aucun autre moteur (PFU, Dutreil,
-150-0 B ter, taxe holding, DMTG, holding animatrice) n'a été modifié.
-L'infrastructure (Postgres, Auth, UI, PDF, watcher, IA) n'a pas été touchée.
+- **PF-02B1** — complétude IFI (démembrement, dettes avancées, actifs
+  professionnels). Portée stricte : IFI uniquement.
+- **PF-02B2** — arrondi DMTG et gouvernance des règles `draft`. Portée
+  stricte : arrondi DMTG (et ses moteurs consommateurs : Dutreil, transmission
+  multi-liens, démembrement, assurance-vie 757 B) et invariants de
+  gouvernance des règles `draft`. Aucun autre moteur, aucun montant fiscal
+  hors périmètre de l'arrondi n'a été modifié.
+
+Aucun des deux runs n'a touché l'infrastructure (Postgres, Auth, UI, PDF,
+watcher, IA) ni la holding animatrice, laissées à un run ultérieur.
 
 ---
 
-## IFI
+## IFI (PF-02B1)
 
 ### 1. Sous-règles auditées
 
@@ -239,7 +246,210 @@ intervention professionnelle, conformément à `docs/rule-governance.md`.
 
 ---
 
+## DMTG — arrondi (PF-02B2)
+
+### 1. Reproduction précise de l'écart
+
+Cas de référence : `DUTREIL-2026-ARTICLE-790` de
+`docs/reference/2026-08/MOTEURS_FISCAUX_2026.ts` (société 1 M€, donation
+postérieure au 21/02/2026, Dutreil validé, donateur 65 ans, pleine propriété,
+1 bénéficiaire).
+
+| | Base taxable après abattement | Droits avant art. 790 | Droits après réduction 50 % |
+|---|---:|---:|---:|
+| Référentiel (`computeIfi2026`/`computeDutreilTransmission2026`) | 150 000 € | 28 194,35 € (exact, non arrondi) → **28 194 €** | **14 097 €** |
+| Dépôt avant PF-02B2 (`simulateDutreilV2`) | 150 000 € | **28 195 €** (arrondi par tranche) | **14 098 €** |
+| Dépôt après PF-02B2 | 150 000 € | **28 194 €** | **14 097 €** |
+
+Reproduit et vérifié directement en exécutant `simulateDutreilV2` avec les
+paramètres exacts du cas référentiel (résultat confirmé avant et après
+correction, voir § 5).
+
+### 2. Localisation de chaque opération d'arrondi
+
+- **Référentiel** : `applyProgressiveScale` (L176-188) ne procède à **aucun**
+  arrondi intermédiaire — chaque tranche est calculée au centime exact et
+  sommée. Le résultat n'est arrondi qu'au moment où il devient une donnée de
+  sortie (`roundCent` pour une composante intermédiaire, `roundEuro` pour un
+  montant final dû après application d'une réduction comme l'art. 790).
+- **Dépôt avant PF-02B2** : `calculateProgressiveTax`
+  (`lib/tax/engine-kit.ts`) acceptait une option `perSliceRounding`, utilisée
+  uniquement par `computeDmtg` (`lib/tax/engines/dmtg.ts`), qui arrondissait
+  **chaque tranche** du barème à l'euro avant de les sommer. Sur la 4ᵉ tranche
+  du cas de référence (134 068 € × 20 % = 26 813,60 €), cet arrondi ajoute
+  0,40 € qui, cumulés aux autres tranches, portent le total de 28 194,35 € à
+  28 195 € — puis, après la réduction de 50 % de l'art. 790, le passage de
+  28 195 € (pair impossible, ici impair) à 14 097,5 € fait basculer
+  l'arrondi final (`Math.round`, qui arrondit 0,5 vers le haut) à 14 098 €
+  au lieu de 14 097 €.
+
+### 3. Vérification sur sources officielles
+
+Aucune décision n'a été prise sans confirmation sur legifrance.gouv.fr /
+bofip.impots.gouv.fr / service-public.gouv.fr, vérifiés le 19/08/2026 :
+
+- **[Article 1657 - Code général des impôts - Légifrance](https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000051219510)**
+  : la règle d'arrondi à l'euro le plus proche qu'il pose (« fraction d'euro
+  égale à 0,50 comptée pour 1 ») **ne s'applique qu'aux impôts directs**
+  (taxes foncières, taxe d'habitation et taxes annexes) — **pas** aux droits
+  d'enregistrement / DMTG. Écartée comme fondement direct.
+- **[BOI-ENR-DG-30 — Mise en œuvre des droits d'enregistrement, § 100](https://bofip.impots.gouv.fr/bofip/2030-PGP.html/identifiant=BOI-ENR-DG-30-20131223)**
+  (la disposition réellement applicable aux DMTG) : « Les sommes ou valeurs
+  servant de base aux droits ou taxes exigibles sont arrondies à l'euro le
+  plus proche. La même règle s'applique pour l'arrondissement des montants
+  des droits ou taxes exigibles. » L'arrondi porte sur la **base** puis sur
+  le **montant final dû** — jamais sur les tranches intermédiaires d'un même
+  barème progressif. La mention de « plusieurs droits particuliers donnant
+  lieu à une perception distincte » (chacun arrondi séparément) vise des
+  droits juridiquement distincts sur un même acte (ex. droits d'enregistrement
+  et taxe de publicité foncière), **pas** les tranches d'un seul barème.
+- **[Droits de donation — Calcul et paiement, fiche F14205 — service-public.gouv.fr](https://www.service-public.gouv.fr/particuliers/vosdroits/F14205)**
+  : exemple chiffré officiel — donation de 200 000 € à un enfant, abattement
+  100 000 € → base taxable 100 000 € ; tranches présentées **au centime
+  exact** (403,60 € / 403,70 € / 573,45 € / 16 813,60 €) ; total exact
+  18 194,35 € ; **« soit un total de droits de 18 194 € »**. Confirme sans
+  ambiguïté l'arrondi final unique — et contredit directement l'exemple
+  « 404 + 404 + 573 + 6 814 = 8 195 € » qui justifiait `perSliceRounding`
+  dans le code (largement répété sur des sites tiers non officiels, mais
+  absent de la méthodologie officielle).
+
+**Aucun conflit non tranché** : les trois sources officielles convergent sur
+l'arrondi final unique. Aucun `[BLOCKED — ROUNDING POLICY LEGAL REVIEW
+REQUIRED]` n'est nécessaire — contrairement au précédent point bloquant
+documenté en PF-02 (`docs/agent/PF02_GOLDEN_COVERAGE.md` § 7), qui portait
+sur un désaccord *documenté et non résolu* entre deux conventions
+elles-mêmes sourcées. Ici, une des deux conventions n'était en réalité
+adossée à aucune source officielle vérifiable.
+
+### 4. Politique d'arrondi explicite
+
+| Paramètre | Règle |
+|---|---|
+| Arrondi intermédiaire par tranche | **Interdit**. Chaque tranche du barème progressif est calculée au centime exact. |
+| Unité de l'arrondi final | Euro entier (`Math.round`, équivalent à la règle « fraction ≥ 0,50 comptée pour 1 » de BOI-ENR-DG-30). |
+| Moment d'application | Sur le montant total des droits dus pour **une seule perception distincte** (ex. : le total DMTG d'un barème donné). Lorsqu'une réduction ultérieure s'applique (ex. art. 790, 50 %), l'arrondi final porte sur le montant **après réduction**, jamais avant — sans quoi la réduction elle-même introduit un second arrondi non fondé. |
+| Arrondi final | Un seul, au dernier montant représentant les droits réellement dus. |
+| Périmètre | S'applique à `computeDmtg` et à tout moteur qui en dérive un montant final (Dutreil, transmission multi-liens, démembrement, assurance-vie 757 B). Ne s'applique pas à l'IFI ni aux autres barèmes qui ne relèvent pas des droits d'enregistrement (barème IR, IFI : déjà conformes, cf. `roundEuro`/`Math.round` en sortie uniquement). |
+
+### 5. Implémentation
+
+- `lib/tax/engine-kit.ts` : option `perSliceRounding` retirée de
+  `calculateProgressiveTax` (elle n'avait plus aucun appelant légitime).
+  La fonction arrondissait déjà le total une seule fois (`Math.round` en
+  sortie) — le seul défaut était l'arrondi *supplémentaire* par tranche en
+  amont, désormais supprimé.
+- `lib/tax/engines/dmtg.ts` : `computeDmtg` appelle
+  `calculateProgressiveTax(taxableAfterAllowance, brackets)` sans option.
+- `lib/tax/v2-engines.ts`, `lib/tax/engines/demembrement.ts` : libellés des
+  étapes de calcul corrigés (ne mentionnent plus « arrondi par tranche »).
+- Rule governance : `rule-dmtg-bareme-2026-v2` (`DMTG-2026.08-V2`) active,
+  `rule-dmtg-bareme-2026-v1` archivée. Nouvelle source
+  `src-bofip-enr-dg-30-arrondi-2026` (BOI-ENR-DG-30 § 100, vérifiée le
+  19/08/2026), rattachée à la V2 aux côtés de la source barème existante.
+- `lib/evidence/dmtg-rule-diff.ts` : l'artefact de démonstration
+  « RuleDiff » (fonctionnalité produit illustrant le flux revue/recalcul)
+  documentait *par construction* l'ancien comportement comme la version
+  « à jour ». Son sens a été inversé pour documenter fidèlement CETTE
+  correction (V1 erronée → V2 corrigée), plutôt que d'illustrer un scénario
+  fictif désormais faux.
+
+### 6. Golden cases
+
+Cas corrigés avec justification légale (jamais ajustés pour « faire passer »
+le test sans preuve) : barème ligne directe 50 000 €, tableau III
+frères/sœurs, démembrement viager, chaînage Dutreil (cas 1 M€ et 2 M€),
+assurance-vie 757 B, RuleDiff DMTG et Dutreil. Un nouveau golden reproduit
+littéralement le cas `DUTREIL-2026-ARTICLE-790` du référentiel (1 M€ →
+14 097 €). Un golden supplémentaire verrouille l'exemple officiel
+service-public.gouv.fr F14205 (100 000 € → 18 194 €). Détail complet dans
+`tests/unit/v3-1-transmission.test.ts` et `tests/unit/v3-socle.test.ts`.
+
+### 7. Recalcul
+
+Entrée n° 5 ajoutée à `docs/agent/RECALCULATION_CANDIDATES.md` :
+**surévaluation systématique de 1 € (ou plus, selon les tranches franchies)**
+sur tout dossier DMTG/Dutreil/démembrement/757 B liquidé avant PF-02B2. Aucun
+résultat historique n'a été réécrit ; la reprise reste une décision humaine
+par dossier.
+
+---
+
+## Gouvernance des règles `draft` (PF-02B2)
+
+### 1. Inventaire
+
+19 règles au statut `draft` dans le registre. Neuf sont effectivement
+consommées par un moteur produisant des `calculation_steps` (vérifié
+empiriquement via `getAllTaxRuns()`, pas seulement par grep textuel) :
+
+| Rule id | Moteur | Raison du draft | Source | Résultat produit | Statut utilisateur | Justification needs_review |
+|---|---|---|---|---|---|---|
+| `rule-donation-usufruit-2026-v1` | `simulateTransmissionV2` (donation avec démembrement) | Valorisation *indicative* de l'usufruit/nue-propriété ; la réserve d'usufruit et l'acte réel restent à qualifier au cas par cas. | `src-impots-donation-usufruit`, `src-legifrance-code-civil-transmission` | Valeur transmise après application du taux d'usufruit | `needs_review` (run), `indicative` (étape dédiée) | Pas de golden boundary dédié ; qualification factuelle de l'acte toujours requise. |
+| `rule-sci-arbitrage-2026-v2` | `simulateSciIrVsIs` (`lib/tax/engines/sci-arbitrage.ts`) | Arbitrage SCI IR/IS : bascules dépendantes de plusieurs paramètres corrélés (TMI, durée, amortissement). | `src-bofip-sci-is-2026`, `src-service-public-is-taux-2026` | Comparaison foncier net / IS / plus-value de sortie | `needs_review` | Golden boundaries manquantes (PF-02, § 3 « SCI IR/IS — PARTIAL »), non comblées par PF-02B1/B2 (hors périmètre). |
+| `rule-assurance-vie-990i-757b-2026-v1` | `computeAssuranceVieTransmission` / `simulateAssuranceVieTransmission` | Cas standard bien sourcé et golden-testé, MAIS `coverage-assurance-vie-transmission` reste `partially_covered` : ventilation par contrat, contrats vie-génération, clauses démembrées et intégration successorale fine du 757 B non automatisées. | `src-bofip-tcas-aut-60-2026` (BOI-TCAS-AUT-60, art. 990 I/757 B), `src-impots-dmtg-bareme-2026` | Taxation 990 I et 757 B par bénéficiaire | `needs_review` | Question factuelle/juridique ouverte (clauses démembrées, contrats multiples) malgré une couverture nominale solide — écarte la promotion malgré un dossier a priori favorable. |
+| `rule-per-deduction-2026-v2` | `simulatePerDeductionV2` | Plafonds calculés (37 680/88 911 €) sensibles au TMI et au report de plafond non consommé sur 3 ans, non entièrement automatisé. | Registre PER (plafonds PASS) | Déduction PER, économie TMI | `needs_review` | Report de plafond des années antérieures non intégralement modélisé. |
+| `rule-bank-import-demo-2026-v1` | `simulateBankImportV2` | Fonctionnalité explicitement **simulée** (titre : « Import bancaire simulé ») — agrégation DSP2/Powens non branchée à un fournisseur réel. | `src-eurlex-sca-2018-389`, `src-banque-france-sca-2022`, `src-eurlex-aml-2015-849` | Statut d'import simulé, alertes de rapprochement | `needs_review` | Démo produit, aucune donnée réelle ; jamais destinée à devenir une source de vérité fiscale. |
+| `rule-succession-checklist-2026-v1` | `simulateSuccessionChecklistV24` | Checklist successorale simplifiée ; actif brut, notaire et paiement restent « à vérifier » par construction. | Registre succession | Checklist non chiffrée en droits définitifs | `needs_review` | Pas un calcul de droits — une checklist de dossier, par nature incomplète tant que non revue par notaire. |
+| `rule-per-early-exit-primary-home-2026-v1` | `simulatePerEarlyExitV24` | Sortie anticipée résidence principale : distinction versements/gains et régime applicable non entièrement automatisée. | `src-service-public-per-release-2025`, `src-bofip-per-fiscal-regime-2026` | Montant débloqué, part imposable | `needs_review` | Cas de déblocage anticipé multiples (autres que résidence principale) non couverts par le même moteur. |
+| `rule-succession-liquidity-stress-2026-v1` | `simulateSuccessionLiquidityStressV24` | Stress test simplifié : droits estimés vs cash disponible, sur hypothèses internes non individuellement vérifiées. | Registre succession | Alerte de déficit de liquidité | `needs_review` | Objectif d'alerte, pas de liquidation définitive des droits. |
+| `rule-product-adequacy-demo-2026-v1` | `simulateProductAdequacyV24` | Adéquation produit **simulée**, explicitement « sans recommandation » (titre). | `src-amf-mif2-adequation`, `src-amf-cif-orias-2026`, `src-cnil-profiling-automated-decision` | Score d'adéquation horizon/risque/durabilité | `needs_review` | Démo produit ; toute recommandation réelle exige un conseiller habilité (MIF2/CIF). |
+
+Les dix règles restantes (`rule-signature-demo-2026-v1`,
+`rule-agregation-demo-2026-v1`, `rule-projections-2026-v1`,
+`rule-calendrier-fiscal-2026-v1`, `rule-compta-sci-2026-v1`,
+`rule-ai-governance-2026-v1`, `rule-apport-cession-pre-2019-v1`,
+`rule-manual-review-complexity-2026-v1`, `rule-regulatory-controls-2026-v1`,
+`rule-cyber-hygiene-demo-2026-v1`) sont déclarées dans le registre mais ne
+sont référencées par **aucun** `calculation_step` d'un run existant — soit
+qu'elles alimentent un catalogue statique non chiffré (calendrier fiscal,
+régime historique apport-cession non atteint par la fixture de démonstration
+qui porte sur une cession datée du 21/02/2026), soit qu'elles ne sont pas
+encore câblées à un moteur.
+
+### 2. Décision de promotion
+
+**Aucune règle `draft` n'est promue `active` dans ce run.** Conformément au
+seuil fixé par le protocole (source suffisante **ET** date d'effet valide
+**ET** couverture golden **ET** aucune question factuelle/juridique
+ouverte), chacune des neuf règles consommées bute sur au moins un critère :
+golden boundaries manquantes (SCI), fonctionnalité explicitement démo/pilote
+(bank-import, product-adequacy), portée par nature non chiffrée (checklists),
+ou — cas le plus proche de la promotion — question factuelle documentée et
+non résolue (assurance-vie : clauses démembrées, contrats multiples). Rester
+`draft` est la décision correcte pour les neuf, pas une abstention par
+défaut.
+
+### 3. Invariants ajoutés
+
+Nouveau fichier `tests/unit/pf02b2-draft-rule-governance.test.ts`
+(7 tests) :
+
+- au moins une règle `draft` est effectivement consommée par un moteur (le
+  test ne peut pas passer trivialement si l'inventaire devient vide) ;
+- aucune étape référençant une règle `draft` n'a jamais
+  `confidenceStatus: "validated"` ;
+- aucune étape référençant une règle `draft` n'a jamais
+  `displayStatus: "validated_calculation"` ;
+- tout run contenant une étape `draft` porte `status: "needs_review"` ;
+- tout run contenant une étape `draft` porte
+  `professionalValidationRequired: true` ;
+- chaque règle `draft` consommée reste résolvable et distincte d'une règle
+  archivée ;
+- l'inventaire empirique des règles `draft` consommées est verrouillé
+  (liste explicite) — toute évolution (nouvelle règle draft câblée, ou une
+  règle qui cesse de l'être) doit être ajoutée délibérément au test et
+  documentée ici, jamais silencieusement.
+
+Ces invariants constatent que la garantie est **déjà respectée** aujourd'hui
+(aucune étape `draft` n'affiche jamais `validated`) ; leur rôle est de
+protéger cette garantie contre une régression future — y compris pour une
+règle `draft` qui n'existe pas encore.
+
+---
+
 ## Validation
+
+### PF-02B1 (IFI)
 
 | Commande | Résultat |
 |---|---|
@@ -257,15 +467,30 @@ dépôt canonique). `npm install` a été exécuté pour permettre `npx tsc
 aucune version modifiée). C'est une opération d'infrastructure sans rapport
 avec le fiscal, non un choix de dépendance.
 
+### PF-02B2 (arrondi DMTG et gouvernance draft)
+
+| Commande | Résultat |
+|---|---|
+| `npm test` | PASS — 23 fichiers, **309 tests**, 0 échec (301 avant PF-02B2, +7 gouvernance draft, +1 golden 1 M€ Dutreil) |
+| `npx tsc --noEmit` | PASS (exit 0) |
+| `npm run lint` | PASS (exit 0) |
+| `npm run build` | PASS (exit 0) |
+| `git diff --check` | PASS (exit 0) |
+| `npm run e2e` | NON EXÉCUTÉ — même limitation d'environnement ; aucune modification n'a touché à l'UI dans ce run. |
+
 ## Recalculation candidates
 
-Aucun résultat IFI n'a été recalculé automatiquement. Les nouvelles branches
-sont additives : un dossier n'utilisant aucun des nouveaux champs
-(`ifiOwnershipRight`, `ifiDismembermentBasis`, `ifiUsufructuaryAge`,
-`ifiRepaymentKind`, `ifiOriginalPrincipal`, `ifiDisbursementDate`,
-`ifiContractualEndDate`, `ifiRelatedPartyDebt`, `ifiNonTaxPurposeProven`) et
-sans actif `isProfessionalAsset` sur un bien immobilier produit un résultat
-strictement identique à la V2. Aucune entrée n'est donc ajoutée à
-`docs/agent/RECALCULATION_CANDIDATES.md` : ce run n'a changé le résultat
-d'aucun dossier existant, il ajoute une capacité de calcul absente
-auparavant.
+- **PF-02B1** : aucun résultat IFI recalculé. Les nouvelles branches sont
+  additives : un dossier n'utilisant aucun des nouveaux champs
+  (`ifiOwnershipRight`, `ifiDismembermentBasis`, `ifiUsufructuaryAge`,
+  `ifiRepaymentKind`, `ifiOriginalPrincipal`, `ifiDisbursementDate`,
+  `ifiContractualEndDate`, `ifiRelatedPartyDebt`, `ifiNonTaxPurposeProven`)
+  et sans actif `isProfessionalAsset` sur un bien immobilier produit un
+  résultat strictement identique à la V2. Aucune entrée ajoutée à
+  `docs/agent/RECALCULATION_CANDIDATES.md`.
+- **PF-02B2** : entrée n° 5 ajoutée à `docs/agent/RECALCULATION_CANDIDATES.md`
+  — la correction de l'arrondi DMTG (par tranche → final unique) modifie le
+  résultat de **tout** dossier DMTG, Dutreil, démembrement ou assurance-vie
+  757 B liquidé avant ce run (surévaluation systématique d'environ 1 € par
+  dossier). Aucun résultat historique n'a été réécrit ; la reprise reste une
+  décision humaine, dossier par dossier.

@@ -19,8 +19,11 @@ import {
  *   époux (tableau II, abattement 80 724 €) n'est pas automatisée (coverage).
  * - rappel fiscal des donations de moins de 15 ans (art. 784).
  *
- * Arrondi par tranche (perSliceRounding) : reproduit l'exemple officiel
- * 50 000 € en ligne directe → 404 + 404 + 573 + 6 814 = 8 195 €.
+ * Arrondi : aucun arrondi par tranche. Chaque tranche est calculée au
+ * centime exact ; le total est arrondi une seule fois à l'euro le plus
+ * proche (BOFiP BOI-ENR-DG-30 § 100 ; exemple chiffré officiel
+ * service-public.gouv.fr F14205, vérifié le 19/08/2026 — voir
+ * `docs/agent/PF02B_FISCAL_COMPLETENESS.md`).
  */
 
 export type DmtgRelationship =
@@ -79,7 +82,7 @@ export function getAvailableAllowance(
   return Math.max(0, allowance - Math.max(0, priorDonationsWithin15Years));
 }
 
-/** Droits sur une part taxable (après abattement), arrondi par tranche. */
+/** Droits sur une part taxable (après abattement), arrondi final unique à l'euro. */
 export function computeDmtg({
   taxableAfterAllowance,
   relationship = "direct-line" as DmtgRelationship,
@@ -92,7 +95,7 @@ export function computeDmtg({
     return { tax: 0, marginalRate: 0, exempt: brackets === null };
   }
 
-  const tax = calculateProgressiveTax(taxableAfterAllowance, brackets, { perSliceRounding: true });
+  const tax = calculateProgressiveTax(taxableAfterAllowance, brackets);
   const marginalRate =
     brackets.find((bracket) => taxableAfterAllowance <= bracket.ceiling)?.rate ??
     brackets[brackets.length - 1].rate;

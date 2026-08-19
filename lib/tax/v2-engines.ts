@@ -176,8 +176,8 @@ export function simulateTransmissionV2({
   const bareOwnershipRate = getBareOwnershipRate(donorAge);
   const transmittedValue = useDismemberment ? Math.round(assetValue * bareOwnershipRate) : assetValue;
   const grossShare = Math.round(transmittedValue / childCount);
-  // Barème DMTG multi-liens (art. 777) avec rappel fiscal 15 ans (art. 784)
-  // et arrondi par tranche — voir rule-dmtg-bareme-2026-v1 et le RuleDiff associé.
+  // Barème DMTG multi-liens (art. 777) avec rappel fiscal 15 ans (art. 784),
+  // arrondi final unique à l'euro (rule-dmtg-bareme-2026-v2, PF-02B2).
   const dmtg = computeDmtgForShare({
     grossShare,
     relationship,
@@ -223,7 +223,7 @@ export function simulateTransmissionV2({
       inputValue: `${grossShare} / donations antérieures ${priorDonations}`,
       formula: "part par bénéficiaire - abattement disponible sur 15 ans (art. 784)",
       outputValue: taxableShare,
-      ruleVersionId: "rule-dmtg-bareme-2026-v1",
+      ruleVersionId: "rule-dmtg-bareme-2026-v2",
       evidenceSourceId: "src-impots-dmtg-bareme-2026",
       coverageLimitIds: ["coverage-transmission-checklist", "coverage-dmtg-multi-liens"],
       confidenceStatus: "needs_review",
@@ -236,9 +236,9 @@ export function simulateTransmissionV2({
       inputValue: taxableShare,
       formula: dmtg.exempt
         ? "conjoint/PACS : exonération de droits de succession (loi TEPA)"
-        : "barème DMTG art. 777 du lien de parenté, arrondi par tranche",
+        : "barème DMTG art. 777 du lien de parenté, arrondi final unique",
       outputValue: indicativeRights,
-      ruleVersionId: "rule-dmtg-bareme-2026-v1",
+      ruleVersionId: "rule-dmtg-bareme-2026-v2",
       evidenceSourceId: "src-impots-dmtg-bareme-2026",
       coverageLimitIds: ["coverage-transmission-checklist", "coverage-dmtg-multi-liens"],
       confidenceStatus: "needs_review",

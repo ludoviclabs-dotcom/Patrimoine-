@@ -83,7 +83,7 @@ const taxRun = createTaxRunFactory({
 });
 
 const RULE_ID = "rule-demembrement-669-2026-v1";
-const RULE_DMTG = "rule-dmtg-bareme-2026-v1";
+const RULE_DMTG = "rule-dmtg-bareme-2026-v2";
 const SOURCE_669 = "src-legifrance-cgi-669-2026";
 const SOURCE_DMTG = "src-impots-dmtg-bareme-2026";
 const COVERAGE = ["coverage-donation-usufruit-simple", "coverage-demembrement-ifi-968"];
@@ -145,7 +145,7 @@ export function simulateDemembrement(input: DemembrementInput = {}) {
       order: 4,
       label: "Droits indicatifs sur la nue-propriété",
       inputValue: result.taxableShare,
-      formula: "barème DMTG du lien de parenté, arrondi par tranche",
+      formula: "barème DMTG du lien de parenté, arrondi final unique",
       outputValue: result.indicativeRights,
       ruleVersionId: RULE_DMTG,
       evidenceSourceId: SOURCE_DMTG,

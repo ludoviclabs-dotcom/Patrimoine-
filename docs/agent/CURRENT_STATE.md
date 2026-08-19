@@ -17,6 +17,7 @@ HEAD before PF-01C3: 7c7597a7805f01170c6319232cbaee6e5c7cd7a4
 HEAD before PF-01C4: b8cb7050d4aeceed6c16e2d2bc09597d472a9149
 HEAD before PF-02: b3b2dade33d1fad80286c5ff98edf130e703d935
 HEAD before PF-02B1: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
+HEAD before PF-02B2: b293984899e589b019cc6cf1c90f3da3effbea5a
 git diff --check: PASS (exit 0, no whitespace/conflict-marker errors)
 
 ## Current milestone
@@ -25,11 +26,12 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-02B2 — Resolve DMTG rounding arbitration and the nine-draft-rule governance
-backlog. P0 register closed: 7 of 7 fixed, 0 remaining. PF-02 COMPLETE.
-PF-02B1 COMPLETE (IFI démembrement, dettes avancées, actifs professionnels).
-PF-03 (Postgres/migrations/RLS and beyond) remains reserved and unrenamed, per
-explicit instruction, until the PF-02B fiscal sub-series concludes.
+PF-02B3 — Harden holding animatrice qualification. P0 register closed: 7 of 7
+fixed, 0 remaining. PF-02 COMPLETE. PF-02B1 COMPLETE (IFI démembrement, dettes
+avancées, actifs professionnels). PF-02B2 COMPLETE (arrondi DMTG corrigé,
+gouvernance des règles draft renforcée). PF-03 (Postgres/migrations/RLS and
+beyond) remains reserved and unrenamed, per explicit instruction, until the
+PF-02B fiscal sub-series concludes.
 
 ## Completed
 
@@ -51,6 +53,45 @@ explicit instruction, until the PF-02B fiscal sub-series concludes.
   state, and P1 inventory from a fresh worktree; no files modified in that run).
 - **PF-02B1 COMPLETE — IFI démembrement art. 968, dettes in fine/sans
   terme/liées, plafond dettes 60 %, actifs professionnels déclarés.**
+- **PF-02B2 COMPLETE — arrondi DMTG corrigé (arrondi par tranche → arrondi
+  final unique, BOI-ENR-DG-30) ; gouvernance des règles draft renforcée par
+  des invariants automatisés.**
+
+## PF-02B2 — DMTG rounding and draft-rule governance (COMPLETE)
+
+Full report: `docs/agent/PF02B_FISCAL_COMPLETENESS.md` (sections « DMTG —
+arrondi » et « Gouvernance des règles draft »).
+
+**Arrondi DMTG** : la V1 (`rule-dmtg-bareme-2026-v1`, désormais archivée)
+arrondissait chaque tranche du barème progressif à l'euro avant sommation
+(`perSliceRounding`). Vérification sur trois sources officielles
+(legifrance.gouv.fr art. 1657 — écarté, ne s'applique qu'aux impôts directs ;
+BOFiP BOI-ENR-DG-30 § 100 — arrondi une seule fois sur le montant final dû ;
+service-public.gouv.fr fiche F14205 — exemple chiffré officiel confirmant
+l'arrondi final unique, 18 194,35 € → 18 194 € et non 18 195 €) : les trois
+convergent, aucun `[BLOCKED]` nécessaire. `rule-dmtg-bareme-2026-v2` (active)
+calcule chaque tranche au centime exact et arrondit une seule fois, à la fin.
+Corrige le cas de référence Dutreil 1 M€ : 14 098 € → **14 097 €**, conforme
+au golden `DUTREIL-2026-ARTICLE-790` de `MOTEURS_FISCAUX_2026.ts`. Impact
+systématique (~1 €) sur tout dossier DMTG/Dutreil/démembrement/assurance-vie
+757 B — entrée n° 5 ajoutée à `docs/agent/RECALCULATION_CANDIDATES.md`,
+aucun résultat historique réécrit.
+
+**Gouvernance draft** : inventaire empirique (via `getAllTaxRuns()`, pas un
+grep textuel) — 9 des 19 règles `draft` du registre sont effectivement
+consommées par un moteur produisant des `calculation_steps` (transmission
+avec démembrement, PER, import bancaire démo, checklist succession, sortie
+anticipée PER résidence principale, stress test liquidité succession,
+adéquation produit démo, assurance-vie 990 I/757 B, arbitrage SCI IR/IS).
+Aucune promotion à `active` : chacune bute sur au moins un des quatre
+critères (source/date/golden/absence de question ouverte) — y compris
+l'assurance-vie, dossier le plus solide, bloqué par les clauses démembrées et
+contrats multiples non automatisés. Nouveau fichier
+`tests/unit/pf02b2-draft-rule-governance.test.ts` (7 invariants) : aucune
+étape référençant une règle `draft` n'affiche jamais `confidenceStatus:
+"validated"` ni `displayStatus: "validated_calculation"` ; tout run
+concerné porte `status: "needs_review"` et `professionalValidationRequired:
+true` ; l'inventaire empirique est verrouillé contre une dérive silencieuse.
 
 ## PF-02B1 — IFI completeness gate (COMPLETE)
 
@@ -287,9 +328,10 @@ None.
 
 ## Tests
 
-Unit: PASS — 22 files, 301 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
-210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → 244 PF-01C4 → 279 PF-02 → +22 net in
-PF-02B1), 0 failing
+Unit: PASS — 23 files, 309 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
+210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → 244 PF-01C4 → 279 PF-02 → 301 PF-02B1
+→ +8 net in PF-02B2: +7 draft-rule governance invariants, +1 golden 1 M€
+Dutreil reproduisant DUTREIL-2026-ARTICLE-790), 0 failing
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -315,18 +357,26 @@ are tracked separately — closing PF-01 covers the P0 register, not that backlo
 - E-invoicing: a deferral decree remains legally possible. No hypothetical date
   was written into the engine; detecting such a change is the source-watcher's
   job (out of PF-01 scope).
-- DMTG rounding convention: **[BLOCKED — ROUNDING POLICY LEGAL REVIEW
-  REQUIRED]**. The repository rounds per bracket (reproducing the official
-  service-public example, 50 000 € → 8 195 €) while the reference rounds once on
-  an exact base. 1 € divergence on the 1 M€ Dutreil golden case (repo 14 098 €
-  vs reference 14 097 €). Both conventions are source-backed. The golden
-  expected was NOT changed to hide the gap; the repository convention stands
-  until a fiscal reviewer arbitrates. Policy documented in
-  `docs/agent/PF02_GOLDEN_COVERAGE.md` § 7.
-- Nine `draft` rules are referenced by engines producing calculation steps.
-  All those runs carry `professionalValidationRequired` and `needs_review`.
-  Promoting them to `active` is a governance decision requiring per-rule review,
-  not a technical fix — deliberately left open (PF02 report § 1).
+- DMTG rounding convention: **RESOLVED in PF-02B2**. Per-bracket rounding was
+  not source-backed by any official methodology — legifrance.gouv.fr art. 1657
+  does not apply to DMTG (impôts directs only), and BOFiP BOI-ENR-DG-30 § 100 +
+  service-public.gouv.fr's own worked example (fiche F14205, 18 194,35 € →
+  18 194 €, not 18 195 €) both confirm a single final rounding. Fixed in
+  `rule-dmtg-bareme-2026-v2`; the 1 M€ Dutreil golden case now matches the
+  reference exactly (14 097 €). Full arbitration in
+  `docs/agent/PF02B_FISCAL_COMPLETENESS.md` § « DMTG — arrondi ». Recalculation
+  candidate entry added (RECALCULATION_CANDIDATES.md § 5) — no historical
+  result rewritten.
+- Nine `draft` rules are referenced by engines producing calculation steps
+  (verified empirically in PF-02B2, not by grep). All those runs carry
+  `professionalValidationRequired` and `needs_review`, now protected by
+  automated invariants (`tests/unit/pf02b2-draft-rule-governance.test.ts`).
+  Promoting any of them to `active` remains a governance decision requiring
+  per-rule review — PF-02B2 confirmed none currently clears the bar (source +
+  effective date + golden coverage + no open factual/legal question), even
+  the strongest candidate (assurance-vie 990 I/757 B, blocked by unmodelled
+  dismembered beneficiary clauses and multi-contract allocation). Deliberately
+  left open.
 
 ## Known technical debt
 
@@ -345,15 +395,15 @@ P1 (need legal interpretation — separate runs, out of PF-02B1 scope):
 P2 (structural, low risk):
 - Golden boundaries missing for SCI IR/IS and CEHR/CDHR (exit tax, IS and PER
   boundaries were added in PF-02).
-- DMTG rounding arbitration (blocked on legal review).
-- Status of the nine `draft` rules referenced by engines.
+- Status of the nine `draft` rules referenced by engines (confirmed still
+  `draft` in PF-02B2, each with a documented, specific reason).
 - Possible extension of the static fiscal-constant audit to `lib/**`.
 
 ## Next recommended task
 
-PF-02B2 — Resolve DMTG rounding arbitration (blocked on legal review, see
-`docs/agent/PF02_GOLDEN_COVERAGE.md` § 7) and the nine-draft-rule governance
-backlog (`docs/agent/PF02_GOLDEN_COVERAGE.md` § 1). Not started in this run.
+PF-02B3 — Harden holding animatrice qualification (faisceau d'indices,
+Cass. com. 17 déc. 2025 n° 24-17.415, REGLEMENTATION_AOUT_2026.md § 7.4).
+Not started in this run.
 
 ## Handoff notes
 
