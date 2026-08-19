@@ -29,6 +29,13 @@
       "when": 1787270400000,
       "tag": "0003_pf03a_postgresql_data_foundation",
       "breakpoints": false
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787356800000,
+      "tag": "0004_pf03b_postgres_rls_tenant_isolation",
+      "breakpoints": false
     }
   ]
 }

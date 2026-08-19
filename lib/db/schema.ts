@@ -50,7 +50,10 @@ export const reviewDecisionEnum = pgEnum("review_decision", [
 ]);
 export const auditActionEnum = pgEnum("audit_action", [
   "case.created",
+  "case.updated",
+  "case.deleted",
   "document.received",
+  "document.metadata.read",
   "simulation.run",
   "review.requested",
   "review.decided",
@@ -256,6 +259,11 @@ export const clientCases = pgTable(
       name: "cases_tenant_household_fk",
       columns: [table.tenantId, table.householdId],
       foreignColumns: [households.tenantId, households.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "cases_tenant_assigned_expert_fk",
+      columns: [table.tenantId, table.assignedExpertUserId],
+      foreignColumns: [users.tenantId, users.id],
     }).onDelete("restrict"),
   ],
 );
@@ -551,7 +559,21 @@ export const professionalReviews = pgTable(
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("reviews_case_idx").on(table.caseId)],
+  (table) => [
+    index("reviews_case_idx").on(table.caseId),
+    index("reviews_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("professional_reviews_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "professional_reviews_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "professional_reviews_tenant_reviewer_fk",
+      columns: [table.tenantId, table.reviewerUserId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const auditLogs = pgTable(
@@ -576,6 +598,12 @@ export const auditLogs = pgTable(
   (table) => [
     index("audit_tenant_created_idx").on(table.tenantId, table.createdAt),
     index("audit_correlation_idx").on(table.correlationId),
+    unique("audit_logs_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "audit_logs_tenant_actor_user_fk",
+      columns: [table.tenantId, table.actorUserId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete("restrict"),
   ],
 );
 
@@ -635,7 +663,21 @@ export const reportVersions = pgTable(
     coverageLimitIds: jsonb("coverage_limit_ids").$type<string[]>().notNull(),
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("report_versions_case_idx").on(table.caseId)],
+  (table) => [
+    index("report_versions_case_idx").on(table.caseId),
+    index("report_versions_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("report_versions_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "report_versions_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "report_versions_tenant_reviewer_fk",
+      columns: [table.tenantId, table.reviewerUserId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const dossierSnapshots = pgTable(
@@ -658,7 +700,21 @@ export const dossierSnapshots = pgTable(
     dataQualityScore: integer("data_quality_score").notNull(),
     sourceVersionIds: jsonb("source_version_ids").$type<string[]>().notNull(),
   },
-  (table) => [index("dossier_snapshots_case_idx").on(table.caseId)],
+  (table) => [
+    index("dossier_snapshots_case_idx").on(table.caseId),
+    index("dossier_snapshots_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("dossier_snapshots_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "dossier_snapshots_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "dossier_snapshots_tenant_household_fk",
+      columns: [table.tenantId, table.householdId],
+      foreignColumns: [households.tenantId, households.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const professionalDocuments = pgTable(
@@ -680,7 +736,16 @@ export const professionalDocuments = pgTable(
     professionalValidationRequired: boolean("professional_validation_required").notNull().default(true),
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("professional_documents_case_idx").on(table.caseId)],
+  (table) => [
+    index("professional_documents_case_idx").on(table.caseId),
+    index("professional_documents_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("professional_documents_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "professional_documents_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const dataRequests = pgTable(
@@ -704,7 +769,21 @@ export const dataRequests = pgTable(
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
-  (table) => [index("data_requests_case_idx").on(table.caseId)],
+  (table) => [
+    index("data_requests_case_idx").on(table.caseId),
+    index("data_requests_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("data_requests_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "data_requests_tenant_client_fk",
+      columns: [table.tenantId, table.clientId],
+      foreignColumns: [clients.tenantId, clients.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "data_requests_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const privateDocumentMetadata = pgTable(
@@ -730,7 +809,21 @@ export const privateDocumentMetadata = pgTable(
     expectedAction: text("expected_action").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("private_document_metadata_case_idx").on(table.caseId)],
+  (table) => [
+    index("private_document_metadata_case_idx").on(table.caseId),
+    index("private_document_metadata_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("private_document_metadata_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "private_document_metadata_tenant_client_fk",
+      columns: [table.tenantId, table.clientId],
+      foreignColumns: [clients.tenantId, clients.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "private_document_metadata_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const retentionPolicies = pgTable(
@@ -799,7 +892,16 @@ export const consents = pgTable(
     status: varchar("status", { length: 32 }).notNull(),
     capturedAt: timestamp("captured_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("consents_client_idx").on(table.clientId)],
+  (table) => [
+    index("consents_client_idx").on(table.clientId),
+    index("consents_tenant_client_idx").on(table.tenantId, table.clientId),
+    unique("consents_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "consents_tenant_client_fk",
+      columns: [table.tenantId, table.clientId],
+      foreignColumns: [clients.tenantId, clients.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const dpiaRecords = pgTable(

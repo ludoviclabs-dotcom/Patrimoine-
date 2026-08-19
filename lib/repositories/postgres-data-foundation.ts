@@ -1,11 +1,11 @@
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { getDatabase } from "../db/client";
+import { withTenantTransaction } from "../db/tenant-transaction";
 import {
   auditLogs,
   calculationSteps,
   clientCases,
   evidenceSources,
-  memberships,
   ruleVersions,
   simulationRuleVersions,
   simulationRuns,
@@ -31,33 +31,7 @@ export function createPostgresDataFoundationRepository(
     async persist(context, input): Promise<PersistSimulationResult> {
       const linkage = validateSimulationPersistenceInput(input);
 
-      return database.transaction(async (transaction) => {
-        await transaction.execute(
-          sql`select set_config('app.tenant_id', ${context.tenantId}, true)`,
-        );
-        await transaction.execute(
-          sql`select set_config('app.user_id', ${context.identityId}, true)`,
-        );
-        await transaction.execute(
-          sql`select set_config('app.role', ${context.role}, true)`,
-        );
-
-        const [membership] = await transaction
-          .select({ id: memberships.id })
-          .from(memberships)
-          .where(
-            and(
-              eq(memberships.tenantId, context.tenantId),
-              eq(memberships.userIdentityId, context.identityId),
-              eq(memberships.role, context.role),
-              eq(memberships.status, "active"),
-            ),
-          )
-          .limit(1);
-
-        if (!membership) {
-          throw new Error("TENANT_MEMBERSHIP_REQUIRED");
-        }
+      return withTenantTransaction(database, context, async (transaction) => {
 
         const [existing] = await transaction
           .select({
@@ -212,33 +186,7 @@ export function createPostgresDataFoundationRepository(
     },
 
     async findById(context, runId): Promise<PersistedSimulationSnapshot | null> {
-      return database.transaction(async (transaction) => {
-        await transaction.execute(
-          sql`select set_config('app.tenant_id', ${context.tenantId}, true)`,
-        );
-        await transaction.execute(
-          sql`select set_config('app.user_id', ${context.identityId}, true)`,
-        );
-        await transaction.execute(
-          sql`select set_config('app.role', ${context.role}, true)`,
-        );
-
-        const [membership] = await transaction
-          .select({ id: memberships.id })
-          .from(memberships)
-          .where(
-            and(
-              eq(memberships.tenantId, context.tenantId),
-              eq(memberships.userIdentityId, context.identityId),
-              eq(memberships.role, context.role),
-              eq(memberships.status, "active"),
-            ),
-          )
-          .limit(1);
-
-        if (!membership) {
-          throw new Error("TENANT_MEMBERSHIP_REQUIRED");
-        }
+      return withTenantTransaction(database, context, async (transaction) => {
 
         const [run] = await transaction
         .select({

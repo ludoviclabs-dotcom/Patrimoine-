@@ -11,10 +11,30 @@ export const v21PilotSeedPlan = {
     professionalType: "cabinet_demo",
   },
   identities: [
-    { id: "22222222-2222-4222-8222-222222222221", providerSubject: "internal-admin" },
-    { id: "22222222-2222-4222-8222-222222222222", providerSubject: "internal-conseiller" },
-    { id: "22222222-2222-4222-8222-222222222223", providerSubject: "internal-expert" },
-    { id: "22222222-2222-4222-8222-222222222224", providerSubject: "internal-client" },
+    {
+      id: "22222222-2222-4222-8222-222222222221",
+      providerSubject: "internal-admin",
+      email: "admin@cabinet-demo.example.test",
+      displayName: "Admin Démo",
+    },
+    {
+      id: "22222222-2222-4222-8222-222222222222",
+      providerSubject: "internal-conseiller",
+      email: "conseiller@cabinet-demo.example.test",
+      displayName: "Marie Conseil",
+    },
+    {
+      id: "22222222-2222-4222-8222-222222222223",
+      providerSubject: "internal-expert",
+      email: "expert@cabinet-demo.example.test",
+      displayName: "Expert fiscaliste",
+    },
+    {
+      id: "22222222-2222-4222-8222-222222222224",
+      providerSubject: "internal-client",
+      email: "claire@cabinet-demo.example.test",
+      displayName: "Claire Démo",
+    },
   ],
   users: [
     { id: "22222222-2222-4222-8222-222222222221", role: "admin" },
@@ -30,6 +50,10 @@ export const v21PilotSeedPlan = {
   ],
   client: {
     id: "33333333-3333-4333-8333-333333333333",
+    name: "Claire et Marc",
+  },
+  household: {
+    id: "33333333-3333-4333-8333-333333333334",
     name: "Claire et Marc",
   },
   case: {

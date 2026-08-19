@@ -1,10 +1,11 @@
 # PATRIMOINE FISCAL — CURRENT STATE
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 ## Git state
 
-Branch: codex/pf-03a-postgresql-data-foundation
+Branch: codex/pf-03b-postgres-tenant-isolation
+HEAD before PF-03B: 7135daf954e27b3b77db96ec3d4b2be97b886b1a
 HEAD before PF-03A: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
 HEAD before PF-01: afe1a79713eeb16935993d04d10d9f263569d1a6
 HEAD before PF-01B: a1a6d0cb2bb0ec7993aa99dd408b0838a126d3d8
@@ -21,8 +22,9 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-03B — Tenant isolation, PostgreSQL RLS and fixture migration. PF-03A data
-foundation is complete; Clerk authenticated mapping remains PF-04 scope.
+PF-03-PUBLISH — publish the committed PF-03 branch and exercise the migration,
+credentials, backup/restore and smoke checks on the selected managed PostgreSQL
+environment. Clerk authenticated mapping remains PF-04 scope.
 
 ## Completed
 
@@ -42,6 +44,59 @@ foundation is complete; Clerk authenticated mapping remains PF-04 scope.
 - **PF-02 COMPLETE — rule governance invariants + golden coverage hardened.**
 - **PF-03A COMPLETE — PostgreSQL tenant data foundation established with
   Drizzle migrations, repositories and explicit FIXTURE/DATABASE modes.**
+- **PF-03B COMPLETE — PostgreSQL RLS, two-tenant isolation, audit hardening and
+  idempotent Claire/Marc fixture migration are enforced and tested.**
+- **PF-03 COMPLETE — data foundation + tenant isolation.**
+
+## PF-03B — PostgreSQL RLS and tenant isolation (COMPLETE)
+
+Full report: `docs/agent/PF03_DATA_FOUNDATION.md`
+
+PF-03B continues from PF-03A commit
+`7135daf954e27b3b77db96ec3d4b2be97b886b1a`. Migration
+`drizzle/0004_pf03b_postgres_rls_tenant_isolation.sql` creates controlled
+`NOBYPASSRLS` application/fixture-service roles, membership-backed deny-by-
+default policies, `ENABLE` + `FORCE ROW LEVEL SECURITY` on every tenant-owned
+table, special global/tenant rule-version policies, remaining composite tenant
+FKs and database triggers for audit actor and rule-version tenant linkage.
+
+All PostgreSQL repository access now uses the shared transaction boundary in
+`lib/db/tenant-transaction.ts`: a fixed application role, transaction-local
+tenant/identity/role settings, an active non-revoked membership check and one
+atomic operation. The tenant resource repository scopes dossier, document,
+simulation and audit access and records sensitive dossier/document operations
+with actor, tenant, action, resource, timestamp, correlation and sanitized
+metadata. Dossier deletion remains a soft delete.
+
+`npm run db:seed:demo` provisions only stable synthetic Claire/Marc fixture
+rows through the separate fixture-service role. It is idempotent, guarded by
+explicit allow flags, requires the deployment-only `DATABASE_ADMIN_URL` and
+never runs at application startup or as part of a structural migration.
+
+`npm run test:postgres` provisions a native ephemeral PostgreSQL 18.4 cluster,
+applies migrations `0000` through `0004`, creates CABINET_A and CABINET_B and
+executes reciprocal repository/direct-ID attacks. The suite proves that A/B
+cannot read/update/delete the other dossier, read the other document metadata,
+simulation or audit, and that missing/mismatched context is denied. It also
+checks forced-RLS catalog flags, non-bypass roles, FK boundaries, rule-version
+linkage, rollback, audit fields, idempotent seed and simulation trace pinning.
+
+No fiscal engine, rate, threshold, legal condition, rule activation, fixture
+expected amount or golden expected result changed.
+
+Files changed for PF-03B:
+
+- `.env.example`, `package.json`, `package-lock.json`;
+- `drizzle/0004_pf03b_postgres_rls_tenant_isolation.sql`,
+  `drizzle/meta/_journal.json`;
+- `lib/db/schema.ts`, `lib/db/seed-v2-1.ts`, `lib/db/seed-demo.ts`,
+  `lib/db/tenant-transaction.ts`;
+- `lib/repositories/postgres-data-foundation.ts`,
+  `lib/repositories/tenant-resource-repository.ts`;
+- `scripts/run-postgres-tests.mjs`, `scripts/seed-demo-postgres.ts`;
+- `tests/postgres/pf03b-tenant-isolation.test.ts`,
+  `tests/unit/pf03b-tenant-isolation.test.ts`;
+- `docs/agent/PF03_DATA_FOUNDATION.md`, `docs/agent/CURRENT_STATE.md`.
 
 ## PF-03A — PostgreSQL production data foundation (COMPLETE)
 
@@ -248,24 +303,28 @@ None.
 
 ## Tests
 
-Unit: PASS — 69 files, 890 tests, 0 failing. The total includes duplicate suites
-discovered under existing `.claude/worktrees`; root PF-03A adds 1 file / 9 tests.
+Unit: PASS — 70 files, 895 tests, 0 failing. The total includes duplicate suites
+discovered under existing `.claude/worktrees`; root PF-03B adds 1 file / 5 tests.
+PostgreSQL/RLS: PASS — 1 file, 12 tests, 0 failing on a fresh native ephemeral
+PostgreSQL 18.4 cluster after migrations `0000` through `0004`.
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
-PostgreSQL migration execution: NOT RUN — no disposable/managed
-`DATABASE_URL` is configured in this environment. Schema, migration SQL, FK
-metadata and repository transaction contracts are covered by PF-03A tests;
-fresh-database/RLS integration is required in PF-03B before deployment.
+PostgreSQL fresh migration + synthetic seed: PASS — executed automatically by
+`npm run test:postgres`; no shared or user database was touched.
+git diff --check: PASS — exit 0, no whitespace/conflict-marker errors.
 E2E: NOT RUN — Playwright harness starts a server, not reliably runnable in this
-non-interactive environment. Must be run before production release.
+non-interactive environment. PF-03B changes repository/database boundaries, not
+an authenticated browser flow; E2E remains required before production release.
 
 ## Open blockers
 
-No PF-03A implementation blocker. A real PostgreSQL migration/restore exercise
-cannot be completed until a disposable or staging database is supplied. RLS and
-fixture seed migration are explicitly PF-03B scope. The P1/P2 fiscal backlog,
-regulatory-review items and recalculation candidates below remain open.
+No PF-03 implementation blocker. The fresh native PostgreSQL migration/RLS
+exercise passes locally. Provider-specific staging credentials, migration,
+backup/restore and smoke verification remain PF-03-PUBLISH deployment gates;
+no managed database was supplied or mutated in this task. Clerk mapping remains
+PF-04. The P1/P2 fiscal backlog, regulatory-review items and recalculation
+candidates below remain open.
 
 ## Regulatory verification required
 
@@ -309,14 +368,18 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-03B — Tenant isolation, forced PostgreSQL RLS, two-tenant/IDOR integration
-tests and idempotent Claire/Marc fixture seed migration.
+PF-03-PUBLISH — publish the PF-03 branch without code changes, provision the
+managed PostgreSQL login-role memberships, apply migrations, run the guarded
+synthetic seed only in an approved demo environment, and document backup/restore
+plus staging smoke evidence.
 
 ## Handoff notes
 
-PF-03A intentionally does not connect Clerk. Until PF-04, database mode accepts
-tenant authority only through internal server configuration, never through a
-browser payload. Apply `drizzle/0003_pf03a_postgresql_data_foundation.sql` with
-`npm run db:migrate` against a disposable database before beginning PF-03B.
+PF-03 intentionally does not connect Clerk. Until PF-04, database mode accepts
+tenant authority only through the branded internal server context, never
+through a browser payload. `DATABASE_URL` must use a login with no direct table
+grants and membership only in `patrimoine_app`; `DATABASE_ADMIN_URL` remains a
+deployment-only secret for migrations and the explicitly guarded demo seed.
+Run `npm run test:postgres` before any RLS/repository change.
 
 Agents MUST update this document at the end of every implementation task.
