@@ -212,6 +212,17 @@ export type Asset = {
   ownerAge?: number;
   isDirectlyHeld?: boolean;
   isProfessionalAsset?: boolean;
+  /** Droit démembré retenu pour cet actif à l'IFI (CGI art. 968). Absent = pleine propriété. */
+  ifiOwnershipRight?: "full-owner" | "usufructuary" | "bare-owner";
+  /**
+   * Fondement légal de l'exception de répartition art. 669 (CGI art. 968, 1°) — jamais présumé.
+   * En son absence, la règle générale s'applique : pleine valeur chez l'usufruitier.
+   */
+  ifiDismembermentBasis?:
+    | "legal-usufruct-surviving-spouse"
+    | "sale-with-reserved-usufruct-unrelated-third-party";
+  /** Âge de l'usufruitier au 1er janvier, requis pour liquider le barème art. 669 si une exception s'applique. */
+  ifiUsufructuaryAge?: number;
   dataQuality: DataQualityProfile;
 };
 
@@ -220,6 +231,16 @@ export type Liability = {
   label: string;
   value: number;
   linkedCategory: "real-estate" | "company" | "personal";
+  /** Modalité de remboursement retenue pour l'IFI (CGI art. 974). Absent = amortissement classique, `value` fait foi. */
+  ifiRepaymentKind?: "amortising" | "bullet-or-nonconstant" | "no-term";
+  ifiOriginalPrincipal?: number;
+  ifiDisbursementDate?: string;
+  /** Requis pour un prêt in fine / à échéances non constantes. */
+  ifiContractualEndDate?: string;
+  /** Dette contractée auprès du redevable ou de personnes liées (CGI art. 974, dernier alinéa). */
+  ifiRelatedPartyDebt?: boolean;
+  /** Preuve d'un objectif non principalement fiscal — jamais présumée. */
+  ifiNonTaxPurposeProven?: boolean;
   dataQuality: DataQualityProfile;
 };
 
@@ -289,6 +310,14 @@ export type IfiResult = {
   cappedIfi?: number;
   netIfi?: number;
   capApplied?: boolean;
+  /** Valeur d'actifs professionnels exclus de l'assiette sur déclaration (CGI art. 975). */
+  professionalAssetsExcludedValue?: number;
+  /** Somme des dettes admises avant plafonnement art. 974, IV. */
+  debtBeforeGlobalCap?: number;
+  /** Dettes admises après plafonnement art. 974, IV le cas échéant. */
+  debtAfterGlobalCap?: number;
+  /** Réduction appliquée par le plafonnement des dettes > 60 % du patrimoine taxable > 5 M€. */
+  debtCapReduction?: number;
 };
 
 export type UserRole = "admin" | "conseiller" | "expert" | "client";

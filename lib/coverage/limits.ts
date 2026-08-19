@@ -28,9 +28,10 @@ export const coverageLimits: CoverageLimit[] = [
   {
     id: "coverage-ifi-deductible-debt",
     module: "ifi",
-    label: "Dettes immobilières simples",
+    label: "Dettes immobilières, y compris in fine, sans terme et dettes liées",
     status: "partially_covered",
-    explanation: "Dette déduite si elle est rattachée à un actif immobilier et justifiable.",
+    explanation:
+      "Dette déduite si elle est rattachée à un actif immobilier et justifiable. La V3 ajoute l'amortissement légal des prêts in fine/à échéances non constantes, la réduction d'1/20e par an des prêts sans terme, l'exclusion des dettes liées sans preuve d'un objectif non principalement fiscal, et le plafonnement à 60 % du patrimoine taxable au-delà de 5 M€ (CGI art. 974). Les conditions générales de déductibilité (existence au 1er janvier, charge effective, justificatif) restent signalées mais non individuellement vérifiées.",
     requiredProfessional: "avocat",
   },
   {
@@ -38,15 +39,16 @@ export const coverageLimits: CoverageLimit[] = [
     module: "ifi",
     label: "Trusts",
     status: "not_covered_v1",
-    explanation: "Cas exclus du périmètre V2, revue avocat fiscaliste obligatoire.",
+    explanation: "Cas exclus du périmètre V3, revue avocat fiscaliste obligatoire.",
     requiredProfessional: "avocat",
   },
   {
     id: "coverage-ifi-demembrement-complexe",
     module: "ifi",
     label: "Démembrement complexe",
-    status: "not_covered_v1",
-    explanation: "La V2 traite le démembrement simple, pas les chaînes complexes.",
+    status: "partially_covered",
+    explanation:
+      "La V3 applique la règle générale (pleine valeur chez l'usufruitier, CGI art. 968) et les deux exceptions limitatives documentées (usufruit légal du conjoint survivant, vente avec réserve d'usufruit à un tiers non lié) avec répartition art. 669 lorsque l'âge de l'usufruitier est fourni. Le quasi-usufruit, les démembrements successifs ou chaînés via une société et les autres fondements non documentés restent hors périmètre et retombent sur la règle générale, signalée pour revue.",
     requiredProfessional: "notaire",
   },
   {
@@ -54,7 +56,8 @@ export const coverageLimits: CoverageLimit[] = [
     module: "ifi",
     label: "Actifs professionnels complexes",
     status: "not_covered_v1",
-    explanation: "Exonérations et affectations professionnelles non automatisées.",
+    explanation:
+      "Un actif immobilier déclaré professionnel (CGI art. 975) est désormais exclu de l'assiette avec une étape de revue dédiée, mais les conditions d'éligibilité elles-mêmes (activité principale, quote-part par activité, cas du proche affectataire, pluralité d'activités connexes) ne sont pas automatisées : la déclaration seule ne vaut jamais preuve.",
     requiredProfessional: "expert-comptable",
   },
   {
@@ -191,6 +194,15 @@ export const coverageLimits: CoverageLimit[] = [
     status: "partially_covered",
     explanation: "Contrôle d'éligibilité, abattement 75 % et exclusions, sans validation notariale.",
     requiredProfessional: "notaire",
+  },
+  {
+    id: "coverage-dutreil-holding-animatrice",
+    module: "dutreil",
+    label: "Qualification holding animatrice (art. 787 B)",
+    status: "partially_covered",
+    explanation:
+      "Faisceau de faits structurés couvrant les quatre critères cumulatifs de l'art. 787 B, al. 2 (activité principale, participation active, contrôle, filiales opérationnelles), les preuves contemporaines et la validation professionnelle. Le moteur ne qualifie jamais seul une holding : une conclusion QUALIFIED exige des faits complets, des preuves et une validation professionnelle déjà obtenue. Les holdings à chaîne de contrôle complexe, quasi-usufruit sur titres, ou animation partagée entre plusieurs holdings restent hors périmètre et retombent sur NEEDS_REVIEW.",
+    requiredProfessional: "avocat",
   },
   {
     id: "coverage-apport-cession-150-0-b-ter",

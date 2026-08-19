@@ -35,11 +35,13 @@ describe("V3 socle — engine-kit (extraction pure)", () => {
     expect(calculateProgressiveTax(0)).toBe(0);
   });
 
-  it("reproduit l'exemple officiel DMTG avec arrondi par tranche", () => {
-    // impots.gouv.fr : 50 000 € taxables en ligne directe → 404 + 404 + 573 + 6 814 = 8 195 €
-    expect(
-      calculateProgressiveTax(50_000, directLineDonationBrackets, { perSliceRounding: true }),
-    ).toBe(8_195);
+  it("reproduit l'exemple chiffré officiel service-public.gouv.fr (fiche F14205, base 100 000 €)", () => {
+    // PF-02B2 : donation de 200 000 € à un enfant, abattement 100 000 € →
+    // 403,60 + 403,70 + 573,45 + 16 813,60 = 18 194,35 € -> 18 194 €. Aucun
+    // arrondi par tranche : la seule option `perSliceRounding` a été retirée
+    // car elle produisait un écart d'1 € (18 195 €) par rapport à cet exemple
+    // officiel. Voir docs/agent/PF02B_FISCAL_COMPLETENESS.md.
+    expect(calculateProgressiveTax(100_000, directLineDonationBrackets)).toBe(18_194);
   });
 
   it("garde le barème usufruit art. 669 inchangé", () => {
@@ -88,10 +90,11 @@ describe("V3 socle — engine-kit (extraction pure)", () => {
   });
 
   it("garde le moteur transmission aligné sur la règle DMTG en vigueur", () => {
-    // Depuis rule-dmtg-bareme-2026-v1 (arrondi par tranche, RuleDiff
-    // rule-diff-dmtg-2026-arrondi-par-tranche) : 8 195 € x 2 au lieu de 8 194 € x 2.
+    // rule-dmtg-bareme-2026-v2 (PF-02B2, arrondi final unique à l'euro) :
+    // 8 194 € x 2 enfants = 16 388 €. Voir RuleDiff
+    // rule-diff-dmtg-2026-arrondi-par-tranche pour l'historique de la correction.
     const run = simulateTransmissionV2();
-    expect(run.computedResult?.indicativeRights).toBe(16_390);
+    expect(run.computedResult?.indicativeRights).toBe(16_388);
     expect(run.id).toBe("taxrun-transmission-claire-marc-v2");
   });
 });
