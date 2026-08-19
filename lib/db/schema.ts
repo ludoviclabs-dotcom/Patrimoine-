@@ -1,19 +1,23 @@
 import {
+  bigint,
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
 export const tenantStatusEnum = pgEnum("tenant_status", ["active", "pilot", "paused"]);
-export const userRoleEnum = pgEnum("user_role", ["admin", "conseiller", "expert", "client"]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "conseiller", "expert", "client", "auditeur"]);
 export const userStatusEnum = pgEnum("user_status", ["active", "invited", "disabled"]);
 export const caseStatusEnum = pgEnum("case_status", [
   "draft",
@@ -70,7 +74,73 @@ export const tenants = pgTable("tenants", {
   status: tenantStatusEnum("status").notNull().default("pilot"),
   dataRegion: varchar("data_region", { length: 16 }).notNull().default("eu"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique("tenants_tenant_id_unique").on(table.id)]);
+
+export const cabinets = pgTable(
+  "cabinets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    legalName: varchar("legal_name", { length: 180 }).notNull(),
+    tradeName: varchar("trade_name", { length: 180 }),
+    siren: varchar("siren", { length: 9 }),
+    professionalType: varchar("professional_type", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("cabinets_tenant_unique").on(table.tenantId),
+    unique("cabinets_tenant_id_unique").on(table.tenantId, table.id),
+    index("cabinets_siren_idx").on(table.siren),
+  ],
+);
+
+export const userIdentities = pgTable(
+  "user_identities",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    provider: varchar("provider", { length: 32 }).notNull().default("internal"),
+    providerSubject: varchar("provider_subject", { length: 191 }).notNull(),
+    emailNormalized: varchar("email_normalized", { length: 320 }).notNull(),
+    displayName: varchar("display_name", { length: 160 }).notNull(),
+    locale: varchar("locale", { length: 16 }).notNull().default("fr-FR"),
+    timeZone: varchar("time_zone", { length: 64 }).notNull().default("Europe/Paris"),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("user_identities_provider_subject_unique").on(table.provider, table.providerSubject),
+    unique("user_identities_email_unique").on(table.emailNormalized),
+  ],
+);
+
+export const memberships = pgTable(
+  "memberships",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    userIdentityId: uuid("user_identity_id")
+      .notNull()
+      .references(() => userIdentities.id, { onDelete: "restrict" }),
+    role: userRoleEnum("role").notNull(),
+    status: userStatusEnum("status").notNull().default("invited"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("memberships_tenant_identity_unique").on(table.tenantId, table.userIdentityId),
+    unique("memberships_tenant_id_unique").on(table.tenantId, table.id),
+    index("memberships_tenant_role_status_idx").on(table.tenantId, table.role, table.status),
+  ],
+);
 
 export const users = pgTable(
   "users",
@@ -85,7 +155,10 @@ export const users = pgTable(
     status: userStatusEnum("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("users_tenant_idx").on(table.tenantId)],
+  (table) => [
+    index("users_tenant_idx").on(table.tenantId),
+    unique("users_tenant_id_unique").on(table.tenantId, table.id),
+  ],
 );
 
 export const clients = pgTable(
@@ -98,11 +171,22 @@ export const clients = pgTable(
     ownerUserId: uuid("owner_user_id")
       .notNull()
       .references(() => users.id),
+    externalReference: varchar("external_reference", { length: 120 }),
     name: varchar("name", { length: 180 }).notNull(),
     riskLevel: varchar("risk_level", { length: 24 }).notNull().default("standard"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("clients_tenant_idx").on(table.tenantId)],
+  (table) => [
+    index("clients_tenant_idx").on(table.tenantId),
+    unique("clients_tenant_id_unique").on(table.tenantId, table.id),
+    unique("clients_tenant_external_reference_unique").on(table.tenantId, table.externalReference),
+    foreignKey({
+      name: "clients_tenant_owner_user_fk",
+      columns: [table.tenantId, table.ownerUserId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const households = pgTable(
@@ -124,7 +208,15 @@ export const households = pgTable(
     objectives: jsonb("objectives").$type<string[]>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("households_tenant_idx").on(table.tenantId)],
+  (table) => [
+    index("households_tenant_idx").on(table.tenantId),
+    unique("households_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "households_tenant_client_fk",
+      columns: [table.tenantId, table.clientId],
+      foreignColumns: [clients.tenantId, clients.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const clientCases = pgTable(
@@ -140,14 +232,37 @@ export const clientCases = pgTable(
     householdId: uuid("household_id")
       .notNull()
       .references(() => households.id),
+    reference: varchar("reference", { length: 120 }).notNull(),
     title: varchar("title", { length: 220 }).notNull(),
     status: caseStatusEnum("status").notNull().default("draft"),
+    fiscalYear: integer("fiscal_year").notNull().default(2026),
     assignedExpertUserId: uuid("assigned_expert_user_id").references(() => users.id),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
-  (table) => [index("cases_tenant_idx").on(table.tenantId), index("cases_client_idx").on(table.clientId)],
+  (table) => [
+    index("cases_tenant_idx").on(table.tenantId),
+    index("cases_client_idx").on(table.clientId),
+    unique("cases_tenant_id_unique").on(table.tenantId, table.id),
+    unique("cases_tenant_reference_unique").on(table.tenantId, table.reference),
+    foreignKey({
+      name: "cases_tenant_client_fk",
+      columns: [table.tenantId, table.clientId],
+      foreignColumns: [clients.tenantId, clients.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "cases_tenant_household_fk",
+      columns: [table.tenantId, table.householdId],
+      foreignColumns: [households.tenantId, households.id],
+    }).onDelete("restrict"),
+  ],
 );
+
+// A dossier is represented by the historical client_cases table. This alias
+// keeps domain language explicit without a destructive table rename.
+export const dossiers = clientCases;
 
 export const assets = pgTable(
   "assets",
@@ -159,13 +274,29 @@ export const assets = pgTable(
     householdId: uuid("household_id")
       .notNull()
       .references(() => households.id),
+    caseId: uuid("case_id").notNull(),
     label: varchar("label", { length: 180 }).notNull(),
     category: varchar("category", { length: 48 }).notNull(),
-    value: numeric("value", { precision: 14, scale: 2 }).notNull(),
+    value: numeric("value", { precision: 20, scale: 2 }).notNull(),
     ifiKind: varchar("ifi_kind", { length: 48 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("assets_household_idx").on(table.householdId)],
+  (table) => [
+    index("assets_household_idx").on(table.householdId),
+    index("assets_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("assets_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "assets_tenant_household_fk",
+      columns: [table.tenantId, table.householdId],
+      foreignColumns: [households.tenantId, households.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "assets_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const liabilities = pgTable(
@@ -178,12 +309,28 @@ export const liabilities = pgTable(
     householdId: uuid("household_id")
       .notNull()
       .references(() => households.id),
+    caseId: uuid("case_id").notNull(),
     label: varchar("label", { length: 180 }).notNull(),
-    value: numeric("value", { precision: 14, scale: 2 }).notNull(),
+    value: numeric("value", { precision: 20, scale: 2 }).notNull(),
     linkedCategory: varchar("linked_category", { length: 48 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("liabilities_household_idx").on(table.householdId)],
+  (table) => [
+    index("liabilities_household_idx").on(table.householdId),
+    index("liabilities_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("liabilities_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "liabilities_tenant_household_fk",
+      columns: [table.tenantId, table.householdId],
+      foreignColumns: [households.tenantId, households.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "liabilities_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const documents = pgTable(
@@ -204,10 +351,29 @@ export const documents = pgTable(
     status: documentStatusEnum("status").notNull().default("missing"),
     storageProvider: varchar("storage_provider", { length: 64 }).notNull().default("demo-placeholder"),
     blobPath: text("blob_path"),
+    originalFileName: text("original_file_name"),
+    mimeType: varchar("mime_type", { length: 160 }),
+    byteSize: bigint("byte_size", { mode: "number" }),
+    sha256: varchar("sha256", { length: 64 }),
     required: boolean("required").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("documents_case_idx").on(table.caseId), index("documents_tenant_idx").on(table.tenantId)],
+  (table) => [
+    index("documents_case_idx").on(table.caseId),
+    index("documents_tenant_idx").on(table.tenantId),
+    unique("documents_tenant_id_unique").on(table.tenantId, table.id),
+    foreignKey({
+      name: "documents_tenant_client_fk",
+      columns: [table.tenantId, table.clientId],
+      foreignColumns: [clients.tenantId, clients.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "documents_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const evidenceSources = pgTable("evidence_sources", {
@@ -228,15 +394,30 @@ export const evidenceSources = pgTable("evidence_sources", {
   snapshotStatus: varchar("snapshot_status", { length: 32 }),
 });
 
-export const ruleVersions = pgTable("rule_versions", {
-  id: varchar("id", { length: 120 }).primaryKey(),
-  ruleSet: varchar("rule_set", { length: 80 }).notNull(),
-  version: varchar("version", { length: 64 }).notNull(),
-  title: text("title").notNull(),
-  effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
-  status: varchar("status", { length: 32 }).notNull(),
-  evidenceSourceIds: jsonb("evidence_source_ids").$type<string[]>().notNull(),
-});
+export const ruleVersions = pgTable(
+  "rule_versions",
+  {
+    id: varchar("id", { length: 120 }).primaryKey(),
+    tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "restrict" }),
+    ruleSet: varchar("rule_set", { length: 80 }).notNull(),
+    version: varchar("version", { length: 64 }).notNull(),
+    title: text("title").notNull(),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
+    effectiveTo: timestamp("effective_to", { withTimezone: true }),
+    status: varchar("status", { length: 32 }).notNull(),
+    sourceReference: text("source_reference").notNull(),
+    evidenceSourceIds: jsonb("evidence_source_ids").$type<string[]>().notNull(),
+    rulePayload: jsonb("rule_payload").$type<Record<string, unknown>>().notNull().default({}),
+    checksumSha256: varchar("checksum_sha256", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("rule_versions_rule_set_version_unique").on(table.ruleSet, table.version),
+    index("rule_versions_effective_idx").on(table.ruleSet, table.status, table.effectiveFrom),
+    index("rule_versions_tenant_idx").on(table.tenantId),
+  ],
+);
 
 export const simulationRuns = pgTable(
   "simulation_runs",
@@ -251,8 +432,12 @@ export const simulationRuns = pgTable(
     householdId: uuid("household_id")
       .notNull()
       .references(() => households.id),
+    engineKey: varchar("engine_key", { length: 80 }).notNull(),
+    engineVersion: varchar("engine_version", { length: 64 }).notNull(),
     scenario: varchar("scenario", { length: 80 }).notNull(),
     status: varchar("status", { length: 32 }).notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 160 }).notNull(),
+    inputSnapshot: jsonb("input_snapshot").$type<Record<string, unknown>>().notNull(),
     inputSnapshotId: varchar("input_snapshot_id", { length: 160 }),
     ruleSnapshotId: varchar("rule_snapshot_id", { length: 160 }),
     coverageLimitIds: jsonb("coverage_limit_ids").$type<string[]>(),
@@ -260,14 +445,34 @@ export const simulationRuns = pgTable(
     computedResult: jsonb("computed_result").$type<Record<string, unknown>>(),
     output: jsonb("output").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
   },
-  (table) => [index("simulation_runs_case_idx").on(table.caseId)],
+  (table) => [
+    index("simulation_runs_case_idx").on(table.caseId),
+    index("simulation_runs_tenant_case_created_idx").on(table.tenantId, table.caseId, table.createdAt),
+    unique("simulation_runs_tenant_id_unique").on(table.tenantId, table.id),
+    unique("simulation_runs_tenant_idempotency_unique").on(table.tenantId, table.idempotencyKey),
+    foreignKey({
+      name: "simulation_runs_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "simulation_runs_tenant_household_fk",
+      columns: [table.tenantId, table.householdId],
+      foreignColumns: [households.tenantId, households.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const calculationSteps = pgTable(
   "calculation_steps",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
     simulationRunId: uuid("simulation_run_id")
       .notNull()
       .references(() => simulationRuns.id),
@@ -290,7 +495,41 @@ export const calculationSteps = pgTable(
     displayStatus: varchar("display_status", { length: 64 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("calculation_steps_run_idx").on(table.simulationRunId)],
+  (table) => [
+    index("calculation_steps_run_idx").on(table.simulationRunId),
+    index("calculation_steps_tenant_run_idx").on(table.tenantId, table.simulationRunId),
+    unique("calculation_steps_run_order_unique").on(table.simulationRunId, table.stepOrder),
+    foreignKey({
+      name: "calculation_steps_tenant_run_fk",
+      columns: [table.tenantId, table.simulationRunId],
+      foreignColumns: [simulationRuns.tenantId, simulationRuns.id],
+    }).onDelete("restrict"),
+  ],
+);
+
+export const simulationRuleVersions = pgTable(
+  "simulation_rule_versions",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    simulationRunId: uuid("simulation_run_id").notNull(),
+    ruleVersionId: varchar("rule_version_id", { length: 120 })
+      .notNull()
+      .references(() => ruleVersions.id, { onDelete: "restrict" }),
+    purpose: varchar("purpose", { length: 80 }).notNull().default("calculation"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.simulationRunId, table.ruleVersionId] }),
+    index("simulation_rule_versions_rule_idx").on(table.ruleVersionId),
+    index("simulation_rule_versions_tenant_run_idx").on(table.tenantId, table.simulationRunId),
+    foreignKey({
+      name: "simulation_rule_versions_tenant_run_fk",
+      columns: [table.tenantId, table.simulationRunId],
+      foreignColumns: [simulationRuns.tenantId, simulationRuns.id],
+    }).onDelete("restrict"),
+  ],
 );
 
 export const professionalReviews = pgTable(
@@ -323,16 +562,21 @@ export const auditLogs = pgTable(
       .notNull()
       .references(() => tenants.id),
     actorUserId: uuid("actor_user_id")
-      .notNull()
       .references(() => users.id),
+    actorIdentityId: uuid("actor_identity_id").references(() => userIdentities.id, { onDelete: "restrict" }),
     action: auditActionEnum("action").notNull(),
     entityType: varchar("entity_type", { length: 48 }).notNull(),
     entityId: varchar("entity_id", { length: 120 }).notNull(),
     summary: text("summary").notNull(),
     metadata: jsonb("metadata").$type<Record<string, string | number | boolean>>(),
+    correlationId: varchar("correlation_id", { length: 120 }),
+    requestId: varchar("request_id", { length: 120 }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("audit_tenant_created_idx").on(table.tenantId, table.createdAt)],
+  (table) => [
+    index("audit_tenant_created_idx").on(table.tenantId, table.createdAt),
+    index("audit_correlation_idx").on(table.correlationId),
+  ],
 );
 
 export const sourceSnapshots = pgTable(

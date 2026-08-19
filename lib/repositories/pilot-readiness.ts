@@ -41,6 +41,9 @@ export function getRepositoryReadinessReport(): RepositoryReadinessReport {
     persistenceTarget: "postgres",
     tablesReady: [
       "tenants",
+      "cabinets",
+      "user_identities",
+      "memberships",
       "users",
       "clients",
       "client_cases",
@@ -50,6 +53,7 @@ export function getRepositoryReadinessReport(): RepositoryReadinessReport {
       "private_document_metadata",
       "retention_policies",
       "audit_logs",
+      "simulation_rule_versions",
       "golden_cases",
     ],
     externalConnectorsRequired: ["DATABASE_URL", "BLOB_READ_WRITE_TOKEN", "auth_provider"],

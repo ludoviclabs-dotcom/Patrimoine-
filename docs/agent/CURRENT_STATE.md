@@ -4,7 +4,8 @@ Last updated: 2026-08-19
 
 ## Git state
 
-Branch: claude/patrimoine-fiscal-context-e5b7df
+Branch: codex/pf-03a-postgresql-data-foundation
+HEAD before PF-03A: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
 HEAD before PF-01: afe1a79713eeb16935993d04d10d9f263569d1a6
 HEAD before PF-01B: a1a6d0cb2bb0ec7993aa99dd408b0838a126d3d8
 HEAD before PF-01C1: 8531cc900f6bf5eaccbdaa28949cba8f6c15a13c
@@ -20,8 +21,8 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-03 — Resolve P1 fiscal gaps (IFI completeness, holding animatrice, foreign
-holding path). P0 register closed: 7 of 7 fixed, 0 remaining. PF-02 COMPLETE.
+PF-03B — Tenant isolation, PostgreSQL RLS and fixture migration. PF-03A data
+foundation is complete; Clerk authenticated mapping remains PF-04 scope.
 
 ## Completed
 
@@ -39,6 +40,49 @@ holding path). P0 register closed: 7 of 7 fixed, 0 remaining. PF-02 COMPLETE.
 - PF-01C4 — TAX-P0-005 (e-invoicing timeline not date-aware) fixed.
 - **PF-01 COMPLETE — 7 of 7 P0 fixed.**
 - **PF-02 COMPLETE — rule governance invariants + golden coverage hardened.**
+- **PF-03A COMPLETE — PostgreSQL tenant data foundation established with
+  Drizzle migrations, repositories and explicit FIXTURE/DATABASE modes.**
+
+## PF-03A — PostgreSQL production data foundation (COMPLETE)
+
+Full report: `docs/agent/PF03_DATA_FOUNDATION.md`
+
+PF-03A started from clean `main` after PF-02B merge. It preserves Drizzle and
+does not introduce Prisma. Migration
+`drizzle/0003_pf03a_postgresql_data_foundation.sql` plus the Drizzle migration
+journal establish cabinet, provider-neutral identity, membership, tenant-owned
+dossier/asset/document relationships, rule metadata, simulation snapshots,
+calculation/evidence links, explicit simulation-rule pinning and audit identity
+metadata.
+
+Tenant-owned relationships now carry explicit `tenant_id` and composite foreign
+keys. The application repository accepts a branded internal tenant context and
+never a `tenantId` in the persistence command. The Postgres adapter validates an
+active membership, dossier ownership, rule/evidence existence and writes the
+run, steps, rule links and audit event in one transaction.
+
+Runtime selection is explicit (`PERSISTENCE_MODE=FIXTURE|DATABASE`), with no
+implicit database switch when `DATABASE_URL` happens to exist. Production data
+access fails closed without an explicit mode. Claire and Marc remain operational
+in fixture mode and are covered by the PF-03A persistence regression test.
+
+No fiscal engine, rate, threshold, legal condition, rule activation or golden
+expected result changed.
+
+Files changed for PF-03A:
+
+- `.env.example`, `drizzle.config.ts`, `package.json`;
+- `drizzle/0003_pf03a_postgresql_data_foundation.sql`,
+  `drizzle/meta/_journal.json`;
+- `lib/db/client.ts`, `lib/db/schema.ts`, `lib/db/seed-v2-1.ts`;
+- `lib/persistence/mode.ts`, `lib/tenancy/tenant-context.ts`;
+- `lib/repositories/data-foundation-contract.ts`,
+  `lib/repositories/fixture-data-foundation.ts`,
+  `lib/repositories/postgres-data-foundation.ts`,
+  `lib/repositories/pilot-readiness.ts`;
+- `lib/services/simulation-persistence.ts`, `lib/audit/repository.ts`;
+- `tests/unit/pf03a-data-foundation.test.ts`;
+- `docs/agent/PF03_DATA_FOUNDATION.md`, `docs/agent/CURRENT_STATE.md`.
 
 ## PF-02 — Rule governance and golden coverage (COMPLETE)
 
@@ -204,20 +248,24 @@ None.
 
 ## Tests
 
-Unit: PASS — 22 files, 279 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
-210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → 244 PF-01C4 → +35 net in PF-02),
-0 failing
+Unit: PASS — 69 files, 890 tests, 0 failing. The total includes duplicate suites
+discovered under existing `.claude/worktrees`; root PF-03A adds 1 file / 9 tests.
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
+PostgreSQL migration execution: NOT RUN — no disposable/managed
+`DATABASE_URL` is configured in this environment. Schema, migration SQL, FK
+metadata and repository transaction contracts are covered by PF-03A tests;
+fresh-database/RLS integration is required in PF-03B before deployment.
 E2E: NOT RUN — Playwright harness starts a server, not reliably runnable in this
 non-interactive environment. Must be run before production release.
 
 ## Open blockers
 
-None. The P0 register is closed (7 of 7 fixed). The P1/P2 backlog, the
-regulatory-review items and the recalculation candidates below remain open and
-are tracked separately — closing PF-01 covers the P0 register, not that backlog.
+No PF-03A implementation blocker. A real PostgreSQL migration/restore exercise
+cannot be completed until a disposable or staging database is supplied. RLS and
+fixture seed migration are explicitly PF-03B scope. The P1/P2 fiscal backlog,
+regulatory-review items and recalculation candidates below remain open.
 
 ## Regulatory verification required
 
@@ -261,9 +309,14 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-03 — Resolve P1 fiscal gaps, starting with IFI completeness (décote,
-plafonnement, démembrement, in-fine and family debts).
+PF-03B — Tenant isolation, forced PostgreSQL RLS, two-tenant/IDOR integration
+tests and idempotent Claire/Marc fixture seed migration.
 
 ## Handoff notes
+
+PF-03A intentionally does not connect Clerk. Until PF-04, database mode accepts
+tenant authority only through internal server configuration, never through a
+browser payload. Apply `drizzle/0003_pf03a_postgresql_data_foundation.sql` with
+`npm run db:migrate` against a disposable database before beginning PF-03B.
 
 Agents MUST update this document at the end of every implementation task.

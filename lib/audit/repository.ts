@@ -16,8 +16,10 @@ export type AuditAppendResult = {
 };
 
 export function appendAuditEventToRepository(event: AuditLogEntry): AuditAppendResult {
+  const databaseSelected = process.env.PERSISTENCE_MODE?.trim().toUpperCase() === "DATABASE";
+
   return {
-    mode: process.env.DATABASE_URL ? "postgres-ready" : "demo-memory",
+    mode: databaseSelected ? "postgres-ready" : "demo-memory",
     event,
     events: appendAuditEvent(demoV1AuditLogs, event),
     dbContract: {
