@@ -7,7 +7,11 @@ export const ruleVersions: RuleVersion[] = [
     version: "IFI-2026.03",
     title: "IFI simplifié : résidence principale, immobilier taxable et dette immobilière",
     effectiveFrom: "2026-01-01",
-    status: "active",
+    // Superseded by rule-ifi-complete-2026-v2 (même date d'effet, même périmètre).
+    // Le moteur `lib/simulations/ifi.ts` référence exclusivement la V2 : laisser
+    // deux versions actives sur la même portée temporelle était une anomalie de
+    // gouvernance (PF-02), sans effet sur un calcul existant.
+    status: "archived",
     evidenceSourceIds: ["src-service-public-ifi-2026"],
   },
   {
@@ -33,6 +37,16 @@ export const ruleVersions: RuleVersion[] = [
     ruleSet: "facturation-electronique",
     version: "2026.1-demo",
     title: "Facturation électronique : score de préparation TPE/PME",
+    effectiveFrom: "2026-09-01",
+    status: "archived",
+    evidenceSourceIds: ["src-impots-facturation-electronique-2026", "src-aife-facturation-electronique"],
+  },
+  {
+    id: "rule-e-invoicing-timeline-2026-v2",
+    ruleSet: "facturation-electronique",
+    version: "E-INVOICING-2026.08-V2",
+    title:
+      "Facturation électronique : jalons datés 01/09/2026 (réception toutes entreprises, émission et e-reporting GE/ETI) et 01/09/2027 (émission et e-reporting PME/TPE/micro), statut résolu par date",
     effectiveFrom: "2026-09-01",
     status: "active",
     evidenceSourceIds: ["src-impots-facturation-electronique-2026", "src-aife-facturation-electronique"],
@@ -70,7 +84,17 @@ export const ruleVersions: RuleVersion[] = [
     version: "PV-IMMO-2026.06-V2",
     title: "Plus-value immobilière V2 : forfaits 7,5 %/15 %, abattements exacts et arrondi officiel",
     effectiveFrom: "2026-06-11",
-    status: "draft",
+    status: "archived",
+    evidenceSourceIds: ["src-bofip-plus-value-immobiliere", "src-impots-2048-imm-2026"],
+  },
+  {
+    id: "rule-plus-value-immobiliere-2026-v3",
+    ruleSet: "plus-value",
+    version: "PV-IMMO-2026.08-V3",
+    title:
+      "Plus-value immobilière V3 : exonération résidence principale qualifiée (eligible/not-eligible/needs_review), plus abattements et forfaits V2",
+    effectiveFrom: "2026-01-01",
+    status: "active",
     evidenceSourceIds: ["src-bofip-plus-value-immobiliere", "src-impots-2048-imm-2026"],
   },
   {
@@ -109,6 +133,16 @@ export const ruleVersions: RuleVersion[] = [
     ruleSet: "pfu-arbitrage",
     version: "PFU-ARBITRAGE-2026.06-V1",
     title: "PFU 31,4 % vs barème : abattements 40 %/50 %/65 %, PS 18,6 % et CSG déductible",
+    effectiveFrom: "2026-01-01",
+    status: "archived",
+    evidenceSourceIds: ["src-service-public-pfu-2026", "src-legifrance-lfss-2026-ps-capital"],
+  },
+  {
+    id: "rule-pfu-arbitrage-2026-v2",
+    ruleSet: "pfu-arbitrage",
+    version: "PFU-ARBITRAGE-2026.08-V2",
+    title:
+      "PFU par profil de catégorie : composantes IR/PS séparées, pivot LFSS 2026 et dérogations 17,2 % (assurance-vie, CEL/PEL/PEP)",
     effectiveFrom: "2026-01-01",
     status: "active",
     evidenceSourceIds: ["src-service-public-pfu-2026", "src-legifrance-lfss-2026-ps-capital"],
@@ -258,6 +292,16 @@ export const ruleVersions: RuleVersion[] = [
     version: "IR-PFU-CDHR-2026.05-V2",
     title: "IR, PFU 30/31,4 % et CDHR : pré-diagnostic dirigeant",
     effectiveFrom: "2026-01-01",
+    status: "archived",
+    evidenceSourceIds: ["src-service-public-pfu-2026", "src-economie-cdhr-2026"],
+  },
+  {
+    id: "rule-ir-pfu-cdhr-2026-v3",
+    ruleSet: "ir-pfu-cdhr",
+    version: "IR-PFU-CDHR-2026.08-V3",
+    title:
+      "IR, PFU par catégorie (composantes IR/PS séparées) et CDHR : pré-diagnostic dirigeant",
+    effectiveFrom: "2026-01-01",
     status: "active",
     evidenceSourceIds: ["src-service-public-pfu-2026", "src-economie-cdhr-2026"],
   },
@@ -276,6 +320,20 @@ export const ruleVersions: RuleVersion[] = [
     version: "DUTREIL-2026.06-V3",
     title: "Pacte Dutreil V3 : chaînage DMTG, économie vs sans pacte, réduction 790 I abrogée",
     effectiveFrom: "2026-06-11",
+    status: "archived",
+    evidenceSourceIds: [
+      "src-legifrance-dutreil-2026",
+      "src-impots-dmtg-bareme-2026",
+      "src-bofip-dmtg-reduction-790-2026",
+    ],
+  },
+  {
+    id: "rule-dutreil-2026-v4",
+    ruleSet: "dutreil",
+    version: "DUTREIL-2026.08-V4",
+    title:
+      "Pacte Dutreil V4 : réduction art. 790 maintenue (50 %), pivot 21/02/2026 (4 → 6 ans) et exclusions LF 2026 non rétroactives",
+    effectiveFrom: "2026-01-01",
     status: "active",
     evidenceSourceIds: [
       "src-legifrance-dutreil-2026",
@@ -298,6 +356,36 @@ export const ruleVersions: RuleVersion[] = [
     version: "APPORT-CESSION-2026.05-V2",
     title: "Apport-cession 150-0 B ter : réinvestissement 70 %, délai et conservation",
     effectiveFrom: "2026-02-21",
+    status: "archived",
+    evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
+  },
+  {
+    id: "rule-apport-cession-pre-2019-v1",
+    ruleSet: "apport-cession",
+    version: "APPORT-CESSION-PRE2019.08-V1",
+    title:
+      "Apport-cession 150-0 B ter, cessions antérieures au 01/01/2019 : remploi 50 %, délai 2 ans, conservation à vérifier",
+    effectiveFrom: "1970-01-01",
+    status: "draft",
+    evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
+  },
+  {
+    id: "rule-apport-cession-2019-v1",
+    ruleSet: "apport-cession",
+    version: "APPORT-CESSION-2019.08-V1",
+    title:
+      "Apport-cession 150-0 B ter, cessions du 01/01/2019 au 20/02/2026 : remploi 60 %, délai 2 ans, conservation 12 mois",
+    effectiveFrom: "2019-01-01",
+    status: "active",
+    evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
+  },
+  {
+    id: "rule-apport-cession-2026-v3",
+    ruleSet: "apport-cession",
+    version: "APPORT-CESSION-2026.08-V3",
+    title:
+      "Apport-cession 150-0 B ter, cessions à compter du 21/02/2026 : remploi 70 %, délai 3 ans, conservation 5 ans (régime sélectionné par la date de cession)",
+    effectiveFrom: "2026-02-21",
     status: "active",
     evidenceSourceIds: ["src-legifrance-apport-cession-2026"],
   },
@@ -307,6 +395,16 @@ export const ruleVersions: RuleVersion[] = [
     version: "HOLDING-TAX-2026.05-V2",
     title: "Taxe holding patrimoniale art. 235 ter C : critères cumulés et assiette",
     effectiveFrom: "2026-02-21",
+    status: "archived",
+    evidenceSourceIds: ["src-legifrance-holding-tax-2026"],
+  },
+  {
+    id: "rule-holding-tax-2026-v3",
+    ruleSet: "holding-tax",
+    version: "HOLDING-TAX-2026.08-V3",
+    title:
+      "Taxe holding art. 235 ter C : assiette en liste fermée (II A 1° à 7°), affectation opérationnelle, dettes des logements, taux 20 %, exercices clos à compter du 31/12/2026",
+    effectiveFrom: "2026-12-31",
     status: "active",
     evidenceSourceIds: ["src-legifrance-holding-tax-2026"],
   },
@@ -325,8 +423,18 @@ export const ruleVersions: RuleVersion[] = [
     version: "PEA-2026.06-V1",
     title: "PEA : retrait après cinq ans, IR et prélèvements sociaux à distinguer",
     effectiveFrom: "2026-06-04",
-    status: "draft",
+    status: "archived",
     evidenceSourceIds: ["src-service-public-pea-2026"],
+  },
+  {
+    id: "rule-pea-withdrawal-2026-v2",
+    ruleSet: "pea",
+    version: "PEA-2026.08-V2",
+    title:
+      "PEA : retrait avant/après cinq ans, prélèvements sociaux 18,6 % (hausse LFSS 2026, PEA non dérogatoire)",
+    effectiveFrom: "2026-01-01",
+    status: "active",
+    evidenceSourceIds: ["src-service-public-pea-2026", "src-legifrance-lfss-2026-ps-capital"],
   },
   {
     id: "rule-per-deduction-2026-v1",

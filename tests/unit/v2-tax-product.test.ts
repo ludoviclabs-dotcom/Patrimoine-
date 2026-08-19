@@ -101,7 +101,11 @@ describe("V2 cabinet fiscal product layer", () => {
     expect(simulateRealEstateGainV2({ yearsHeld: 9 }).resultAmount).toBeGreaterThan(0);
     expect(simulateTransmissionV2({ assetValue: 300_000, children: 2 }).resultAmount).toBeGreaterThanOrEqual(0);
     expect(simulateDutreilV2().computedResult?.exemptValue).toBe(592_500);
-    expect(simulateApportCessionV2().computedResult?.requiredReinvestment).toBe(840_000);
+    // TAX-P0-003 : la date de cession est désormais explicite — le régime n'est
+    // plus présumé. 1 200 000 € × 70 % (régime LF 2026) = 840 000 €.
+    expect(
+      simulateApportCessionV2({ disposalDate: "2026-06-11" }).computedResult?.requiredReinvestment,
+    ).toBe(840_000);
     expect(simulateHoldingTaxV2().computedResult?.holdingTax).toBe(84_000);
   });
 
@@ -122,7 +126,14 @@ describe("V2 cabinet fiscal product layer", () => {
       socialAllowanceRate: 1,
     });
 
-    expect(simulateRealEstateGainV2({ isMainResidence: true }).resultAmount).toBe(0);
+    // TAX-P0-006 : un simple booléen ne suffit plus à exonérer — voir le bloc
+    // golden dédié dans v3-quick-wins.test.ts pour la matrice complète.
+    expect(
+      simulateRealEstateGainV2({
+        isMainResidence: true,
+        mainResidenceQualification: { occupiedAtSale: true },
+      }).resultAmount,
+    ).toBe(0);
     expect(
       simulateRealEstateGainV2({
         salePrice: 900_000,
@@ -168,15 +179,38 @@ describe("V2 cabinet fiscal product layer", () => {
   it("computes holding tax only when criteria and taxable inventory are present", () => {
     expect(simulateHoldingTaxV2({ totalAssets: 4_900_000 }).computedResult?.holdingTax).toBe(0);
 
+    // TAX-P0-004 : ce cas verrouillait auparavant une assiette OUVERTE
+    // (100 000 somptuaires + 120 000 financiers + 80 000 immobilier
+    // + 30 000 liquidités = 330 000 € → 66 000 € de taxe). L'art. 235 ter C, II A
+    // définit une liste FERMÉE : trésorerie et titres financiers n'y entrent pas.
+    // Seuls les actifs catégorisés dans la liste sont désormais taxés.
     const run = simulateHoldingTaxV2({
-      luxuryAssetsValue: 100_000,
+      assets: [
+        {
+          id: "asset-boat",
+          label: "Bateau de plaisance",
+          kind: "yacht-or-pleasure-boat",
+          fairMarketValueAtClose: 100_000,
+          operationalUseFraction: 0,
+        },
+        {
+          id: "asset-housing",
+          label: "Logement à jouissance réservée",
+          kind: "owner-use-housing",
+          fairMarketValueAtClose: 80_000,
+          operationalUseFraction: 0,
+          reservedForControllingPersonUse: true,
+        },
+      ],
       financialAssetsValue: 120_000,
-      realEstateLuxuryValue: 80_000,
       cashAndReceivablesValue: 30_000,
     });
 
-    expect(run.computedResult?.taxableLuxuryInventory).toBe(330_000);
-    expect(run.computedResult?.holdingTax).toBe(66_000);
+    // Assiette = 100 000 + 80 000 uniquement ; les 150 000 € de trésorerie et
+    // de titres financiers restent hors assiette.
+    expect(run.computedResult?.taxableBase).toBe(180_000);
+    expect(run.computedResult?.excludedNonListedValue).toBe(150_000);
+    expect(run.computedResult?.holdingTax).toBe(36_000);
   });
 
   it("keeps every dynamic TaxRun attached to proof, limits and professional status", () => {

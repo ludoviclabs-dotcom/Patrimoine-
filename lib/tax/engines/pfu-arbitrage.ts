@@ -1,25 +1,42 @@
 import { demoTenant } from "../../demo-data/v1";
 import { demoHousehold } from "../../demo-data/household";
 import { createTaxRunFactory, makeStep } from "../engine-kit";
+import {
+  getInvestmentIncomeProfile,
+  PFU_2026_RATE_PROFILES,
+  PFU_LFSS_2026_PIVOT_DATE,
+} from "../investment-income-profiles";
 import { applyRate, fromCents, toCents } from "../money";
 
 /**
  * Arbitrage PFU vs barème progressif sur dividendes et plus-values mobilières.
  *
- * Paramètres vérifiés le 11/06/2026 :
+ * Paramètres vérifiés le 11/06/2026, recontrôlés le 18/08/2026 :
  * - LFSS 2026 (adoptée le 16/12/2025, art. 12) : prélèvements sociaux sur les
  *   revenus du capital portés de 17,2 % à 18,6 % → PFU global 31,4 %
- *   (12,8 % IR + 18,6 % PS). L'assurance-vie reste expressément à 17,2 %
- *   (PFU AV 30 %) — voir coverage limit dédiée.
+ *   (12,8 % IR + 18,6 % PS) pour les dividendes et plus-values mobilières.
  * - Au barème : abattement 40 % sur dividendes (art. 158-3-2° CGI), abattements
  *   50 %/65 % pour titres acquis avant 2018 (durée ≥ 2 / ≥ 8 ans), PS au taux
- *   `psRateAtBareme` (défaut 18,6 % depuis la LFSS 2026 ; 17,2 % reproduit les
- *   exemples antérieurs), CSG déductible 6,8 points (économie d'IR en N+1,
- *   affichée sans être déduite du total de l'année).
+ *   `psRateAtBareme` (dérivé du profil si omis), CSG déductible 6,8 points
+ *   (économie d'IR en N+1, affichée sans être déduite du total de l'année).
+ *
+ * Correction P0 TAX-P0-002 : les taux ne sont plus des constantes globales. Ils
+ * sont résolus par catégorie de revenu ET par date de fait générateur via
+ * `lib/tax/investment-income-profiles.ts`. Ce moteur ne traite que les
+ * catégories de droit commun (dividendes, plus-values mobilières) ; les
+ * produits dérogatoires maintenus à 17,2 % de prélèvements sociaux
+ * (assurance-vie, CEL/PEL/PEP historiques) ne doivent pas y être routés.
  */
 
-export const PFU_INCOME_TAX_RATE = 0.128;
-export const PFU_SOCIAL_RATE_2026 = 0.186;
+/**
+ * Constantes de compatibilité — DÉRIVÉES des profils par catégorie
+ * (lib/tax/investment-income-profiles.ts), et non l'inverse. Elles décrivent le
+ * régime de droit commun (dividendes / plus-values mobilières) et ne doivent
+ * jamais être appliquées à une catégorie dérogatoire : l'assurance-vie et les
+ * CEL/PEL/PEP historiques restent à 17,2 % de prélèvements sociaux.
+ */
+export const PFU_INCOME_TAX_RATE = PFU_2026_RATE_PROFILES.dividend.incomeTaxRate;
+export const PFU_SOCIAL_RATE_2026 = PFU_2026_RATE_PROFILES.dividend.socialLevyRate;
 export const PFU_TOTAL_RATE_2026 = PFU_INCOME_TAX_RATE + PFU_SOCIAL_RATE_2026;
 export const DIVIDEND_ALLOWANCE_AT_BAREME = 0.4;
 export const DEDUCTIBLE_CSG_RATE = 0.068;
@@ -30,28 +47,39 @@ export type PfuVsBaremeInput = {
   gains?: number;
   /** Taux marginal d'imposition du foyer (0,11 / 0,30 / 0,41 / 0,45). */
   tmi?: number;
-  /** PS appliqués en cas d'option barème — 18,6 % depuis la LFSS 2026. */
+  /** PS appliqués en cas d'option barème — dérivé du profil si omis. */
   psRateAtBareme?: number;
   /** Titres acquis avant le 1er janvier 2018 (abattements pour durée). */
   titlesPre2018?: boolean;
   holdingYears?: number;
+  /** Date du fait générateur : sélectionne le régime social (pivot LFSS 2026). */
+  asOfDate?: string;
 };
 
 export function computePfuVsBareme({
   dividends = 1_000,
   gains = 0,
   tmi = 0.3,
-  psRateAtBareme = PFU_SOCIAL_RATE_2026,
+  psRateAtBareme,
   titlesPre2018 = false,
   holdingYears = 0,
+  asOfDate = PFU_LFSS_2026_PIVOT_DATE,
 }: PfuVsBaremeInput = {}) {
   const dividendsCents = toCents(Math.max(0, dividends));
   const gainsCents = toCents(Math.max(0, gains));
   const totalIncomeCents = dividendsCents + gainsCents;
 
-  // Option 1 : PFU 31,4 % (12,8 + 18,6).
-  const pfuIncomeTaxCents = applyRate(totalIncomeCents, PFU_INCOME_TAX_RATE);
-  const pfuSocialCents = applyRate(totalIncomeCents, PFU_SOCIAL_RATE_2026);
+  // Option 1 : PFU liquidé par catégorie (dividendes et plus-values mobilières
+  // partagent le régime de droit commun 12,8 % + 18,6 % depuis la LFSS 2026).
+  const dividendProfile = getInvestmentIncomeProfile("dividend", asOfDate);
+  const gainProfile = getInvestmentIncomeProfile("securities-capital-gain", asOfDate);
+  const resolvedPsRateAtBareme = psRateAtBareme ?? dividendProfile.socialLevyRate;
+  const pfuIncomeTaxCents =
+    applyRate(dividendsCents, dividendProfile.incomeTaxRate) +
+    applyRate(gainsCents, gainProfile.incomeTaxRate);
+  const pfuSocialCents =
+    applyRate(dividendsCents, dividendProfile.socialLevyRate) +
+    applyRate(gainsCents, gainProfile.socialLevyRate);
   const pfuTotalCents = pfuIncomeTaxCents + pfuSocialCents;
 
   // Option 2 : barème progressif.
@@ -59,7 +87,7 @@ export function computePfuVsBareme({
   const taxableDividendsCents = applyRate(dividendsCents, 1 - DIVIDEND_ALLOWANCE_AT_BAREME);
   const taxableGainsCents = applyRate(gainsCents, 1 - gainsAllowanceRate);
   const baremeIncomeTaxCents = applyRate(taxableDividendsCents + taxableGainsCents, tmi);
-  const baremeSocialCents = applyRate(totalIncomeCents, psRateAtBareme);
+  const baremeSocialCents = applyRate(totalIncomeCents, resolvedPsRateAtBareme);
   const baremeTotalCents = baremeIncomeTaxCents + baremeSocialCents;
   // CSG déductible : économie d'IR l'année suivante, non déduite du total N.
   const deductibleCsgSavingCents = applyRate(applyRate(totalIncomeCents, DEDUCTIBLE_CSG_RATE), tmi);
@@ -70,9 +98,16 @@ export function computePfuVsBareme({
     dividends,
     gains,
     tmi,
-    psRateAtBareme,
+    psRateAtBareme: resolvedPsRateAtBareme,
     titlesPre2018,
     holdingYears,
+    asOfDate,
+    lfss2026Applies: dividendProfile.lfss2026Applies,
+    dividendRegimeId: dividendProfile.regimeId,
+    gainRegimeId: gainProfile.regimeId,
+    pfuIncomeTaxRate: dividendProfile.incomeTaxRate,
+    pfuSocialRate: dividendProfile.socialLevyRate,
+    pfuAggregateRate: dividendProfile.aggregateRate,
     gainsAllowanceRate,
     pfuIncomeTax: fromCents(pfuIncomeTaxCents),
     pfuSocial: fromCents(pfuSocialCents),
@@ -95,7 +130,7 @@ const taxRun = createTaxRunFactory({
   createdAt: "2026-06-11T09:00:00.000Z",
 });
 
-const RULE_ID = "rule-pfu-arbitrage-2026-v1";
+const RULE_ID = "rule-pfu-arbitrage-2026-v2";
 const SOURCE_PFU = "src-service-public-pfu-2026";
 const SOURCE_LFSS = "src-legifrance-lfss-2026-ps-capital";
 const COVERAGE = ["coverage-pfu-arbitrage-2026"];
@@ -107,13 +142,15 @@ export function simulatePfuVsBareme(input: PfuVsBaremeInput = {}) {
     makeStep({
       id: "pfu-step-flat",
       order: 1,
-      label: "Option PFU 31,4 %",
+      label: `Option PFU ${(result.pfuAggregateRate * 100).toLocaleString("fr-FR")} %`,
       inputValue: `${result.dividends + result.gains} €`,
-      formula: "12,8 % IR + 18,6 % PS (LFSS 2026) — assurance-vie maintenue à 30 %",
+      formula: `${(result.pfuIncomeTaxRate * 100).toLocaleString("fr-FR")} % IR + ${(result.pfuSocialRate * 100).toLocaleString("fr-FR")} % PS — régime ${result.dividendRegimeId} ; taux dérivé du profil de catégorie, non d'une constante universelle`,
       outputValue: result.pfuTotal,
       ruleVersionId: RULE_ID,
       evidenceSourceId: SOURCE_LFSS,
       coverageLimitIds: [...COVERAGE, "coverage-pfu-assurance-vie-30"],
+      nextAction:
+        "Les produits dérogatoires (assurance-vie, CEL/PEL/PEP historiques) restent à 17,2 % de prélèvements sociaux : ne pas leur appliquer ce taux.",
     }),
     makeStep({
       id: "pfu-step-bareme-ir",
@@ -138,7 +175,7 @@ export function simulatePfuVsBareme(input: PfuVsBaremeInput = {}) {
       ruleVersionId: RULE_ID,
       evidenceSourceId: SOURCE_LFSS,
       coverageLimitIds: COVERAGE,
-      confidenceStatus: result.psRateAtBareme !== PFU_SOCIAL_RATE_2026 ? "needs_review" : "indicative",
+      confidenceStatus: result.psRateAtBareme !== result.pfuSocialRate ? "needs_review" : "indicative",
       nextAction: "Confirmer le taux de PS applicable à l'assiette au jour du fait générateur.",
     }),
     makeStep({

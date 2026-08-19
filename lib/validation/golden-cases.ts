@@ -156,7 +156,7 @@ const baseGoldenCases = getV2TaxRuns().map((run) => {
   });
 });
 
-const pfuAdversarialRun = simulateIrPfuCdhr({ capitalIncome: 120_000, pfuRate: 0.314 });
+const pfuAdversarialRun = simulateIrPfuCdhr({ capitalIncome: 120_000 });
 const dismembermentRun = simulateTransmissionV2({
   assetValue: 300_000,
   donorAge: 51,
@@ -183,7 +183,7 @@ export const goldenCases: GoldenCase[] = [
     coverageBadge: "not_covered_v1",
   }),
   caseFromRun({
-    run: simulateIrPfuCdhr({ capitalIncome: 80_000, pfuRate: 0.314 }),
+    run: simulateIrPfuCdhr({ capitalIncome: 80_000 }),
     expected: {
       fiscalResidence: "non-résident simple",
       expectedStatus: "périmètre fiscal à qualifier",

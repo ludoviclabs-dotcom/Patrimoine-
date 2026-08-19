@@ -14,7 +14,23 @@ import {
   PER_DEDUCTION_AGE_LIMIT,
   type PerStatus,
 } from "./engines/per";
+import { resolveApportCessionRegime } from "./apport-cession-regimes";
+import {
+  HOLDING_TAX_ASSET_THRESHOLD,
+  HOLDING_TAX_CONTROL_THRESHOLD,
+  HOLDING_TAX_FIRST_CLOSING_DATE,
+  HOLDING_TAX_RATE,
+  isListedByArticle235TerC,
+  statutoryHousingDebtAmount,
+  type HoldingTaxAsset,
+  type HoldingTaxHousingDebt,
+} from "./holding-tax-assets";
 import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
+import {
+  getInvestmentIncomeProfile,
+  PFU_LFSS_2026_PIVOT_DATE,
+  type FinancialIncomeKind,
+} from "./investment-income-profiles";
 import type { Household, ProfessionalDocument } from "../types";
 
 export { calculateProgressiveTax, getBareOwnershipRate } from "./engine-kit";
@@ -41,16 +57,33 @@ export function simulateIrPfuCdhr({
   household = demoHousehold,
   taxableIncome = 280_000,
   capitalIncome = 120_000,
-  pfuRate = 0.314,
+  pfuRate,
+  capitalIncomeKind = "dividend",
+  asOfDate = PFU_LFSS_2026_PIVOT_DATE,
   otherIncomeTax = 58_000,
 }: {
   household?: Household;
   taxableIncome?: number;
   capitalIncome?: number;
+  /**
+   * Compatibilité : override explicite du taux agrégé. Laisser vide pour que le
+   * taux soit dérivé du profil de catégorie — le taux agrégé n'est plus la
+   * source primaire du calcul (correction P0 TAX-P0-002).
+   */
   pfuRate?: 0.3 | 0.314;
+  /** Catégorie du revenu de capitaux : détermine IR et prélèvements sociaux. */
+  capitalIncomeKind?: FinancialIncomeKind;
+  /** Date du fait générateur (pivot LFSS 2026 au 01/01/2026). */
+  asOfDate?: string;
   otherIncomeTax?: number;
 } = {}) {
-  const pfuTax = Math.round(capitalIncome * pfuRate);
+  const profile = getInvestmentIncomeProfile(capitalIncomeKind, asOfDate);
+  // Composantes conservées séparément ; l'agrégat reste une valeur dérivée.
+  const pfuIncomeTax = Math.round(capitalIncome * profile.incomeTaxRate);
+  const pfuSocialLevies = Math.round(capitalIncome * profile.socialLevyRate);
+  const pfuTax =
+    pfuRate === undefined ? pfuIncomeTax + pfuSocialLevies : Math.round(capitalIncome * pfuRate);
+  const effectivePfuRate = pfuRate ?? profile.aggregateRate;
   const rfr = taxableIncome + capitalIncome;
   // CDHR déléguée au moteur ir.ts (seuil couple 500 k€, plancher 20 %).
   const { minimumTax, cdhr } = computeCdhr({
@@ -65,9 +98,9 @@ export function simulateIrPfuCdhr({
       order: 1,
       label: "PFU sur revenus de capitaux",
       inputValue: capitalIncome,
-      formula: `${capitalIncome} x ${(pfuRate * 100).toFixed(1)} %`,
+      formula: `${capitalIncome} × (${(profile.incomeTaxRate * 100).toLocaleString("fr-FR")} % IR + ${(profile.socialLevyRate * 100).toLocaleString("fr-FR")} % PS) = ${(effectivePfuRate * 100).toFixed(1)} % — régime ${profile.regimeId}`,
       outputValue: pfuTax,
-      ruleVersionId: "rule-ir-pfu-cdhr-2026-v2",
+      ruleVersionId: "rule-ir-pfu-cdhr-2026-v3",
       evidenceSourceId: "src-service-public-pfu-2026",
       coverageLimitIds: ["coverage-ir-pfu-cdhr-simple"],
     }),
@@ -78,7 +111,7 @@ export function simulateIrPfuCdhr({
       inputValue: rfr,
       formula: `max(0, 20 % RFR - impôts déjà estimés)`,
       outputValue: cdhr,
-      ruleVersionId: "rule-ir-pfu-cdhr-2026-v2",
+      ruleVersionId: "rule-ir-pfu-cdhr-2026-v3",
       evidenceSourceId: "src-economie-cdhr-2026",
       coverageLimitIds: ["coverage-ir-pfu-cdhr-simple"],
       confidenceStatus: "needs_review",
@@ -94,7 +127,22 @@ export function simulateIrPfuCdhr({
     resultAmount: pfuTax + cdhr,
     evidenceSourceIds: ["src-service-public-pfu-2026", "src-economie-cdhr-2026"],
     reviewerRequired: "avocat",
-    computedResult: { taxableIncome, capitalIncome, pfuTax, rfr, minimumTax, cdhr },
+    computedResult: {
+      taxableIncome,
+      capitalIncome,
+      capitalIncomeKind,
+      asOfDate,
+      pfuRegimeId: profile.regimeId,
+      pfuIncomeTaxRate: profile.incomeTaxRate,
+      pfuSocialRate: profile.socialLevyRate,
+      pfuAggregateRate: effectivePfuRate,
+      pfuIncomeTax,
+      pfuSocialLevies,
+      pfuTax,
+      rfr,
+      minimumTax,
+      cdhr,
+    },
   });
 }
 
@@ -239,6 +287,9 @@ export function simulateTransmissionV2({
   });
 }
 
+/** Pivot LF 2026 (loi n° 2026-103 du 19/02/2026) : engagement individuel 4 ans → 6 ans. */
+export const DUTREIL_LF2026_PIVOT_DATE = "2026-02-21";
+
 export function simulateDutreilV2({
   companyValue = 850_000,
   eligibleOperatingValue = 790_000,
@@ -251,7 +302,8 @@ export function simulateDutreilV2({
   donorAge = 65,
   fullOwnership = true,
   priorDonations = 0,
-  donationBeforeFeb2026 = false,
+  transmissionDate = "2026-06-11",
+  transmissionKind = "gift",
 }: {
   companyValue?: number;
   eligibleOperatingValue?: number;
@@ -264,12 +316,26 @@ export function simulateDutreilV2({
   donorAge?: number;
   fullOwnership?: boolean;
   priorDonations?: number;
-  /** Réduction 50 % (art. 790 I) abrogée par la LF 2026 pour les transmissions à compter du 21/02/2026. */
-  donationBeforeFeb2026?: boolean;
+  /**
+   * Date du fait générateur (ISO `YYYY-MM-DD`). Détermine le régime applicable :
+   * avant le 21/02/2026 → engagement individuel 4 ans et exclusions LF 2026 non
+   * applicables ; à compter du 21/02/2026 → 6 ans et exclusions LF 2026.
+   */
+  transmissionDate?: string;
+  /** La réduction de l'art. 790 CGI ne vise que les donations, pas les successions. */
+  transmissionKind?: "gift" | "inheritance";
 } = {}) {
-  const totalExcludedValue = nonEligibleAssets + excludedLuxuryAssetsValue;
+  // Comparaison lexicographique valide entre dates ISO de même format.
+  const lf2026RegimeApplied = transmissionDate >= DUTREIL_LF2026_PIVOT_DATE;
+  const requiredIndividualCommitmentYears = lf2026RegimeApplied ? 6 : 4;
+  // Les exclusions d'actifs LF 2026 ne sont pas rétroactives.
+  const lf2026ExcludedValue = lf2026RegimeApplied ? excludedLuxuryAssetsValue : 0;
+  const totalExcludedValue = nonEligibleAssets + lf2026ExcludedValue;
   const eligibleBase = Math.max(0, Math.min(eligibleOperatingValue, companyValue - totalExcludedValue));
-  const eligible = collectiveCommitmentSigned && managementCommitmentSigned && individualCommitmentYears >= 6;
+  const eligible =
+    collectiveCommitmentSigned &&
+    managementCommitmentSigned &&
+    individualCommitmentYears >= requiredIndividualCommitmentYears;
   const exemptValue = eligible ? Math.round(eligibleBase * 0.75) : 0;
   const taxableBeforeOtherAllowances = companyValue - exemptValue;
 
@@ -280,14 +346,18 @@ export function simulateDutreilV2({
     relationship: "direct-line",
     priorDonationsWithin15Years: priorDonations,
   });
-  // Réduction 50 % art. 790 I : uniquement donations antérieures au 21/02/2026,
-  // donateur < 70 ans et transmission en pleine propriété (abrogée par la LF 2026).
+  // Réduction de 50 % des droits : article 790 CGI (à ne pas confondre avec
+  // l'ancien article 790 I). Toujours en vigueur au 18/08/2026 : la LF 2026 ne
+  // l'a pas abrogée. Conditions : donation en pleine propriété de titres
+  // éligibles Dutreil et donateur de moins de 70 ans. Aucune condition de date.
   const fiftyPercentReductionApplicable =
-    donationBeforeFeb2026 && eligible && fullOwnership && donorAge < 70;
+    transmissionKind === "gift" && eligible && fullOwnership && donorAge < 70;
+  const rightsBeforeArticle790PerChild = withDutreilPerChild.tax;
   const rightsWithDutreilPerChild = fiftyPercentReductionApplicable
-    ? Math.round(withDutreilPerChild.tax * 0.5)
-    : withDutreilPerChild.tax;
+    ? Math.round(rightsBeforeArticle790PerChild * 0.5)
+    : rightsBeforeArticle790PerChild;
   const rightsWithDutreil = rightsWithDutreilPerChild * childCount;
+  const rightsBeforeArticle790 = rightsBeforeArticle790PerChild * childCount;
   const withoutDutreilPerChild = computeDmtgForShare({
     grossShare: Math.round(companyValue / childCount),
     relationship: "direct-line",
@@ -302,9 +372,9 @@ export function simulateDutreilV2({
       order: 1,
       label: "Éligibilité Dutreil LF 2026",
       inputValue: `${collectiveCommitmentSigned} / ${managementCommitmentSigned} / ${individualCommitmentYears} ans`,
-      formula: "engagement collectif + fonction de direction + engagement individuel 6 ans",
+      formula: `engagement collectif + fonction de direction + engagement individuel ${requiredIndividualCommitmentYears} ans (transmission du ${transmissionDate}, régime ${lf2026RegimeApplied ? "LF 2026" : "antérieur au 21/02/2026"})`,
       outputValue: eligible ? "Éligible sous réserve" : "Non éligible",
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -314,9 +384,11 @@ export function simulateDutreilV2({
       order: 2,
       label: "Actifs exclus ou non affectés",
       inputValue: `${nonEligibleAssets} / ${excludedLuxuryAssetsValue}`,
-      formula: "actifs non éligibles + biens somptuaires à exclure",
+      formula: lf2026RegimeApplied
+        ? "actifs non éligibles + biens somptuaires exclus (LF 2026)"
+        : "actifs non éligibles ; exclusions LF 2026 non applicables avant le 21/02/2026",
       outputValue: totalExcludedValue,
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: totalExcludedValue > 0 ? "needs_review" : "indicative",
@@ -329,7 +401,7 @@ export function simulateDutreilV2({
       inputValue: eligibleBase,
       formula: "valeur éligible nette x 75 %",
       outputValue: exemptValue,
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -342,7 +414,7 @@ export function simulateDutreilV2({
       inputValue: `${taxableBeforeOtherAllowances} € / ${childCount} bénéficiaire(s)`,
       formula: "base après exonération 75 % → abattement 100 000 € → barème DMTG ligne directe",
       outputValue: rightsWithDutreil,
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-impots-dmtg-bareme-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -351,18 +423,19 @@ export function simulateDutreilV2({
     makeStep({
       id: "dutreil-step-reduction-790",
       order: 5,
-      label: "Réduction 50 % art. 790 I (abrogée LF 2026)",
-      inputValue: `donateur ${donorAge} ans / ${fullOwnership ? "pleine propriété" : "démembrement"}`,
+      label: "Réduction 50 % art. 790 CGI",
+      inputValue: `donateur ${donorAge} ans / ${fullOwnership ? "pleine propriété" : "démembrement"} / ${transmissionKind === "gift" ? "donation" : "succession"}`,
       formula:
-        "réduction 50 % des droits si donateur < 70 ans en pleine propriété — abrogée pour les transmissions à compter du 21/02/2026 (loi 2026-103)",
+        "réduction de 50 % des droits liquidés si donation en pleine propriété de titres éligibles Dutreil et donateur < 70 ans (art. 790 CGI, non abrogé par la LF 2026)",
       outputValue: fiftyPercentReductionApplicable
-        ? "Appliquée (donation antérieure au 21/02/2026)"
-        : "Non applicable (abrogée LF 2026)",
-      ruleVersionId: "rule-dutreil-2026-v3",
+        ? "Appliquée (art. 790 CGI)"
+        : "Non applicable (conditions art. 790 non réunies)",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-bofip-dmtg-reduction-790-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
-      nextAction: "Vérifier la date de la donation par rapport au 21/02/2026 et le régime transitoire.",
+      nextAction:
+        "Faire confirmer par le notaire la pleine propriété, l'âge du donateur et l'éligibilité Dutreil ; ne pas confondre avec l'ancien art. 790 I.",
     }),
     makeStep({
       id: "dutreil-step-savings",
@@ -371,7 +444,7 @@ export function simulateDutreilV2({
       inputValue: `${rightsWithoutDutreil} € sans pacte / ${rightsWithDutreil} € avec pacte`,
       formula: "droits sans Dutreil − droits avec Dutreil",
       outputValue: dutreilSavings,
-      ruleVersionId: "rule-dutreil-2026-v3",
+      ruleVersionId: "rule-dutreil-2026-v4",
       evidenceSourceId: "src-legifrance-dutreil-2026",
       coverageLimitIds: ["coverage-dutreil-eligibility"],
       confidenceStatus: "needs_review",
@@ -409,8 +482,13 @@ export function simulateDutreilV2({
       children: childCount,
       donorAge,
       fullOwnership,
-      donationBeforeFeb2026,
+      transmissionDate,
+      transmissionKind,
+      lf2026RegimeApplied,
+      requiredIndividualCommitmentYears,
       fiftyPercentReductionApplicable,
+      article790ReductionRate: fiftyPercentReductionApplicable ? 0.5 : 0,
+      rightsBeforeArticle790,
       rightsWithDutreil,
       rightsWithoutDutreil,
       dutreilSavings,
@@ -418,12 +496,21 @@ export function simulateDutreilV2({
   });
 }
 
+/**
+ * Majoration indicative CEHR + CDHR retenue par le moteur v2 pour la borne haute
+ * de la fourchette affichée (7 points au-dessus du PFU de droit commun, soit
+ * ~38,4 % en 2026). Valeur inchangée depuis la v2 : le chiffrage exact est
+ * délégué à lib/tax/engines/ir.ts sur le RFR réel du foyer.
+ */
+const CEHR_CDHR_INDICATIVE_UPLIFT = 0.07;
+
 export function simulateApportCessionV2({
   saleProceeds = 1_200_000,
   reinvestedAmount = 860_000,
   reinvestmentMonths = 30,
   conservationYears = 5,
   deferredGain = 600_000,
+  disposalDate,
 }: {
   saleProceeds?: number;
   reinvestedAmount?: number;
@@ -431,46 +518,109 @@ export function simulateApportCessionV2({
   conservationYears?: number;
   /** Plus-value en report (assiette de la comparaison cession directe). */
   deferredGain?: number;
+  /**
+   * Date de cession des titres apportés (ISO `YYYY-MM-DD`) — date juridiquement
+   * opérative qui sélectionne la version de l'art. 150-0 B ter (TAX-P0-003).
+   * Ce n'est PAS la date de l'apport. En son absence, le moteur s'abstient :
+   * aucun régime n'est présumé, surtout pas celui de la LF 2026.
+   */
+  disposalDate?: string;
 } = {}) {
-  const requiredReinvestment = Math.round(saleProceeds * 0.7);
-  const compliant = reinvestedAmount >= requiredReinvestment && reinvestmentMonths <= 36 && conservationYears >= 5;
-  // Comparaison cession directe : PFU 31,4 %, et jusqu'à ~38,4 % avec CEHR 4 %
-  // et CDHR (plancher 20 % du RFR) pour les hauts revenus — chiffrage ir.ts.
-  const directSaleTaxAtPfu = Math.round(deferredGain * 0.314);
-  const directSaleTaxWithCehrCdhr = Math.round(deferredGain * 0.384);
+  const regime = disposalDate === undefined ? null : resolveApportCessionRegime(disposalDate);
+  const requiredReinvestment =
+    regime === null ? null : Math.round(saleProceeds * regime.reinvestmentMinimumRate);
+  const conservationMonths = conservationYears * 12;
+
+  // Chaque condition est évaluée séparément ; `null` signifie « non vérifiable
+  // en l'état » et n'est jamais assimilé à une condition remplie.
+  const meetsThreshold = requiredReinvestment === null ? null : reinvestedAmount >= requiredReinvestment;
+  const meetsDeadline = regime === null ? null : reinvestmentMonths <= regime.reinvestmentDeadlineMonths;
+  const meetsHoldingPeriod =
+    regime === null || regime.minimumHoldingPeriodMonths === null
+      ? null
+      : conservationMonths >= regime.minimumHoldingPeriodMonths;
+  const conditions = [meetsThreshold, meetsDeadline, meetsHoldingPeriod];
+  const compliant = conditions.every((condition) => condition === true);
+  const undetermined = conditions.some((condition) => condition === null);
+  // Comparaison cession directe : la plus-value de cession de titres relève du
+  // régime de droit commun ; le taux est dérivé du profil de catégorie et non
+  // d'une constante globale (correction P0 TAX-P0-002). Le complément CEHR 4 % +
+  // CDHR (plancher 20 % du RFR) pour les hauts revenus est chiffré par ir.ts.
+  const securitiesGainProfile = getInvestmentIncomeProfile("securities-capital-gain");
+  const directSaleTaxAtPfu = Math.round(deferredGain * securitiesGainProfile.aggregateRate);
+  const directSaleTaxWithCehrCdhr = Math.round(
+    deferredGain * (securitiesGainProfile.aggregateRate + CEHR_CDHR_INDICATIVE_UPLIFT),
+  );
+
+  // Provenance des étapes. Lorsqu'aucun régime n'est résolu, cet identifiant
+  // désigne la version courante du jeu de règles qui a produit l'ABSTENTION —
+  // il ne signifie pas que le régime LF 2026 a été appliqué : `regimeId`,
+  // `reinvestmentMinimumRate` et `requiredReinvestment` restent alors `null`.
+  const ruleVersionId = regime?.ruleVersionId ?? "rule-apport-cession-2026-v3";
 
   const steps = [
     makeStep({
-      id: "apport-step-reinvestment",
+      id: "apport-step-regime",
       order: 1,
-      label: "Réinvestissement minimal",
-      inputValue: saleProceeds,
-      formula: "produit de cession x 70 %",
-      outputValue: requiredReinvestment,
-      ruleVersionId: "rule-apport-cession-2026-v2",
+      label: "Régime 150-0 B ter applicable",
+      inputValue: disposalDate ?? "date de cession non renseignée",
+      formula:
+        "la version de l'art. 150-0 B ter est sélectionnée par la DATE DE CESSION des titres apportés (pivot LF 2026 au 21/02/2026), et non par la date d'apport",
+      outputValue: regime
+        ? `${regime.label} — ${Math.round(regime.reinvestmentMinimumRate * 100)} % dans ${regime.reinvestmentDeadlineMonths} mois`
+        : "Indéterminé : date de cession requise",
+      ruleVersionId,
       evidenceSourceId: "src-legifrance-apport-cession-2026",
       coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
+      confidenceStatus: regime && !regime.requiresSourceVerification ? "indicative" : "needs_review",
+      nextAction: regime
+        ? `Sources : ${regime.sourceRefs.join(" ; ")}.`
+        : "Renseigner la date de cession des titres apportés : aucun régime n'est présumé sans elle.",
+    }),
+    makeStep({
+      id: "apport-step-reinvestment",
+      order: 2,
+      label: "Réinvestissement minimal",
+      inputValue: saleProceeds,
+      formula: regime
+        ? `produit de cession × ${Math.round(regime.reinvestmentMinimumRate * 100)} %`
+        : "seuil indéterminé sans date de cession",
+      outputValue: requiredReinvestment ?? "Indéterminé",
+      ruleVersionId,
+      evidenceSourceId: "src-legifrance-apport-cession-2026",
+      coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
+      confidenceStatus: requiredReinvestment === null ? "needs_review" : "indicative",
     }),
     makeStep({
       id: "apport-step-status",
-      order: 2,
+      order: 3,
       label: "Maintien indicatif du report",
       inputValue: `${reinvestedAmount} / ${reinvestmentMonths} mois / ${conservationYears} ans`,
-      formula: "70 % + 36 mois + conservation 5 ans",
-      outputValue: compliant ? "Conditions indicatives réunies" : "Correction requise",
-      ruleVersionId: "rule-apport-cession-2026-v2",
+      formula: regime
+        ? `${Math.round(regime.reinvestmentMinimumRate * 100)} % + ${regime.reinvestmentDeadlineMonths} mois${
+            regime.minimumHoldingPeriodMonths === null
+              ? " + conservation non documentée pour cette période"
+              : ` + conservation ${regime.minimumHoldingPeriodMonths} mois`
+          }`
+        : "conditions non évaluables sans date de cession",
+      outputValue: undetermined
+        ? "Indéterminé — revue requise"
+        : compliant
+          ? "Conditions indicatives réunies"
+          : "Correction requise",
+      ruleVersionId,
       evidenceSourceId: "src-legifrance-apport-cession-2026",
       coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
       confidenceStatus: "needs_review",
     }),
     makeStep({
       id: "apport-step-direct-sale",
-      order: 3,
+      order: 4,
       label: "Comparaison cession directe sans report",
       inputValue: `PV en report ${deferredGain} €`,
-      formula: "PFU 31,4 % — jusqu'à ~38,4 % avec CEHR 4 % et CDHR (plancher 20 %, moteur ir.ts)",
+      formula: `PFU ${(securitiesGainProfile.aggregateRate * 100).toLocaleString("fr-FR")} % — majoration indicative CEHR/CDHR (chiffrage exact : moteur ir.ts)`,
       outputValue: `${directSaleTaxAtPfu} € à ${directSaleTaxWithCehrCdhr} €`,
-      ruleVersionId: "rule-apport-cession-2026-v2",
+      ruleVersionId,
       evidenceSourceId: "src-legifrance-lfss-2026-ps-capital",
       coverageLimitIds: ["coverage-apport-cession-150-0-b-ter"],
       confidenceStatus: "needs_review",
@@ -482,16 +632,30 @@ export function simulateApportCessionV2({
     module: "apport-cession",
     scenario: "apport-cession",
     steps,
-    resultLabel: compliant ? "Report à documenter" : "Report fragilisé",
-    resultAmount: requiredReinvestment,
+    resultLabel: undetermined
+      ? "Régime indéterminé : date de cession requise"
+      : compliant
+        ? "Report à documenter"
+        : "Report fragilisé",
+    resultAmount: requiredReinvestment ?? undefined,
     evidenceSourceIds: ["src-legifrance-apport-cession-2026", "src-legifrance-lfss-2026-ps-capital"],
     reviewerRequired: "avocat",
     computedResult: {
       saleProceeds,
       reinvestedAmount,
+      disposalDate: disposalDate ?? null,
+      regimeId: regime?.regimeId ?? null,
+      regimeRuleVersionId: regime?.ruleVersionId ?? null,
+      reinvestmentMinimumRate: regime?.reinvestmentMinimumRate ?? null,
+      reinvestmentDeadlineMonths: regime?.reinvestmentDeadlineMonths ?? null,
+      minimumHoldingPeriodMonths: regime?.minimumHoldingPeriodMonths ?? null,
       requiredReinvestment,
       reinvestmentMonths,
       conservationYears,
+      meetsThreshold,
+      meetsDeadline,
+      meetsHoldingPeriod,
+      undetermined,
       compliant,
       deferredGain,
       directSaleTaxAtPfu,
@@ -500,100 +664,338 @@ export function simulateApportCessionV2({
   });
 }
 
+/**
+ * Inventaire de démonstration : actifs explicitement catégorisés dans la liste
+ * fermée du II A (bateau, bijoux, vins). Aucun agrégat générique.
+ */
+const DEMO_HOLDING_TAX_ASSETS: readonly HoldingTaxAsset[] = [
+  {
+    id: "holding-asset-yacht",
+    label: "Bateau de plaisance",
+    kind: "yacht-or-pleasure-boat",
+    fairMarketValueAtClose: 250_000,
+    operationalUseFraction: 0,
+  },
+  {
+    id: "holding-asset-jewelry",
+    label: "Bijoux et métaux précieux",
+    kind: "jewelry-or-precious-metal",
+    fairMarketValueAtClose: 90_000,
+    operationalUseFraction: 0,
+  },
+  {
+    id: "holding-asset-wine",
+    label: "Cave de vins et alcools",
+    kind: "wine-or-alcohol",
+    fairMarketValueAtClose: 80_000,
+    operationalUseFraction: 0,
+  },
+];
+
 export function simulateHoldingTaxV2({
   isSubjectToCorporateTax = true,
   totalAssets = 5_400_000,
   passiveIncomeRatio = 0.56,
   individualControlRatio = 0.72,
-  luxuryAssetsValue = 420_000,
+  exerciseCloseDate = "2026-12-31",
+  entitySeat = "france",
+  assets = DEMO_HOLDING_TAX_ASSETS,
+  housingDebts = [],
   financialAssetsValue = 0,
-  realEstateLuxuryValue = 0,
   cashAndReceivablesValue = 0,
 }: {
   isSubjectToCorporateTax?: boolean;
   totalAssets?: number;
   passiveIncomeRatio?: number;
   individualControlRatio?: number;
-  luxuryAssetsValue?: number;
+  /** Clôture de l'exercice : la taxe vise les exercices clos à compter du 31/12/2026. */
+  exerciseCloseDate?: string;
+  /** Le parcours société étrangère n'est pas modélisé : il bascule en revue. */
+  entitySeat?: "france" | "foreign";
+  /** Inventaire catégorisé. Seules les catégories de la liste fermée sont taxées. */
+  assets?: readonly HoldingTaxAsset[];
+  /** Dettes d'acquisition rattachées aux logements de jouissance réservée (II A 7°). */
+  housingDebts?: readonly HoldingTaxHousingDebt[];
+  /**
+   * Compatibilité : actifs financiers et trésorerie. Ils participent à la
+   * valeur totale des actifs et à la qualification des revenus passifs, mais
+   * n'entrent JAMAIS dans l'assiette (correction P0 TAX-P0-004).
+   */
   financialAssetsValue?: number;
-  realEstateLuxuryValue?: number;
   cashAndReceivablesValue?: number;
 } = {}) {
+  // --- A. Champ temporel -----------------------------------------------------
+  const effectiveForExercise = exerciseCloseDate >= HOLDING_TAX_FIRST_CLOSING_DATE;
+
+  // --- B. Assujettissement, strictement distinct de l'assiette ---------------
   const criteria = {
     isSubjectToCorporateTax,
-    assetThreshold: totalAssets >= 5_000_000,
+    assetThreshold: totalAssets >= HOLDING_TAX_ASSET_THRESHOLD,
+    // « plus de 50 % » : strictement supérieur.
     passiveIncome: passiveIncomeRatio > 0.5,
-    individualControl: individualControlRatio >= 0.5,
+    individualControl: individualControlRatio >= HOLDING_TAX_CONTROL_THRESHOLD,
   };
-  const conditionsMet = Object.values(criteria).every(Boolean);
-  const taxableLuxuryInventory =
-    luxuryAssetsValue + financialAssetsValue + realEstateLuxuryValue + cashAndReceivablesValue;
-  const holdingTax = conditionsMet ? Math.round(taxableLuxuryInventory * 0.2) : 0;
+  const eligibilityMet = Object.values(criteria).every(Boolean);
+  const foreignSeatUnsupported = entitySeat === "foreign";
+  const conditionsMet = effectiveForExercise && eligibilityMet && !foreignSeatUnsupported;
+
+  // --- C. Assiette : liste fermée uniquement ---------------------------------
+  const assetLines = assets.map((asset) => {
+    const grossValue = Math.max(0, asset.fairMarketValueAtClose);
+    const displayExempt =
+      asset.kind === "jewelry-or-precious-metal" && asset.statutoryDisplayException === true;
+    // Un logement n'est visé au 7° que si la jouissance est réservée.
+    const housingNotReserved =
+      asset.kind === "owner-use-housing" && asset.reservedForControllingPersonUse === false;
+    const listed = isListedByArticle235TerC(asset.kind) && !displayExempt && !housingNotReserved;
+
+    // Une fraction d'affectation non renseignée n'est jamais présumée nulle.
+    const operationalUseKnown = asset.operationalUseFraction !== undefined;
+    const operationalUseFraction = Math.min(1, Math.max(0, asset.operationalUseFraction ?? 0));
+    const valueAfterOperationalUse = listed ? grossValue * (1 - operationalUseFraction) : 0;
+
+    return {
+      id: asset.id,
+      label: asset.label,
+      kind: asset.kind,
+      grossValue,
+      listed,
+      operationalUseKnown,
+      operationalUseFraction,
+      valueAfterOperationalUse,
+      deductibleHousingDebt: 0,
+      taxableValue: valueAfterOperationalUse,
+      needsReview: listed && !operationalUseKnown,
+    };
+  });
+
+  // --- D. Dettes des logements de jouissance réservée (II A 7°) --------------
+  const debtNotes: string[] = [];
+  for (const debt of housingDebts) {
+    const line = assetLines.find(
+      (candidate) =>
+        candidate.id === debt.linkedHousingAssetId && candidate.kind === "owner-use-housing",
+    );
+    if (!line || !line.listed) {
+      debtNotes.push(`Dette ${debt.id} non rattachée à un logement taxable identifié : non déduite.`);
+      continue;
+    }
+    if (debt.relatedPartyDebt === true && debt.nonTaxPurposeProven !== true) {
+      debtNotes.push(
+        `Dette liée ${debt.id} exclue faute de preuve d'un objectif non principalement fiscal (II A 7° d).`,
+      );
+      continue;
+    }
+    const statutory = statutoryHousingDebtAmount(debt, exerciseCloseDate);
+    if (statutory === null) {
+      debtNotes.push(`Dette ${debt.id} : échéance contractuelle manquante, déduction non calculable.`);
+      continue;
+    }
+    const applied = Math.min(line.taxableValue, statutory);
+    line.deductibleHousingDebt += applied;
+    line.taxableValue = Math.max(0, line.taxableValue - applied);
+  }
+
+  const listedAssetLines = assetLines.filter((line) => line.listed);
+  const excludedAssetLines = assetLines.filter((line) => !line.listed);
+  const grossListedValue = listedAssetLines.reduce((sum, line) => sum + line.grossValue, 0);
+  const afterOperationalUseValue = listedAssetLines.reduce(
+    (sum, line) => sum + line.valueAfterOperationalUse,
+    0,
+  );
+  const totalHousingDebtDeducted = assetLines.reduce(
+    (sum, line) => sum + line.deductibleHousingDebt,
+    0,
+  );
+  const excludedNonListedValue =
+    excludedAssetLines.reduce((sum, line) => sum + line.grossValue, 0) +
+    Math.max(0, financialAssetsValue) +
+    Math.max(0, cashAndReceivablesValue);
+
+  // --- E. Liquidation --------------------------------------------------------
+  const taxableBase = Math.round(assetLines.reduce((sum, line) => sum + line.taxableValue, 0));
+  const holdingTax = conditionsMet ? Math.round(taxableBase * HOLDING_TAX_RATE) : 0;
+  const assetsNeedingReview = assetLines
+    .filter((line) => line.needsReview)
+    .map((line) => line.label);
+  const undetermined = foreignSeatUnsupported || assetsNeedingReview.length > 0;
+
+  const RULE = "rule-holding-tax-2026-v3";
+  const SOURCE = "src-legifrance-holding-tax-2026";
+  const COVERAGE = ["coverage-holding-tax-235-ter-c"];
 
   const steps = [
     makeStep({
-      id: "holding-step-conditions",
+      id: "holding-step-effective-date",
       order: 1,
-      label: "Critères cumulés holding patrimoniale",
-      inputValue: `${totalAssets} / ${Math.round(passiveIncomeRatio * 100)} % / ${Math.round(individualControlRatio * 100)} %`,
-      formula: "IS + actifs >= 5 M€ + revenus passifs > 50 % + contrôle >= 50 %",
-      outputValue: conditionsMet ? "Critères réunis" : "Critères non réunis",
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      label: "Champ temporel de la taxe",
+      inputValue: exerciseCloseDate,
+      formula: `taxe due au titre des exercices clos à compter du ${HOLDING_TAX_FIRST_CLOSING_DATE}`,
+      outputValue: effectiveForExercise ? "Exercice dans le champ" : "Exercice hors champ",
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "indicative",
+    }),
+    makeStep({
+      id: "holding-step-asset-threshold",
+      order: 2,
+      label: "Seuil de valeur vénale des actifs",
+      inputValue: totalAssets,
+      formula: `valeur vénale de l'ensemble des actifs ≥ ${HOLDING_TAX_ASSET_THRESHOLD} €`,
+      outputValue: criteria.assetThreshold ? "Seuil atteint" : "Seuil non atteint",
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
       confidenceStatus: "needs_review",
     }),
     makeStep({
-      id: "holding-step-inventory",
-      order: 2,
-      label: "Inventaire taxable indicatif",
-      inputValue: `${luxuryAssetsValue} / ${financialAssetsValue} / ${realEstateLuxuryValue} / ${cashAndReceivablesValue}`,
-      formula: "biens somptuaires + actifs financiers + immobilier de jouissance + liquidités ciblées",
-      outputValue: taxableLuxuryInventory,
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
-      confidenceStatus: taxableLuxuryInventory > 0 ? "needs_review" : "indicative",
-      nextAction: "Qualifier chaque ligne de l'inventaire avant application du taux.",
+      id: "holding-step-control",
+      order: 3,
+      label: "Contrôle par une personne physique",
+      inputValue: `${Math.round(individualControlRatio * 100)} %`,
+      formula:
+        "droits financiers ou de vote ≥ 50 %, contrôle indirect/familial ou pouvoir de décision de fait",
+      outputValue: criteria.individualControl ? "Condition satisfaite" : "Condition non satisfaite",
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "needs_review",
+      nextAction:
+        "Le pouvoir de décision de fait ne se déduit pas du seul pourcentage : faire qualifier.",
+    }),
+    makeStep({
+      id: "holding-step-passive-income",
+      order: 4,
+      label: "Ratio de revenus passifs",
+      inputValue: `${(passiveIncomeRatio * 100).toLocaleString("fr-FR")} %`,
+      formula:
+        "revenus passifs > 50 % des produits d'exploitation et financiers (strictement supérieur)",
+      outputValue: criteria.passiveIncome ? "Condition satisfaite" : "Condition non satisfaite",
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "needs_review",
+      nextAction:
+        "Les revenus passifs qualifient l'assujettissement ; ils ne rendent pas taxables les actifs qui les produisent.",
+    }),
+    makeStep({
+      id: "holding-step-asset-classification",
+      order: 5,
+      label: "Classification des actifs (liste fermée II A)",
+      inputValue: `${assetLines.length} actif(s) inventorié(s)`,
+      formula:
+        "seules les catégories du II A sont retenues : chasse, pêche, véhicules/yachts/aéronefs, bijoux et métaux précieux, chevaux, vins et alcools, logements à jouissance réservée",
+      outputValue: `${listedAssetLines.length} dans la liste / ${excludedAssetLines.length} hors liste`,
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "needs_review",
+      nextAction:
+        "Trésorerie, titres financiers, participations actives et œuvres d'art ne sont jamais ajoutés par analogie.",
+    }),
+    makeStep({
+      id: "holding-step-operational-use",
+      order: 6,
+      label: "Exclusion d'affectation opérationnelle",
+      inputValue: Math.round(grossListedValue),
+      formula:
+        "valeur des actifs listés × (1 − fraction affectée à une activité opérationnelle éligible)",
+      outputValue: Math.round(afterOperationalUseValue),
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: assetsNeedingReview.length > 0 ? "needs_review" : "indicative",
+      nextAction:
+        assetsNeedingReview.length > 0
+          ? `Fraction d'affectation opérationnelle non renseignée : ${assetsNeedingReview.join(", ")}.`
+          : "Conserver les preuves d'affectation opérationnelle sur l'exercice.",
+    }),
+    makeStep({
+      id: "holding-step-housing-debt",
+      order: 7,
+      label: "Dettes déductibles des logements (II A 7°)",
+      inputValue: `${housingDebts.length} dette(s)`,
+      formula:
+        "capital restant dû (échéances constantes) · amortissement linéaire légal (in fine / non constantes) · un vingtième par an (sans terme) · dettes liées exclues sauf preuve",
+      outputValue: Math.round(totalHousingDebtDeducted),
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: debtNotes.length > 0 ? "needs_review" : "indicative",
+      nextAction:
+        debtNotes.length > 0
+          ? debtNotes.join(" ")
+          : "Aucune déduction générale des dettes de la holding : seules les dettes d'acquisition des logements visés sont admises.",
+    }),
+    makeStep({
+      id: "holding-step-net-base",
+      order: 8,
+      label: "Assiette nette",
+      inputValue: `${Math.round(grossListedValue)} € listés / ${Math.round(excludedNonListedValue)} € hors liste`,
+      formula: "actifs listés − affectation opérationnelle − dettes admises des logements",
+      outputValue: taxableBase,
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "needs_review",
+    }),
+    makeStep({
+      id: "holding-step-rate",
+      order: 9,
+      label: "Taux applicable",
+      inputValue: taxableBase,
+      formula: `assiette nette × ${HOLDING_TAX_RATE * 100} %`,
+      outputValue: `${HOLDING_TAX_RATE * 100} %`,
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "indicative",
     }),
     makeStep({
       id: "holding-step-tax",
-      order: 3,
-      label: "Taxe indicative sur actifs non professionnels",
-      inputValue: taxableLuxuryInventory,
-      formula: "valeur vénale brute x 20 %",
+      order: 10,
+      label: "Taxe calculée",
+      inputValue: taxableBase,
+      formula: conditionsMet
+        ? `assiette nette × ${HOLDING_TAX_RATE * 100} %`
+        : "conditions d'assujettissement ou champ temporel non satisfaits",
       outputValue: holdingTax,
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
       confidenceStatus: "needs_review",
-      nextAction: "Qualifier chaque actif et l'articulation IFI avant toute conclusion.",
+      nextAction: foreignSeatUnsupported
+        ? "Société étrangère : parcours non modélisé, reconstituer la fraction française et la clause anti-contournement."
+        : "Qualifier chaque actif et l'articulation IFI (art. 975 VII) avant toute conclusion.",
     }),
     makeStep({
       id: "holding-step-ifi-exoneration",
-      order: 4,
+      order: 11,
       label: "Exonération IFI corrélative (art. 975 VII)",
-      inputValue: taxableLuxuryInventory,
+      inputValue: taxableBase,
       formula: "les actifs soumis à la taxe holding ouvrent une exonération IFI corrélative",
       outputValue: conditionsMet ? "Articulation IFI à documenter" : "Sans objet",
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
       confidenceStatus: "needs_review",
-      nextAction: "Faire arbitrer taxe holding vs IFI par l'avocat fiscaliste (pas de double imposition).",
+      nextAction:
+        "Faire arbitrer taxe holding vs IFI par l'avocat fiscaliste (pas de double imposition).",
     }),
     makeStep({
       id: "holding-step-deadline",
-      order: 5,
+      order: 12,
       label: "Échéance : première taxation",
-      inputValue: "Exercices clos en 2026",
+      inputValue: exerciseCloseDate,
       formula: "première campagne déclarative attendue au printemps 2027",
       outputValue: "Printemps 2027",
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
       confidenceStatus: "needs_review",
-      nextAction: "Inscrire l'échéance au calendrier fiscal du dossier et préparer l'inventaire d'actifs.",
+      nextAction:
+        "Inscrire l'échéance au calendrier fiscal du dossier et préparer l'inventaire d'actifs.",
     }),
   ];
 
@@ -601,12 +1003,23 @@ export function simulateHoldingTaxV2({
     module: "holding-tax",
     scenario: "holding-tax",
     steps,
-    resultLabel: conditionsMet ? "Risque taxe holding détecté" : "Pas d'alerte immédiate",
+    resultLabel: foreignSeatUnsupported
+      ? "Société étrangère : parcours non modélisé"
+      : !effectiveForExercise
+        ? "Exercice hors champ de la taxe"
+        : conditionsMet
+          ? "Risque taxe holding détecté"
+          : "Pas d'alerte immédiate",
     resultAmount: holdingTax,
-    evidenceSourceIds: ["src-legifrance-holding-tax-2026"],
+    evidenceSourceIds: [SOURCE],
     reviewerRequired: "avocat",
     computedResult: {
+      exerciseCloseDate,
+      effectiveForExercise,
+      entitySeat,
+      foreignHoldingPathImplemented: !foreignSeatUnsupported,
       conditionsMet,
+      eligibilityMet,
       isSubjectToCorporateTaxCriteria: criteria.isSubjectToCorporateTax,
       assetThresholdCriteria: criteria.assetThreshold,
       passiveIncomeCriteria: criteria.passiveIncome,
@@ -614,12 +1027,20 @@ export function simulateHoldingTaxV2({
       totalAssets,
       passiveIncomeRatio,
       individualControlRatio,
-      luxuryAssetsValue,
+      listedAssetCount: listedAssetLines.length,
+      excludedAssetCount: excludedAssetLines.length,
+      grossListedValue: Math.round(grossListedValue),
+      excludedNonListedValue: Math.round(excludedNonListedValue),
       financialAssetsValue,
-      realEstateLuxuryValue,
       cashAndReceivablesValue,
-      taxableLuxuryInventory,
+      totalHousingDebtDeducted: Math.round(totalHousingDebtDeducted),
+      taxableBase,
+      taxRate: HOLDING_TAX_RATE,
       holdingTax,
+      undetermined,
+      assetsNeedingReviewCount: assetsNeedingReview.length,
+      assetsNeedingReview: assetsNeedingReview.join(" | "),
+      debtNotes: debtNotes.join(" | "),
     },
   });
 }
@@ -627,17 +1048,30 @@ export function simulateHoldingTaxV2({
 export function simulatePeaWithdrawalV2({
   yearsHeld = 7,
   withdrawnGains = 42_000,
-  socialContributionRate = 0.172,
+  socialContributionRate,
   partialWithdrawal = true,
+  asOfDate = PFU_LFSS_2026_PIVOT_DATE,
 }: {
   yearsHeld?: number;
   withdrawnGains?: number;
+  /**
+   * Override explicite. Laisser vide pour dériver du profil PEA : le PEA n'est
+   * pas dérogatoire, ses prélèvements sociaux suivent la hausse LFSS 2026
+   * (17,2 % → 18,6 %). Correction P0 TAX-P0-002.
+   */
   socialContributionRate?: number;
   partialWithdrawal?: boolean;
+  /** Date du fait générateur (pivot LFSS 2026 au 01/01/2026). */
+  asOfDate?: string;
 } = {}) {
   const afterFiveYears = yearsHeld >= 5;
-  const incomeTax = afterFiveYears ? 0 : Math.round(withdrawnGains * 0.128);
-  const socialContributions = Math.round(withdrawnGains * socialContributionRate);
+  const profile = getInvestmentIncomeProfile(
+    afterFiveYears ? "pea-after-five-years" : "pea-before-five-years",
+    asOfDate,
+  );
+  const resolvedSocialRate = socialContributionRate ?? profile.socialLevyRate;
+  const incomeTax = Math.round(withdrawnGains * profile.incomeTaxRate);
+  const socialContributions = Math.round(withdrawnGains * resolvedSocialRate);
   const estimatedTax = incomeTax + socialContributions;
   const closesPlan = afterFiveYears ? !partialWithdrawal : true;
 
@@ -649,7 +1083,7 @@ export function simulatePeaWithdrawalV2({
       inputValue: `${yearsHeld} ans`,
       formula: "date retrait - date ouverture",
       outputValue: afterFiveYears ? "Après 5 ans" : "Avant 5 ans",
-      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      ruleVersionId: "rule-pea-withdrawal-2026-v2",
       evidenceSourceId: "src-service-public-pea-2026",
       coverageLimitIds: ["coverage-pea-withdrawal-simple"],
       confidenceStatus: "indicative",
@@ -659,9 +1093,9 @@ export function simulatePeaWithdrawalV2({
       order: 2,
       label: "IR indicatif sur les gains",
       inputValue: withdrawnGains,
-      formula: afterFiveYears ? "gains x 0 % après 5 ans" : "régime anticipé à vérifier",
+      formula: `gains × ${(profile.incomeTaxRate * 100).toLocaleString("fr-FR")} % ${afterFiveYears ? "(exonération d'IR après 5 ans)" : "(régime anticipé à vérifier)"}`,
       outputValue: incomeTax,
-      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      ruleVersionId: "rule-pea-withdrawal-2026-v2",
       evidenceSourceId: "src-service-public-pea-2026",
       coverageLimitIds: ["coverage-pea-withdrawal-simple"],
       confidenceStatus: afterFiveYears ? "indicative" : "needs_review",
@@ -672,9 +1106,9 @@ export function simulatePeaWithdrawalV2({
       order: 3,
       label: "Prélèvements sociaux à contrôler",
       inputValue: withdrawnGains,
-      formula: `gains retirés x ${(socialContributionRate * 100).toFixed(1)} %`,
+      formula: `gains retirés × ${(resolvedSocialRate * 100).toLocaleString("fr-FR")} % — régime ${profile.regimeId}${profile.lfss2026Applies ? " (LFSS 2026)" : " (avant LFSS 2026)"}`,
       outputValue: socialContributions,
-      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      ruleVersionId: "rule-pea-withdrawal-2026-v2",
       evidenceSourceId: "src-service-public-pea-2026",
       coverageLimitIds: ["coverage-pea-withdrawal-simple"],
       confidenceStatus: "needs_review",
@@ -687,7 +1121,7 @@ export function simulatePeaWithdrawalV2({
       inputValue: partialWithdrawal ? "Retrait partiel" : "Retrait total",
       formula: "après 5 ans + retrait partiel = pas de clôture",
       outputValue: closesPlan ? "Clôture à prévoir" : "Plan maintenu",
-      ruleVersionId: "rule-pea-withdrawal-2026-v1",
+      ruleVersionId: "rule-pea-withdrawal-2026-v2",
       evidenceSourceId: "src-service-public-pea-2026",
       coverageLimitIds: ["coverage-pea-withdrawal-simple"],
       confidenceStatus: "needs_review",
@@ -711,8 +1145,12 @@ export function simulatePeaWithdrawalV2({
       afterFiveYears,
       partialWithdrawal,
       closesPlan,
+      asOfDate,
+      peaRegimeId: profile.regimeId,
+      lfss2026Applies: profile.lfss2026Applies,
+      incomeTaxRate: profile.incomeTaxRate,
       incomeTax,
-      socialContributionRate,
+      socialContributionRate: resolvedSocialRate,
       socialContributions,
       estimatedTax,
     },
@@ -1314,7 +1752,9 @@ export const v2TaxRuns = [
   simulateRealEstateGainV2(),
   simulateTransmissionV2(),
   simulateDutreilV2(),
-  simulateApportCessionV2(),
+  // Le dossier démo porte sur une cession postérieure au pivot LF 2026 : la
+  // date opérative est explicite dans la fixture, jamais présumée par défaut.
+  simulateApportCessionV2({ disposalDate: "2026-06-11" }),
   simulateHoldingTaxV2(),
   simulatePeaWithdrawalV2(),
   simulatePerDeductionV2(),

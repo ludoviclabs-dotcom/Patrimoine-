@@ -11,6 +11,8 @@ export type PvImmoFormState = {
   works: number;
   yearsHeld: number;
   isMainResidence: boolean;
+  /** Occupation effective au jour de la cession. Non renseigné → needs_review, jamais d'exonération automatique. */
+  occupiedAtSale: boolean;
   useAcquisitionLumpSum: boolean;
   useWorksLumpSum: boolean;
 };
@@ -22,6 +24,7 @@ export const defaultPvImmoFormState: PvImmoFormState = {
   works: 35_000,
   yearsHeld: 9,
   isMainResidence: false,
+  occupiedAtSale: false,
   useAcquisitionLumpSum: false,
   useWorksLumpSum: false,
 };
@@ -63,10 +66,17 @@ export function PvImmoForm({
         onChange={(yearsHeld) => onChange({ ...value, yearsHeld })}
       />
       <CheckboxInput
-        label="Résidence principale simple"
+        label="Bien déclaré résidence principale"
         checked={value.isMainResidence}
         onChange={(isMainResidence) => onChange({ ...value, isMainResidence })}
       />
+      {value.isMainResidence ? (
+        <CheckboxInput
+          label="Occupé à titre de résidence principale effective au jour de la cession"
+          checked={value.occupiedAtSale}
+          onChange={(occupiedAtSale) => onChange({ ...value, occupiedAtSale })}
+        />
+      ) : null}
     </div>
   );
 }
