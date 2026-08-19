@@ -12,8 +12,29 @@ export const evidenceSources: EvidenceSource[] = [
     contentHash: "sp-ifi-2026-03-06-a91f",
     summary:
       "Seuil IFI, barème progressif, décote entre 1,3 et 1,4 M€, plafonnement, biens immobiliers et dettes déductibles sous conditions.",
-    linkedRuleIds: ["rule-ifi-complete-2026-v2"],
+    linkedRuleIds: ["rule-ifi-complete-2026-v3"],
     lastControlAt: "2026-05-26T08:15:00.000Z",
+    snapshotStatus: "current",
+    legalScope: "IFI",
+    reliability: "official",
+    status: "active",
+  },
+  {
+    id: "src-legifrance-bofip-ifi-avance-2026",
+    title:
+      "IFI — démembrement de propriété, dettes déductibles avancées et actifs professionnels (CGI art. 968, 974, 975)",
+    authority: "legifrance",
+    url: "https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000037988599",
+    legalReference:
+      "CGI art. 968 (démembrement), art. 974 dont IV (dettes : in fine, sans terme, dettes liées, plafond 60 %), art. 975 (actifs professionnels) ; BOFiP BOI-PAT-IFI-20-40-10, BOI-PAT-IFI-20-40-20, BOI-PAT-IFI-30-10.",
+    checkedAt: "2026-08-19",
+    sourceVersion: "legifrance-cgi-968-974-975-2026-08-19",
+    verifiedAt: "2026-08-19T10:00:00.000Z",
+    contentHash: "legifrance-cgi-ifi-avance-2026-08-19",
+    summary:
+      "Règle générale de l'usufruitier taxé sur la pleine valeur (art. 968), exceptions limitatives (usufruit légal du conjoint survivant art. 757 c. civ., vente avec réserve d'usufruit à un tiers non lié) renvoyant au barème art. 669 ; amortissement légal des prêts in fine/non constants et réduction d'1/20e par an pour un prêt sans terme, dette liée exclue sauf preuve d'un objectif non principalement fiscal, plafonnement à 60 % du patrimoine + 50 % de l'excédent au-delà de 5 M€ (art. 974) ; exonération des actifs professionnels sur justification annuelle, conditions non automatisées (art. 975).",
+    linkedRuleIds: ["rule-ifi-complete-2026-v3"],
+    lastControlAt: "2026-08-19T10:15:00.000Z",
     snapshotStatus: "current",
     legalScope: "IFI",
     reliability: "official",

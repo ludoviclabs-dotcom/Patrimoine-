@@ -20,8 +20,21 @@ export const ruleVersions: RuleVersion[] = [
     version: "IFI-2026.05-V2",
     title: "IFI complet V2 : barème, décote, plafonnement, détention directe et dettes",
     effectiveFrom: "2026-01-01",
-    status: "active",
+    // Superseded by rule-ifi-complete-2026-v3 (PF-02B1) : ajoute le démembrement
+    // art. 968, les dettes in fine/sans terme/liées et le plafonnement des
+    // dettes > 60 % (art. 974, IV), sans changer les branches déjà actives.
+    status: "archived",
     evidenceSourceIds: ["src-service-public-ifi-2026"],
+  },
+  {
+    id: "rule-ifi-complete-2026-v3",
+    ruleSet: "ifi",
+    version: "IFI-2026.08-V3",
+    title:
+      "IFI complet V3 : barème, décote, plafonnement 75 %, démembrement art. 968, dettes in fine/sans terme/liées, plafond dettes 60 %, actifs professionnels déclarés",
+    effectiveFrom: "2026-01-01",
+    status: "active",
+    evidenceSourceIds: ["src-service-public-ifi-2026", "src-legifrance-bofip-ifi-avance-2026"],
   },
   {
     id: "rule-transmission-checklist-2026-v1",

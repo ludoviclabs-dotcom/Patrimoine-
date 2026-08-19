@@ -4,7 +4,11 @@ Last updated: 2026-08-19
 
 ## Git state
 
-Branch: claude/patrimoine-fiscal-context-e5b7df
+Branch: claude/patrimoine-fiscal-bootstrap-a045d2 (fresh worktree off `main`
+after PR #9 merged the prior `claude/patrimoine-fiscal-context-e5b7df` work;
+HEAD is exactly the merge commit, confirmed via
+`git merge-base --is-ancestor` against `origin/main`)
+Merge commit (PR #9): ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
 HEAD before PF-01: afe1a79713eeb16935993d04d10d9f263569d1a6
 HEAD before PF-01B: a1a6d0cb2bb0ec7993aa99dd408b0838a126d3d8
 HEAD before PF-01C1: 8531cc900f6bf5eaccbdaa28949cba8f6c15a13c
@@ -12,6 +16,7 @@ HEAD before PF-01C2: b1263b2053ebcd5616fdaac1dc2c3c114b566a9a
 HEAD before PF-01C3: 7c7597a7805f01170c6319232cbaee6e5c7cd7a4
 HEAD before PF-01C4: b8cb7050d4aeceed6c16e2d2bc09597d472a9149
 HEAD before PF-02: b3b2dade33d1fad80286c5ff98edf130e703d935
+HEAD before PF-02B1: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
 git diff --check: PASS (exit 0, no whitespace/conflict-marker errors)
 
 ## Current milestone
@@ -20,8 +25,11 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-03 — Resolve P1 fiscal gaps (IFI completeness, holding animatrice, foreign
-holding path). P0 register closed: 7 of 7 fixed, 0 remaining. PF-02 COMPLETE.
+PF-02B2 — Resolve DMTG rounding arbitration and the nine-draft-rule governance
+backlog. P0 register closed: 7 of 7 fixed, 0 remaining. PF-02 COMPLETE.
+PF-02B1 COMPLETE (IFI démembrement, dettes avancées, actifs professionnels).
+PF-03 (Postgres/migrations/RLS and beyond) remains reserved and unrenamed, per
+explicit instruction, until the PF-02B fiscal sub-series concludes.
 
 ## Completed
 
@@ -39,6 +47,81 @@ holding path). P0 register closed: 7 of 7 fixed, 0 remaining. PF-02 COMPLETE.
 - PF-01C4 — TAX-P0-005 (e-invoicing timeline not date-aware) fixed.
 - **PF-01 COMPLETE — 7 of 7 P0 fixed.**
 - **PF-02 COMPLETE — rule governance invariants + golden coverage hardened.**
+- PR #9 merged into `main` (bootstrap session confirmed HEAD, PF-00/01/02
+  state, and P1 inventory from a fresh worktree; no files modified in that run).
+- **PF-02B1 COMPLETE — IFI démembrement art. 968, dettes in fine/sans
+  terme/liées, plafond dettes 60 %, actifs professionnels déclarés.**
+
+## PF-02B1 — IFI completeness gate (COMPLETE)
+
+Full report: `docs/agent/PF02B_FISCAL_COMPLETENESS.md`
+
+Scope: IFI only, per explicit instruction. No other engine, and no
+infrastructure (Postgres/Auth/UI/PDF/watcher/AI), was touched.
+
+Starting point clarified: décote, exact barème and the 75 % global cap
+(art. 979) were **already correct** before this run — verified mathematically
+equivalent to `docs/reference/2026-08/MOTEURS_FISCAUX_2026.ts` `computeIfi2026`
+— they only lacked boundary golden coverage, now added. The real gap was
+démembrement, advanced debts and professional assets.
+
+Implemented (all additive to `Asset`/`Liability`, zero behavior change when
+the new fields are absent — the Claire/Marc golden case is unchanged at
+1 110 000 €):
+- Démembrement (CGI art. 968): general rule (full value to the usufructuary,
+  nothing to the bare owner) by default; the art. 669 age-based split
+  (`getBareOwnershipRate`, already sourced in `lib/tax/engine-kit.ts`) applies
+  only when a closed, legally-grounded exception is declared
+  (`legal-usufruct-surviving-spouse` or
+  `sale-with-reserved-usufruct-unrelated-third-party`, confirmed on
+  Légifrance 19/08/2026) **and** the usufructuary's age is provided — an
+  exception claimed without an age never triggers a presumed split.
+- Debts (CGI art. 974): in fine / non-constant loans and no-term loans use the
+  statutory linear formulas (reusing `fullYearsBetweenIso` from
+  `lib/tax/holding-tax-assets.ts`, the same mechanism already sourced for
+  holding-tax debts in PF-01C3); related-party debt is excluded unless a
+  non-tax purpose is proven; missing capital/dates never get estimated —
+  the debt is simply not admitted and flagged. The 60 %-of-assets debt cap
+  (art. 974, IV) is implemented and reproduces the reference's own worked
+  example exactly (assets 6 M€, debt 5,5 M€ → 4,55 M€ admitted).
+- Professional assets (CGI art. 975): `Asset.isProfessionalAsset` — already
+  declared in the type but never consumed by the IFI engine — now excludes a
+  real-estate asset from the base, with a mandatory `needs_review` step
+  requiring annual documentation. Eligibility conditions themselves are not
+  automated; the declaration alone is never treated as proof.
+
+Rule governance: `rule-ifi-complete-2026-v3` (`IFI-2026.08-V3`) active,
+`rule-ifi-complete-2026-v2` archived (fiscal behavior changed — new
+deterministic branches added). New evidence source
+`src-legifrance-bofip-ifi-avance-2026` (Légifrance CGI art. 968/974/975 +
+BOFiP PAT-IFI-20-40-10/20 and PAT-IFI-30-10, verified 19/08/2026).
+`coverage-ifi-demembrement-complexe` upgraded `not_covered_v1` →
+`partially_covered`.
+
+22 new golden cases (`tests/unit/ifi.test.ts`, 279 → 301 tests): threshold
+boundaries (1 299 999 / 1 300 000 / 1 300 001 €), décote zone including the
+reference's own `IFI-DECOTE-1310000` golden (1 445 €), décote phase-out at
+1 400 000 €, the reference's own `IFI-DEBT-CAP-6M-5M5` golden (4,55 M€), in
+fine and no-term debt formulas, related-party debt proven/unproven,
+insufficient-data abstention, démembrement general rule and art. 669
+exception (both sides, both with and without a missing age), professional
+asset exclusion, SCI non-regression, and the 75 % cap at its exact boundary.
+
+Limitations left open (not this run's scope): quasi-usufruit and chained
+dismemberment, professional-asset eligibility conditions themselves (only the
+declared-flag pass-through was added), individual per-debt eligibility
+conditions for ordinary debt, trusts, complex non-residents, advanced
+holdings. All unchanged from before PF-02B1 and still `NOT_IMPLEMENTED` or
+generically `needs_review`.
+
+No recalculation candidate: every new branch is additive and inert unless the
+new fields are explicitly set, so no previously-produced IFI result changes.
+
+Environment note: this worktree had no `node_modules` installed (each Git
+worktree has its own, separate from the canonical repo). `npm install` was
+run to complete `tsc`/`build` validation — 532 packages, matching
+`package-lock.json` exactly, no version changed. Infrastructure, not a
+dependency decision.
 
 ## PF-02 — Rule governance and golden coverage (COMPLETE)
 
@@ -204,9 +287,9 @@ None.
 
 ## Tests
 
-Unit: PASS — 22 files, 279 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
-210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → 244 PF-01C4 → +35 net in PF-02),
-0 failing
+Unit: PASS — 22 files, 301 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
+210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → 244 PF-01C4 → 279 PF-02 → +22 net in
+PF-02B1), 0 failing
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -247,8 +330,15 @@ are tracked separately — closing PF-01 covers the P0 register, not that backlo
 
 ## Known technical debt
 
-P1 (need legal interpretation — separate runs, out of PF-02 scope):
-- IFI V0: décote complète, plafonnement, démembrement, in-fine and family debts.
+P1 (need legal interpretation — separate runs, out of PF-02B1 scope):
+- IFI: quasi-usufruit and chained/successive dismemberment; professional-asset
+  *eligibility* conditions (only the declared-flag pass-through is
+  implemented, per PF-02B1); individual per-debt eligibility conditions for
+  ordinary debt (existence at 1 January, effective charge, justification) are
+  still a generic `needs_review`, not individually verified. Décote, exact
+  barème, the 75 % global cap, démembrement general rule + the two documented
+  art. 968 exceptions, in fine/no-term/related-party debts and the 60 % debt
+  cap are now IMPLEMENTED (PF-02B1) — see `docs/agent/PF02B_FISCAL_COMPLETENESS.md`.
 - Holding animatrice: not modelled (faisceau d'indices + `needs_review`).
 - Holding tax: foreign-company path `NOT_IMPLEMENTED`.
 
@@ -261,8 +351,9 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-03 — Resolve P1 fiscal gaps, starting with IFI completeness (décote,
-plafonnement, démembrement, in-fine and family debts).
+PF-02B2 — Resolve DMTG rounding arbitration (blocked on legal review, see
+`docs/agent/PF02_GOLDEN_COVERAGE.md` § 7) and the nine-draft-rule governance
+backlog (`docs/agent/PF02_GOLDEN_COVERAGE.md` § 1). Not started in this run.
 
 ## Handoff notes
 
