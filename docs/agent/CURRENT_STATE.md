@@ -10,6 +10,7 @@ HEAD before PF-01B: a1a6d0cb2bb0ec7993aa99dd408b0838a126d3d8
 HEAD before PF-01C1: 8531cc900f6bf5eaccbdaa28949cba8f6c15a13c
 HEAD before PF-01C2: b1263b2053ebcd5616fdaac1dc2c3c114b566a9a
 HEAD before PF-01C3: 7c7597a7805f01170c6319232cbaee6e5c7cd7a4
+HEAD before PF-01C4: b8cb7050d4aeceed6c16e2d2bc09597d472a9149
 git diff --check: PASS (exit 0, no whitespace/conflict-marker errors)
 
 ## Current milestone
@@ -18,7 +19,8 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-P0 — Fiscal engines LF 2026 + golden cases
+PF-02 — Harden rule versions and fiscal golden-case coverage
+(P0 register closed: 7 of 7 fixed, 0 remaining)
 
 ## Completed
 
@@ -33,8 +35,10 @@ P0 — Fiscal engines LF 2026 + golden cases
 - PF-01C1 — TAX-P0-002 (PFU as a global constant) fixed.
 - PF-01C2 — TAX-P0-003 (apport-cession not versioned by operative date) fixed.
 - PF-01C3 — TAX-P0-004 (holding-tax base not a closed statutory list) fixed.
+- PF-01C4 — TAX-P0-005 (e-invoicing timeline not date-aware) fixed.
+- **PF-01 COMPLETE — 7 of 7 P0 fixed.**
 
-## PF-01 → PF-01C3 — Fiscal reconciliation (partial, 6 of 7 P0 fixed)
+## PF-01 → PF-01C4 — Fiscal reconciliation (COMPLETE, 7 of 7 P0 fixed)
 
 Full report: `docs/agent/PF01_FISCAL_RECONCILIATION.md`
 
@@ -45,7 +49,7 @@ démembrement, assurance-vie, IS, SCI, exit tax, PER.
 P0 detected: 7 of 7 in the approved P0 register (REGLEMENTATION_AOUT_2026.md
 § 17) confirmed as genuinely present in the code.
 
-P0 fixed (6):
+P0 fixed (7 — all):
 - TAX-P0-001 (Dutreil) — réduction de 50 % rattachée à tort à l'ancien art. 790 I
   et désactivée après le 21/02/2026. L'art. 790 CGI n'a pas été abrogé par la
   LF 2026. Sur le cas de référence, les droits passent de 78 195 € à 39 098 € :
@@ -91,6 +95,16 @@ P0 fixed (6):
   musée/exposition, dettes des logements (capital restant dû / amortissement
   linéaire / un vingtième par an, dettes liées exclues sauf preuve) modélisées.
   Société étrangère : NOT_IMPLEMENTED, bascule en revue.
+- TAX-P0-005 (facturation électronique, PF-01C4) — l'échéance était une chaîne
+  statique (`"1er septembre 2026"`) : aucun statut passé/futur calculable,
+  aucune distinction réception / émission / e-reporting, aucune catégorie
+  d'entreprise. Remplacé par un registre de 9 jalons structurés et un résolveur
+  `resolveEInvoicingTimeline({ companySize, asOfDate })`. `asOfDate` est
+  explicite — le moteur n'appelle jamais l'horloge système, les tests sont
+  déterministes. Jalons : 01/09/2026 réception toutes entreprises + émission et
+  e-reporting GE/ETI ; 01/09/2027 émission et e-reporting PME/TPE/micro. Taille
+  inconnue → `qualificationRequired`, jamais de présomption. Calendrier
+  recontrôlé sur impots.gouv.fr et economie.gouv.fr.
 
 Rule governance:
 - `rule-dutreil-2026-v4` (DUTREIL-2026.08-V4) active, `rule-dutreil-2026-v3` archived.
@@ -108,10 +122,11 @@ Rule governance:
   draft (holding period undocumented); `rule-apport-cession-2026-v2` archived.
 - `rule-holding-tax-2026-v3` (HOLDING-TAX-2026.08-V3) active, effective
   2026-12-31; `rule-holding-tax-2026-v2` archived.
+- `rule-e-invoicing-timeline-2026-v2` (E-INVOICING-2026.08-V2) active;
+  `rule-e-invoicing-readiness-2026-v1` archived.
 
-P0 confirmed but NOT fixed (1): TAX-P0-005 (e-invoicing static date). It
-requires a change of scope to a distinct engine, out of bounds for a
-one-engine-at-a-time run.
+P0 confirmed but NOT fixed: **none**. All 7 entries of the approved P0 register
+(REGLEMENTATION_AOUT_2026.md § 17) are fixed and covered by golden cases.
 
 RECALCULATION CANDIDATE (PF-01C2): apport-cession runs produced before PF-01C2
 were all liquidated under the 70 %/3-year/5-year regime regardless of the actual
@@ -147,8 +162,8 @@ None.
 
 ## Tests
 
-Unit: PASS — 20 files, 234 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
-210 PF-01C1 → 219 PF-01C2 → +15 net in PF-01C3), 0 failing
+Unit: PASS — 20 files, 244 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
+210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → +10 net in PF-01C4), 0 failing
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -157,8 +172,9 @@ non-interactive environment. Must be run before production release.
 
 ## Open blockers
 
-None blocking the delivered scope. 1 confirmed P0 remains open by design (see
-section above): TAX-P0-005.
+None. The P0 register is closed (7 of 7 fixed). The P1/P2 backlog, the
+regulatory-review items and the recalculation candidates below remain open and
+are tracked separately — closing PF-01 covers the P0 register, not that backlog.
 
 ## Regulatory verification required
 
@@ -170,6 +186,9 @@ section above): TAX-P0-005.
   (§ 9.6); the engine abstains rather than generalising the French computation.
 - Holding tax doctrine is not stabilised: a legal review remains mandatory on
   every file until it is.
+- E-invoicing: a deferral decree remains legally possible. No hypothetical date
+  was written into the engine; detecting such a change is the source-watcher's
+  job (out of PF-01 scope).
 - DMTG rounding convention: the repository rounds per bracket (reproducing the
   official service-public example, 50 000 € → 8 195 €) while the reference
   rounds once on an exact base. 1 € divergence on the 1 M€ Dutreil golden case
@@ -183,7 +202,7 @@ section above): TAX-P0-005.
 
 ## Next recommended task
 
-PF-01C4 — Make e-invoicing timeline state date-aware (TAX-P0-005).
+PF-02 — Harden rule versions and fiscal golden-case coverage.
 
 ## Handoff notes
 

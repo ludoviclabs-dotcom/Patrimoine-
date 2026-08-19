@@ -54,7 +54,7 @@ comme réellement présents dans le code.
 | Apport-cession | 70 % / 36 mois en dur, sans date du fait générateur | Règle datée : 60 %/2 ans avant le 21/02/2026, 70 %/3 ans à compter | Absent → 9 golden cases (PF-01C2) | § 8.2, § 17 TAX-P0-003 | PARTIAL | **P0 — corrigé (PF-01C2)** |
 | Taxe holding | `(somptuaires + financiers + immobilier + liquidités) × 20 %` | Liste fermée art. 235 ter C, assiette et taux à qualifier | Absent → 15 golden cases (PF-01C3) | § 9, § 17 TAX-P0-004 | MISMATCH | **P0 — corrigé (PF-01C3)** |
 | Résidence principale | Booléen `isMainResidence` → exonération 100 % automatique | Questionnaire factuel ; `professional-review` si délai > 1 an | Absent → 7 golden cases (PF-01B) | § 17 TAX-P0-006 | MISMATCH | **P0 — corrigé (PF-01B)** |
-| E-facturation | Échéance en chaîne statique `"1er septembre 2026"` | État daté, bascule au 1er septembre | Absent | § 17 TAX-P0-005 | PARTIAL | **P0 — non corrigé** |
+| E-facturation | Échéance en chaîne statique `"1er septembre 2026"` | État daté, bascule au 1er septembre | Absent → 10 golden cases (PF-01C4) | § 17 TAX-P0-005 | PARTIAL | **P0 — corrigé (PF-01C4)** |
 | IR / CEHR / CDHR | Barème, quotient plafonné, décote, CEHR et CDHR distinctes | Conforme au référentiel | Cas officiel service-public présent | § 1, § 3 | MATCH | N/A |
 | DMTG multi-liens | Barèmes 777, abattements 779/790 B, rappel 15 ans, arrondi par tranche | Conforme ; arrondi reproduit l'exemple officiel (50 000 € → 8 195 €) | Présent | § 6 | MATCH | N/A |
 | Plus-value immo (hors RP) | Abattements 150 VC, surtaxe 1609 nonies G, PS 17,2 % | Conforme (PS immobiliers hors hausse LFSS 2026) | Présent | § 5 | MATCH | N/A |
@@ -359,6 +359,55 @@ comme réellement présents dans le code.
   `components/v2/tax-scenario-lab.tsx`.
 - **Statut** : **FIXED**, 15 golden cases ajoutés.
 
+### TAX-P0-005 — Timeline e-facturation statique (PF-01C4)
+
+- **Root cause** : `lib/simulations/e-invoicing.ts` stockait l'échéance comme
+  chaîne littérale (`deadline: "1er septembre 2026"`). Aucune date exploitable,
+  donc **aucun statut passé/futur calculable**, aucune distinction entre
+  réception, émission et e-reporting, et aucune notion de catégorie
+  d'entreprise. Le cockpit affichait la même phrase quelle que soit la date.
+- **Modèle précédent** : cinq items de checklist portant des chaînes d'échéance
+  indépendantes, sans provenance ni résolution temporelle.
+- **Modèle dynamique** : registre `E_INVOICING_TIMELINE` de neuf événements
+  structurés `{ id, obligation, companyCategory, effectiveDate, ruleVersionId,
+  sourceRefs }`, et résolveur
+  `resolveEInvoicingTimeline({ companySize, asOfDate })`. `asOfDate` est
+  **obligatoire et explicite** : le moteur n'appelle jamais l'horloge système,
+  ce qui rend la règle déterministe et testable à toute date. Seul le composant
+  UI fournit la date du jour.
+- **Obligations modélisées, distinctes** : `RECEIVE_E_INVOICE`,
+  `ISSUE_E_INVOICE`, `E_REPORTING`.
+- **Catégories** : `ALL`, `LARGE`, `ETI`, `SME`, `MICRO`, plus une taille
+  `UNKNOWN`. La réception vise toutes les entreprises et reste donc
+  déterminable sans connaître la taille ; l'émission et l'e-reporting exigent
+  une qualification (`qualificationRequired`) et ne sont **ni retenus ni
+  écartés** par présomption.
+- **Dates** : 01/09/2026 — réception toutes entreprises, émission et
+  e-reporting GE et ETI ; 01/09/2027 — émission et e-reporting PME, TPE et
+  micro-entreprises. Aucune date de report hypothétique n'a été inscrite : la
+  détection d'un éventuel décret relève du source-watcher, hors périmètre.
+- **Statut temporel** : `asOfDate >= effectiveDate → IN_FORCE`, sinon
+  `UPCOMING`, frontière **inclusive** le jour d'entrée en vigueur, par
+  comparaison lexicographique de dates ISO ordonnée au jour près.
+- **Sources** : `REGLEMENTATION_AOUT_2026.md` § 15.1 à § 15.3 et § 17
+  (TAX-P0-005) ; calendrier officiel **recontrôlé sur impots.gouv.fr et
+  economie.gouv.fr**, qui confirment la réception pour toutes les entreprises et
+  l'émission/e-reporting GE-ETI au 01/09/2026, puis PME et micro-entreprises au
+  01/09/2027. Aucun écart avec le référentiel : pas de conflit réglementaire.
+- **Boundary tests** : 2026-08-31 / 2026-09-01 et 2027-08-31 / 2027-09-01, plus
+  l'état de référence au 19/08/2026 (tous jalons `UPCOMING`) et les états au
+  02/09/2026 et 02/09/2027.
+- **Rule ID / version** : `rule-e-invoicing-timeline-2026-v2`
+  (E-INVOICING-2026.08-V2) active ; `rule-e-invoicing-readiness-2026-v1`
+  archivée. Chaque événement porte sa règle et ses sources.
+- **UI** : le panneau dérive désormais son libellé de `effectiveDate` + statut
+  (« À compter du … » avant l'entrée en vigueur, « Obligatoire depuis le … »
+  après) au lieu d'afficher une chaîne métier figée. Le moteur ne renvoie aucune
+  phrase française : la mise en forme reste à la charge de l'UI.
+- **Fichiers corrigés** : `lib/simulations/e-invoicing.ts`,
+  `lib/rules/rule-versions.ts`, `components/scenario-panels.tsx`.
+- **Statut** : **FIXED**, 10 golden cases ajoutés.
+
 ## 5. Golden cases
 
 Le golden case existant `tests/unit/v3-1-transmission.test.ts` **verrouillait la
@@ -445,6 +494,21 @@ Golden cases ajoutés en PF-01C3 pour TAX-P0-004 (15 nouveaux tests, 219 → 234
 | — Société étrangère | `NOT_IMPLEMENTED`, taxe 0 €, `undetermined` |
 | — Étapes de calcul | les 10 étapes présentes, toutes rattachées à `rule-holding-tax-2026-v3`, taux 0,2 |
 
+Golden cases ajoutés en PF-01C4 pour TAX-P0-005 (10 nouveaux tests, 234 → 244) :
+
+| Cas | Attendu |
+|---|---|
+| A/B. Réception toutes entreprises | 31/08/2026 → `UPCOMING` ; 01/09/2026 → `IN_FORCE` |
+| C/D. Émission grandes entreprises | 31/08/2026 → `UPCOMING` ; 01/09/2026 → `IN_FORCE` |
+| E. E-reporting ETI | 01/09/2026 → `IN_FORCE` |
+| F/G/H. Émission PME | 01/09/2026 et 31/08/2027 → `UPCOMING` ; 01/09/2027 → `IN_FORCE` |
+| I. E-reporting micro-entreprises | 31/08/2027 → `UPCOMING` ; 01/09/2027 → `IN_FORCE` |
+| J. Taille inconnue | réception déterminée ; émission et e-reporting `qualificationRequired`, jamais présumés |
+| K. Référence au 19/08/2026 | tous les jalons `UPCOMING`, aucun en vigueur |
+| — 02/09/2026 | ETI : tout en vigueur ; PME : réception en vigueur, émission et e-reporting encore à venir |
+| — 02/09/2027 | toutes catégories : plus aucun jalon à venir |
+| — Non-régression | échéance 2026 en vigueur en 2027 ; jalons distincts ; trois obligations séparées ; provenance et règle versionnée sur chaque événement |
+
 ### Écart d'arrondi documenté (non corrigé, volontaire)
 
 Sur le cas de référence à 1 M€ du référentiel
@@ -463,14 +527,24 @@ absorbé silencieusement.
 
 ## 6. P0 confirmés et NON corrigés
 
-Ce P0 reste **confirmé présent dans le code** mais volontairement hors périmètre
-des runs PF-01 à PF-01C3 : le protocole impose de corriger « un moteur à la
-fois ». TAX-P0-006 (PF-01B), TAX-P0-002 (PF-01C1), TAX-P0-003 (PF-01C2) et
-TAX-P0-004 (PF-01C3), initialement dans cette liste, ont été corrigés — voir § 4.
+**Aucun P0 ne reste ouvert.** Les sept entrées du registre P0 du référentiel
+(§ 17) ont été confirmées présentes dans le code puis corrigées :
 
-| ID | Constat vérifié dans le code | Emplacement |
+| ID | Run | Statut |
 |---|---|---|
-| TAX-P0-005 | Échéance stockée en chaîne statique `"1er septembre 2026"` ; aucun état passé/futur calculé par rapport à la date courante. | `lib/simulations/e-invoicing.ts` L12 |
+| TAX-P0-001 — réduction Dutreil art. 790 | PF-01 | FIXED |
+| TAX-P0-002 — PFU constante globale | PF-01C1 | FIXED |
+| TAX-P0-003 — apport-cession non versionné | PF-01C2 | FIXED |
+| TAX-P0-004 — assiette holding ouverte | PF-01C3 | FIXED |
+| TAX-P0-005 — timeline e-facturation statique | PF-01C4 | FIXED |
+| TAX-P0-006 — résidence principale sur booléen | PF-01B | FIXED |
+| TAX-P0-007 — régime Dutreil non pivoté | PF-01 | FIXED |
+
+**PF-01 STATUS: COMPLETE**
+
+Les éléments P1/P2, les points de revue réglementaire et les candidats au
+recalcul restent ouverts et documentés séparément (§ 7 et § 8) : la clôture de
+PF-01 porte sur le registre P0, pas sur ce backlog.
 
 ## 7. Revue juridique requise / `needs_review`
 
@@ -498,11 +572,16 @@ TAX-P0-004 (PF-01C3), initialement dans cette liste, ont été corrigés — voi
 - **Taxe holding, doctrine** : la doctrine administrative n'est pas stabilisée
   (§ 9.6). Une revue juridique reste obligatoire sur chaque dossier tant qu'elle
   ne l'est pas.
+- **Facturation électronique** : le calendrier officiel a été recontrôlé sur
+  impots.gouv.fr et economie.gouv.fr et concorde avec le référentiel. Un
+  éventuel décret de report reste possible en droit ; sa détection relève du
+  source-watcher, hors périmètre de PF-01. Aucune date hypothétique n'a été
+  inscrite dans le moteur.
 - Aucune autre situation `[BLOCKED — SOURCE VERIFICATION REQUIRED]` n'a été
-  rencontrée : les six corrections (PF-01 + PF-01B + PF-01C1 + PF-01C2 +
-  PF-01C3) reposent sur le référentiel approuvé du 18/08/2026 et, pour
-  l'apport-cession, sur une vérification complémentaire des versions
-  consolidées de l'art. 150-0 B ter sur legifrance.gouv.fr.
+  rencontrée : les sept corrections (PF-01 + PF-01B + PF-01C1 + PF-01C2 +
+  PF-01C3 + PF-01C4) reposent sur le référentiel approuvé du 18/08/2026,
+  complété par une vérification sur legifrance.gouv.fr (art. 150-0 B ter) et
+  sur impots.gouv.fr / economie.gouv.fr (facturation électronique).
 
 ## 8. Backlog P1 / P2 (non implémenté)
 
@@ -516,11 +595,11 @@ TAX-P0-004 (PF-01C3), initialement dans cette liste, ont été corrigés — voi
 
 ## 9. Validation finale
 
-État après PF-01C3 (TAX-P0-004 inclus) :
+État après PF-01C4 (TAX-P0-005 inclus — PF-01 clôturé) :
 
 | Commande | Résultat |
 |---|---|
-| `npm test` | PASS — 20 fichiers, **234 tests**, 0 échec (183 baseline PF-01 → 191 PF-01 → 198 PF-01B → 210 PF-01C1 → 219 PF-01C2 → +15 nets en PF-01C3) |
+| `npm test` | PASS — 20 fichiers, **244 tests**, 0 échec (183 baseline PF-01 → 191 PF-01 → 198 PF-01B → 210 PF-01C1 → 219 PF-01C2 → 234 PF-01C3 → +10 nets en PF-01C4) |
 | `npx tsc --noEmit` | PASS (exit 0) |
 | `npm run lint` | PASS (exit 0) |
 | `npm run build` | PASS (exit 0) |

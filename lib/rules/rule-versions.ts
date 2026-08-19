@@ -34,6 +34,16 @@ export const ruleVersions: RuleVersion[] = [
     version: "2026.1-demo",
     title: "Facturation électronique : score de préparation TPE/PME",
     effectiveFrom: "2026-09-01",
+    status: "archived",
+    evidenceSourceIds: ["src-impots-facturation-electronique-2026", "src-aife-facturation-electronique"],
+  },
+  {
+    id: "rule-e-invoicing-timeline-2026-v2",
+    ruleSet: "facturation-electronique",
+    version: "E-INVOICING-2026.08-V2",
+    title:
+      "Facturation électronique : jalons datés 01/09/2026 (réception toutes entreprises, émission et e-reporting GE/ETI) et 01/09/2027 (émission et e-reporting PME/TPE/micro), statut résolu par date",
+    effectiveFrom: "2026-09-01",
     status: "active",
     evidenceSourceIds: ["src-impots-facturation-electronique-2026", "src-aife-facturation-electronique"],
   },

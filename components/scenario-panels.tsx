@@ -1,7 +1,13 @@
 import { FileCheck2, Landmark, ReceiptText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { eInvoicingReadiness, getEInvoicingScore } from "@/lib/simulations/e-invoicing";
+import {
+  eInvoicingReadiness,
+  getEInvoicingScore,
+  getEInvoicingTimelineEvent,
+  resolveEInvoicingEventStatus,
+  type EInvoicingReadinessItem,
+} from "@/lib/simulations/e-invoicing";
 import { transmissionChecklist, transmissionQuestions } from "@/lib/simulations/transmission";
 
 const statusTone = {
@@ -17,6 +23,27 @@ const statusLabel = {
   missing: "Manquant",
   needs_review: "À revoir",
 };
+
+const frenchDate = new Intl.DateTimeFormat("fr-FR", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/**
+ * Formule l'échéance à partir du jalon légal résolu (date d'effet + statut) et
+ * non d'une chaîne métier figée : « à compter du » avant l'entrée en vigueur,
+ * « depuis le » après (correction P0 TAX-P0-005).
+ */
+function formatReadinessDeadline(item: EInvoicingReadinessItem, asOfDate: string) {
+  if (!item.timelineEventId) return item.operationalDeadline ?? "";
+  const event = getEInvoicingTimelineEvent(item.timelineEventId);
+  if (!event) return item.operationalDeadline ?? "";
+  const status = resolveEInvoicingEventStatus(event.effectiveDate, asOfDate);
+  const [year, month, day] = event.effectiveDate.split("-").map(Number);
+  const label = frenchDate.format(new Date(Date.UTC(year, month - 1, day)));
+  return status === "IN_FORCE" ? `Obligatoire depuis le ${label}` : `À compter du ${label}`;
+}
 
 export function TransmissionPanel() {
   return (
@@ -55,8 +82,10 @@ export function TransmissionPanel() {
   );
 }
 
-export function EInvoicingPanel() {
+export function EInvoicingPanel({ asOfDate }: { asOfDate?: string } = {}) {
   const score = getEInvoicingScore();
+  // L'UI fournit la date du jour ; le moteur de règle ne lit jamais l'horloge.
+  const resolvedAsOfDate = asOfDate ?? new Date().toISOString().slice(0, 10);
 
   return (
     <Card>
@@ -77,8 +106,8 @@ export function EInvoicingPanel() {
             <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${score}%` }} />
           </div>
           <p className="mt-4 text-sm leading-6 text-muted">
-            Les échéances du 1er septembre 2026 et du 1er septembre 2027 doivent être confirmées
-            dans le calendrier projet.
+            Réception, émission et e-reporting sont trois obligations distinctes, échelonnées
+            selon la taille de l&apos;entreprise. Le statut de chaque jalon est daté ci-contre.
           </p>
         </div>
         <div className="space-y-3">
@@ -86,7 +115,9 @@ export function EInvoicingPanel() {
             <div key={item.id} className="flex items-start justify-between gap-4 rounded-lg border border-border p-4">
               <div>
                 <p className="text-sm font-semibold text-foreground">{item.label}</p>
-                <p className="mt-1 font-mono text-xs text-muted">{item.deadline}</p>
+                <p className="mt-1 font-mono text-xs text-muted">
+                  {formatReadinessDeadline(item, resolvedAsOfDate)}
+                </p>
               </div>
               <Badge tone={statusTone[item.status]}>{statusLabel[item.status]}</Badge>
             </div>

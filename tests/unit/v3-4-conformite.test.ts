@@ -8,6 +8,13 @@ import { buildLettreMission, defaultLettreMissionInput } from "../../lib/conform
 import { evidenceSources } from "../../lib/evidence/sources";
 import { FixtureSignatureProvider } from "../../lib/integrations/signature";
 import { ruleVersions } from "../../lib/rules/rule-versions";
+import {
+  E_INVOICING_FIRST_MILESTONE_DATE,
+  E_INVOICING_SECOND_MILESTONE_DATE,
+  E_INVOICING_TIMELINE,
+  resolveEInvoicingEventStatus,
+  resolveEInvoicingTimeline,
+} from "../../lib/simulations/e-invoicing";
 import { simulateProductAdequacyV24 } from "../../lib/tax/v2-engines";
 
 describe("V3.4 — DER", () => {
@@ -169,5 +176,149 @@ describe("V3.4 — acceptation du rapport d'audit", () => {
     expect(
       evidenceSources.find((source) => source.id === "src-tracfin-lignes-directrices-2026")?.authority,
     ).toBe("tracfin");
+  });
+});
+
+// --- GOLDEN CASES timeline facturation électronique (TAX-P0-005) ------------
+// Sources : REGLEMENTATION_AOUT_2026.md § 15.1 et § 17 ; calendrier officiel
+// recontrôlé sur impots.gouv.fr et economie.gouv.fr.
+// 01/09/2026 : réception pour TOUTES les entreprises ; émission et e-reporting
+// pour les grandes entreprises et ETI.
+// 01/09/2027 : émission et e-reporting pour les PME, TPE et micro-entreprises.
+// Réception, émission et e-reporting sont trois obligations distinctes.
+describe("V3.9 — timeline facturation électronique datée (TAX-P0-005)", () => {
+  const statusOf = (
+    obligation: "RECEIVE_E_INVOICE" | "ISSUE_E_INVOICE" | "E_REPORTING",
+    companySize: "LARGE" | "ETI" | "SME" | "MICRO" | "UNKNOWN",
+    asOfDate: string,
+  ) => {
+    const resolution = resolveEInvoicingTimeline({ companySize, asOfDate });
+    const event = resolution.events.find(
+      (candidate) =>
+        candidate.obligation === obligation &&
+        (candidate.companyCategory === "ALL" || candidate.companyCategory === companySize),
+    );
+    return event ? { status: event.status, applies: event.appliesToCompany } : null;
+  };
+
+  it("golden A/B — réception toutes entreprises : frontière au 01/09/2026", () => {
+    expect(statusOf("RECEIVE_E_INVOICE", "SME", "2026-08-31")).toEqual({
+      status: "UPCOMING",
+      applies: true,
+    });
+    expect(statusOf("RECEIVE_E_INVOICE", "SME", "2026-09-01")).toEqual({
+      status: "IN_FORCE",
+      applies: true,
+    });
+  });
+
+  it("golden C/D — émission grandes entreprises : frontière au 01/09/2026", () => {
+    expect(statusOf("ISSUE_E_INVOICE", "LARGE", "2026-08-31")?.status).toBe("UPCOMING");
+    expect(statusOf("ISSUE_E_INVOICE", "LARGE", "2026-09-01")).toEqual({
+      status: "IN_FORCE",
+      applies: true,
+    });
+  });
+
+  it("golden E — e-reporting ETI en vigueur au 01/09/2026", () => {
+    expect(statusOf("E_REPORTING", "ETI", "2026-09-01")).toEqual({
+      status: "IN_FORCE",
+      applies: true,
+    });
+  });
+
+  it("golden F/G/H — émission PME : encore à venir en 2026, en vigueur au 01/09/2027", () => {
+    // Le jalon 2027 ne doit jamais être appliqué aux PME dès 2026.
+    expect(statusOf("ISSUE_E_INVOICE", "SME", "2026-09-01")?.status).toBe("UPCOMING");
+    expect(statusOf("ISSUE_E_INVOICE", "SME", "2027-08-31")?.status).toBe("UPCOMING");
+    expect(statusOf("ISSUE_E_INVOICE", "SME", "2027-09-01")).toEqual({
+      status: "IN_FORCE",
+      applies: true,
+    });
+  });
+
+  it("golden I — e-reporting micro-entreprises en vigueur au 01/09/2027", () => {
+    expect(statusOf("E_REPORTING", "MICRO", "2027-09-01")).toEqual({
+      status: "IN_FORCE",
+      applies: true,
+    });
+    expect(statusOf("E_REPORTING", "MICRO", "2027-08-31")?.status).toBe("UPCOMING");
+  });
+
+  it("golden J — taille inconnue : réception déterminée, émission à qualifier", () => {
+    const resolution = resolveEInvoicingTimeline({ companySize: "UNKNOWN", asOfDate: "2026-09-01" });
+    // La réception vise toutes les entreprises : déterminable sans la taille.
+    const reception = resolution.events.find((event) => event.companyCategory === "ALL");
+    expect(reception?.appliesToCompany).toBe(true);
+    expect(reception?.status).toBe("IN_FORCE");
+    expect(reception?.qualificationRequired).toBe(false);
+
+    // Émission et e-reporting : aucune présomption de taille.
+    expect(resolution.qualificationRequired).toBe(true);
+    for (const event of resolution.events.filter((item) => item.companyCategory !== "ALL")) {
+      expect(event.appliesToCompany).toBe(false);
+      expect(event.qualificationRequired).toBe(true);
+    }
+  });
+
+  it("golden K — état de référence au 19/08/2026 : tous les jalons à venir", () => {
+    for (const companySize of ["LARGE", "ETI", "SME", "MICRO"] as const) {
+      const resolution = resolveEInvoicingTimeline({ companySize, asOfDate: "2026-08-19" });
+      expect(resolution.inForceEvents).toHaveLength(0);
+      expect(resolution.upcomingEvents.length).toBeGreaterThan(0);
+      for (const event of resolution.events) {
+        expect(event.status).toBe("UPCOMING");
+      }
+    }
+  });
+
+  it("golden — au 02/09/2026 : GE/ETI en vigueur, PME/micro encore à venir", () => {
+    const eti = resolveEInvoicingTimeline({ companySize: "ETI", asOfDate: "2026-09-02" });
+    for (const event of eti.events.filter((item) => item.appliesToCompany)) {
+      expect(event.status).toBe("IN_FORCE");
+    }
+
+    const sme = resolveEInvoicingTimeline({ companySize: "SME", asOfDate: "2026-09-02" });
+    // Réception en vigueur, mais émission et e-reporting PME toujours à venir.
+    expect(sme.inForceEvents.map((event) => event.obligation)).toEqual(["RECEIVE_E_INVOICE"]);
+    expect(sme.upcomingEvents.map((event) => event.obligation).sort()).toEqual([
+      "E_REPORTING",
+      "ISSUE_E_INVOICE",
+    ]);
+  });
+
+  it("golden — au 02/09/2027 : tous les jalons applicables sont en vigueur", () => {
+    for (const companySize of ["LARGE", "ETI", "SME", "MICRO"] as const) {
+      const resolution = resolveEInvoicingTimeline({ companySize, asOfDate: "2027-09-02" });
+      expect(resolution.upcomingEvents).toHaveLength(0);
+      expect(resolution.inForceEvents.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("golden — non-régression : dates, obligations distinctes, provenance et règle versionnée", () => {
+    // Aucune échéance 2026 ne doit rester « à venir » en 2027.
+    expect(
+      resolveEInvoicingEventStatus(E_INVOICING_FIRST_MILESTONE_DATE, "2027-01-01"),
+    ).toBe("IN_FORCE");
+    // Les deux jalons restent distincts et ne fusionnent pas.
+    expect(E_INVOICING_FIRST_MILESTONE_DATE).toBe("2026-09-01");
+    expect(E_INVOICING_SECOND_MILESTONE_DATE).toBe("2027-09-01");
+    // Les trois obligations sont modélisées séparément.
+    expect(new Set(E_INVOICING_TIMELINE.map((event) => event.obligation))).toEqual(
+      new Set(["RECEIVE_E_INVOICE", "ISSUE_E_INVOICE", "E_REPORTING"]),
+    );
+    // Provenance : chaque jalon porte sa règle versionnée et ses sources.
+    for (const event of E_INVOICING_TIMELINE) {
+      expect(event.ruleVersionId).toBe("rule-e-invoicing-timeline-2026-v2");
+      expect(event.sourceRefs.length).toBeGreaterThan(0);
+      for (const sourceId of event.sourceRefs) {
+        expect(evidenceSources.some((source) => source.id === sourceId), sourceId).toBe(true);
+      }
+    }
+    expect(
+      ruleVersions.some(
+        (rule) => rule.id === "rule-e-invoicing-timeline-2026-v2" && rule.status === "active",
+      ),
+    ).toBe(true);
   });
 });
