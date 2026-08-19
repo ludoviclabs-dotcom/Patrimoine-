@@ -15,6 +15,16 @@ import {
   type PerStatus,
 } from "./engines/per";
 import { resolveApportCessionRegime } from "./apport-cession-regimes";
+import {
+  HOLDING_TAX_ASSET_THRESHOLD,
+  HOLDING_TAX_CONTROL_THRESHOLD,
+  HOLDING_TAX_FIRST_CLOSING_DATE,
+  HOLDING_TAX_RATE,
+  isListedByArticle235TerC,
+  statutoryHousingDebtAmount,
+  type HoldingTaxAsset,
+  type HoldingTaxHousingDebt,
+} from "./holding-tax-assets";
 import { simulatePvImmoV3, type PvImmoInput } from "./engines/pv-immo";
 import {
   getInvestmentIncomeProfile,
@@ -654,100 +664,338 @@ export function simulateApportCessionV2({
   });
 }
 
+/**
+ * Inventaire de démonstration : actifs explicitement catégorisés dans la liste
+ * fermée du II A (bateau, bijoux, vins). Aucun agrégat générique.
+ */
+const DEMO_HOLDING_TAX_ASSETS: readonly HoldingTaxAsset[] = [
+  {
+    id: "holding-asset-yacht",
+    label: "Bateau de plaisance",
+    kind: "yacht-or-pleasure-boat",
+    fairMarketValueAtClose: 250_000,
+    operationalUseFraction: 0,
+  },
+  {
+    id: "holding-asset-jewelry",
+    label: "Bijoux et métaux précieux",
+    kind: "jewelry-or-precious-metal",
+    fairMarketValueAtClose: 90_000,
+    operationalUseFraction: 0,
+  },
+  {
+    id: "holding-asset-wine",
+    label: "Cave de vins et alcools",
+    kind: "wine-or-alcohol",
+    fairMarketValueAtClose: 80_000,
+    operationalUseFraction: 0,
+  },
+];
+
 export function simulateHoldingTaxV2({
   isSubjectToCorporateTax = true,
   totalAssets = 5_400_000,
   passiveIncomeRatio = 0.56,
   individualControlRatio = 0.72,
-  luxuryAssetsValue = 420_000,
+  exerciseCloseDate = "2026-12-31",
+  entitySeat = "france",
+  assets = DEMO_HOLDING_TAX_ASSETS,
+  housingDebts = [],
   financialAssetsValue = 0,
-  realEstateLuxuryValue = 0,
   cashAndReceivablesValue = 0,
 }: {
   isSubjectToCorporateTax?: boolean;
   totalAssets?: number;
   passiveIncomeRatio?: number;
   individualControlRatio?: number;
-  luxuryAssetsValue?: number;
+  /** Clôture de l'exercice : la taxe vise les exercices clos à compter du 31/12/2026. */
+  exerciseCloseDate?: string;
+  /** Le parcours société étrangère n'est pas modélisé : il bascule en revue. */
+  entitySeat?: "france" | "foreign";
+  /** Inventaire catégorisé. Seules les catégories de la liste fermée sont taxées. */
+  assets?: readonly HoldingTaxAsset[];
+  /** Dettes d'acquisition rattachées aux logements de jouissance réservée (II A 7°). */
+  housingDebts?: readonly HoldingTaxHousingDebt[];
+  /**
+   * Compatibilité : actifs financiers et trésorerie. Ils participent à la
+   * valeur totale des actifs et à la qualification des revenus passifs, mais
+   * n'entrent JAMAIS dans l'assiette (correction P0 TAX-P0-004).
+   */
   financialAssetsValue?: number;
-  realEstateLuxuryValue?: number;
   cashAndReceivablesValue?: number;
 } = {}) {
+  // --- A. Champ temporel -----------------------------------------------------
+  const effectiveForExercise = exerciseCloseDate >= HOLDING_TAX_FIRST_CLOSING_DATE;
+
+  // --- B. Assujettissement, strictement distinct de l'assiette ---------------
   const criteria = {
     isSubjectToCorporateTax,
-    assetThreshold: totalAssets >= 5_000_000,
+    assetThreshold: totalAssets >= HOLDING_TAX_ASSET_THRESHOLD,
+    // « plus de 50 % » : strictement supérieur.
     passiveIncome: passiveIncomeRatio > 0.5,
-    individualControl: individualControlRatio >= 0.5,
+    individualControl: individualControlRatio >= HOLDING_TAX_CONTROL_THRESHOLD,
   };
-  const conditionsMet = Object.values(criteria).every(Boolean);
-  const taxableLuxuryInventory =
-    luxuryAssetsValue + financialAssetsValue + realEstateLuxuryValue + cashAndReceivablesValue;
-  const holdingTax = conditionsMet ? Math.round(taxableLuxuryInventory * 0.2) : 0;
+  const eligibilityMet = Object.values(criteria).every(Boolean);
+  const foreignSeatUnsupported = entitySeat === "foreign";
+  const conditionsMet = effectiveForExercise && eligibilityMet && !foreignSeatUnsupported;
+
+  // --- C. Assiette : liste fermée uniquement ---------------------------------
+  const assetLines = assets.map((asset) => {
+    const grossValue = Math.max(0, asset.fairMarketValueAtClose);
+    const displayExempt =
+      asset.kind === "jewelry-or-precious-metal" && asset.statutoryDisplayException === true;
+    // Un logement n'est visé au 7° que si la jouissance est réservée.
+    const housingNotReserved =
+      asset.kind === "owner-use-housing" && asset.reservedForControllingPersonUse === false;
+    const listed = isListedByArticle235TerC(asset.kind) && !displayExempt && !housingNotReserved;
+
+    // Une fraction d'affectation non renseignée n'est jamais présumée nulle.
+    const operationalUseKnown = asset.operationalUseFraction !== undefined;
+    const operationalUseFraction = Math.min(1, Math.max(0, asset.operationalUseFraction ?? 0));
+    const valueAfterOperationalUse = listed ? grossValue * (1 - operationalUseFraction) : 0;
+
+    return {
+      id: asset.id,
+      label: asset.label,
+      kind: asset.kind,
+      grossValue,
+      listed,
+      operationalUseKnown,
+      operationalUseFraction,
+      valueAfterOperationalUse,
+      deductibleHousingDebt: 0,
+      taxableValue: valueAfterOperationalUse,
+      needsReview: listed && !operationalUseKnown,
+    };
+  });
+
+  // --- D. Dettes des logements de jouissance réservée (II A 7°) --------------
+  const debtNotes: string[] = [];
+  for (const debt of housingDebts) {
+    const line = assetLines.find(
+      (candidate) =>
+        candidate.id === debt.linkedHousingAssetId && candidate.kind === "owner-use-housing",
+    );
+    if (!line || !line.listed) {
+      debtNotes.push(`Dette ${debt.id} non rattachée à un logement taxable identifié : non déduite.`);
+      continue;
+    }
+    if (debt.relatedPartyDebt === true && debt.nonTaxPurposeProven !== true) {
+      debtNotes.push(
+        `Dette liée ${debt.id} exclue faute de preuve d'un objectif non principalement fiscal (II A 7° d).`,
+      );
+      continue;
+    }
+    const statutory = statutoryHousingDebtAmount(debt, exerciseCloseDate);
+    if (statutory === null) {
+      debtNotes.push(`Dette ${debt.id} : échéance contractuelle manquante, déduction non calculable.`);
+      continue;
+    }
+    const applied = Math.min(line.taxableValue, statutory);
+    line.deductibleHousingDebt += applied;
+    line.taxableValue = Math.max(0, line.taxableValue - applied);
+  }
+
+  const listedAssetLines = assetLines.filter((line) => line.listed);
+  const excludedAssetLines = assetLines.filter((line) => !line.listed);
+  const grossListedValue = listedAssetLines.reduce((sum, line) => sum + line.grossValue, 0);
+  const afterOperationalUseValue = listedAssetLines.reduce(
+    (sum, line) => sum + line.valueAfterOperationalUse,
+    0,
+  );
+  const totalHousingDebtDeducted = assetLines.reduce(
+    (sum, line) => sum + line.deductibleHousingDebt,
+    0,
+  );
+  const excludedNonListedValue =
+    excludedAssetLines.reduce((sum, line) => sum + line.grossValue, 0) +
+    Math.max(0, financialAssetsValue) +
+    Math.max(0, cashAndReceivablesValue);
+
+  // --- E. Liquidation --------------------------------------------------------
+  const taxableBase = Math.round(assetLines.reduce((sum, line) => sum + line.taxableValue, 0));
+  const holdingTax = conditionsMet ? Math.round(taxableBase * HOLDING_TAX_RATE) : 0;
+  const assetsNeedingReview = assetLines
+    .filter((line) => line.needsReview)
+    .map((line) => line.label);
+  const undetermined = foreignSeatUnsupported || assetsNeedingReview.length > 0;
+
+  const RULE = "rule-holding-tax-2026-v3";
+  const SOURCE = "src-legifrance-holding-tax-2026";
+  const COVERAGE = ["coverage-holding-tax-235-ter-c"];
 
   const steps = [
     makeStep({
-      id: "holding-step-conditions",
+      id: "holding-step-effective-date",
       order: 1,
-      label: "Critères cumulés holding patrimoniale",
-      inputValue: `${totalAssets} / ${Math.round(passiveIncomeRatio * 100)} % / ${Math.round(individualControlRatio * 100)} %`,
-      formula: "IS + actifs >= 5 M€ + revenus passifs > 50 % + contrôle >= 50 %",
-      outputValue: conditionsMet ? "Critères réunis" : "Critères non réunis",
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      label: "Champ temporel de la taxe",
+      inputValue: exerciseCloseDate,
+      formula: `taxe due au titre des exercices clos à compter du ${HOLDING_TAX_FIRST_CLOSING_DATE}`,
+      outputValue: effectiveForExercise ? "Exercice dans le champ" : "Exercice hors champ",
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "indicative",
+    }),
+    makeStep({
+      id: "holding-step-asset-threshold",
+      order: 2,
+      label: "Seuil de valeur vénale des actifs",
+      inputValue: totalAssets,
+      formula: `valeur vénale de l'ensemble des actifs ≥ ${HOLDING_TAX_ASSET_THRESHOLD} €`,
+      outputValue: criteria.assetThreshold ? "Seuil atteint" : "Seuil non atteint",
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
       confidenceStatus: "needs_review",
     }),
     makeStep({
-      id: "holding-step-inventory",
-      order: 2,
-      label: "Inventaire taxable indicatif",
-      inputValue: `${luxuryAssetsValue} / ${financialAssetsValue} / ${realEstateLuxuryValue} / ${cashAndReceivablesValue}`,
-      formula: "biens somptuaires + actifs financiers + immobilier de jouissance + liquidités ciblées",
-      outputValue: taxableLuxuryInventory,
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
-      confidenceStatus: taxableLuxuryInventory > 0 ? "needs_review" : "indicative",
-      nextAction: "Qualifier chaque ligne de l'inventaire avant application du taux.",
+      id: "holding-step-control",
+      order: 3,
+      label: "Contrôle par une personne physique",
+      inputValue: `${Math.round(individualControlRatio * 100)} %`,
+      formula:
+        "droits financiers ou de vote ≥ 50 %, contrôle indirect/familial ou pouvoir de décision de fait",
+      outputValue: criteria.individualControl ? "Condition satisfaite" : "Condition non satisfaite",
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "needs_review",
+      nextAction:
+        "Le pouvoir de décision de fait ne se déduit pas du seul pourcentage : faire qualifier.",
+    }),
+    makeStep({
+      id: "holding-step-passive-income",
+      order: 4,
+      label: "Ratio de revenus passifs",
+      inputValue: `${(passiveIncomeRatio * 100).toLocaleString("fr-FR")} %`,
+      formula:
+        "revenus passifs > 50 % des produits d'exploitation et financiers (strictement supérieur)",
+      outputValue: criteria.passiveIncome ? "Condition satisfaite" : "Condition non satisfaite",
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "needs_review",
+      nextAction:
+        "Les revenus passifs qualifient l'assujettissement ; ils ne rendent pas taxables les actifs qui les produisent.",
+    }),
+    makeStep({
+      id: "holding-step-asset-classification",
+      order: 5,
+      label: "Classification des actifs (liste fermée II A)",
+      inputValue: `${assetLines.length} actif(s) inventorié(s)`,
+      formula:
+        "seules les catégories du II A sont retenues : chasse, pêche, véhicules/yachts/aéronefs, bijoux et métaux précieux, chevaux, vins et alcools, logements à jouissance réservée",
+      outputValue: `${listedAssetLines.length} dans la liste / ${excludedAssetLines.length} hors liste`,
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "needs_review",
+      nextAction:
+        "Trésorerie, titres financiers, participations actives et œuvres d'art ne sont jamais ajoutés par analogie.",
+    }),
+    makeStep({
+      id: "holding-step-operational-use",
+      order: 6,
+      label: "Exclusion d'affectation opérationnelle",
+      inputValue: Math.round(grossListedValue),
+      formula:
+        "valeur des actifs listés × (1 − fraction affectée à une activité opérationnelle éligible)",
+      outputValue: Math.round(afterOperationalUseValue),
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: assetsNeedingReview.length > 0 ? "needs_review" : "indicative",
+      nextAction:
+        assetsNeedingReview.length > 0
+          ? `Fraction d'affectation opérationnelle non renseignée : ${assetsNeedingReview.join(", ")}.`
+          : "Conserver les preuves d'affectation opérationnelle sur l'exercice.",
+    }),
+    makeStep({
+      id: "holding-step-housing-debt",
+      order: 7,
+      label: "Dettes déductibles des logements (II A 7°)",
+      inputValue: `${housingDebts.length} dette(s)`,
+      formula:
+        "capital restant dû (échéances constantes) · amortissement linéaire légal (in fine / non constantes) · un vingtième par an (sans terme) · dettes liées exclues sauf preuve",
+      outputValue: Math.round(totalHousingDebtDeducted),
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: debtNotes.length > 0 ? "needs_review" : "indicative",
+      nextAction:
+        debtNotes.length > 0
+          ? debtNotes.join(" ")
+          : "Aucune déduction générale des dettes de la holding : seules les dettes d'acquisition des logements visés sont admises.",
+    }),
+    makeStep({
+      id: "holding-step-net-base",
+      order: 8,
+      label: "Assiette nette",
+      inputValue: `${Math.round(grossListedValue)} € listés / ${Math.round(excludedNonListedValue)} € hors liste`,
+      formula: "actifs listés − affectation opérationnelle − dettes admises des logements",
+      outputValue: taxableBase,
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "needs_review",
+    }),
+    makeStep({
+      id: "holding-step-rate",
+      order: 9,
+      label: "Taux applicable",
+      inputValue: taxableBase,
+      formula: `assiette nette × ${HOLDING_TAX_RATE * 100} %`,
+      outputValue: `${HOLDING_TAX_RATE * 100} %`,
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
+      confidenceStatus: "indicative",
     }),
     makeStep({
       id: "holding-step-tax",
-      order: 3,
-      label: "Taxe indicative sur actifs non professionnels",
-      inputValue: taxableLuxuryInventory,
-      formula: "valeur vénale brute x 20 %",
+      order: 10,
+      label: "Taxe calculée",
+      inputValue: taxableBase,
+      formula: conditionsMet
+        ? `assiette nette × ${HOLDING_TAX_RATE * 100} %`
+        : "conditions d'assujettissement ou champ temporel non satisfaits",
       outputValue: holdingTax,
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
       confidenceStatus: "needs_review",
-      nextAction: "Qualifier chaque actif et l'articulation IFI avant toute conclusion.",
+      nextAction: foreignSeatUnsupported
+        ? "Société étrangère : parcours non modélisé, reconstituer la fraction française et la clause anti-contournement."
+        : "Qualifier chaque actif et l'articulation IFI (art. 975 VII) avant toute conclusion.",
     }),
     makeStep({
       id: "holding-step-ifi-exoneration",
-      order: 4,
+      order: 11,
       label: "Exonération IFI corrélative (art. 975 VII)",
-      inputValue: taxableLuxuryInventory,
+      inputValue: taxableBase,
       formula: "les actifs soumis à la taxe holding ouvrent une exonération IFI corrélative",
       outputValue: conditionsMet ? "Articulation IFI à documenter" : "Sans objet",
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
       confidenceStatus: "needs_review",
-      nextAction: "Faire arbitrer taxe holding vs IFI par l'avocat fiscaliste (pas de double imposition).",
+      nextAction:
+        "Faire arbitrer taxe holding vs IFI par l'avocat fiscaliste (pas de double imposition).",
     }),
     makeStep({
       id: "holding-step-deadline",
-      order: 5,
+      order: 12,
       label: "Échéance : première taxation",
-      inputValue: "Exercices clos en 2026",
+      inputValue: exerciseCloseDate,
       formula: "première campagne déclarative attendue au printemps 2027",
       outputValue: "Printemps 2027",
-      ruleVersionId: "rule-holding-tax-2026-v2",
-      evidenceSourceId: "src-legifrance-holding-tax-2026",
-      coverageLimitIds: ["coverage-holding-tax-235-ter-c"],
+      ruleVersionId: RULE,
+      evidenceSourceId: SOURCE,
+      coverageLimitIds: COVERAGE,
       confidenceStatus: "needs_review",
-      nextAction: "Inscrire l'échéance au calendrier fiscal du dossier et préparer l'inventaire d'actifs.",
+      nextAction:
+        "Inscrire l'échéance au calendrier fiscal du dossier et préparer l'inventaire d'actifs.",
     }),
   ];
 
@@ -755,12 +1003,23 @@ export function simulateHoldingTaxV2({
     module: "holding-tax",
     scenario: "holding-tax",
     steps,
-    resultLabel: conditionsMet ? "Risque taxe holding détecté" : "Pas d'alerte immédiate",
+    resultLabel: foreignSeatUnsupported
+      ? "Société étrangère : parcours non modélisé"
+      : !effectiveForExercise
+        ? "Exercice hors champ de la taxe"
+        : conditionsMet
+          ? "Risque taxe holding détecté"
+          : "Pas d'alerte immédiate",
     resultAmount: holdingTax,
-    evidenceSourceIds: ["src-legifrance-holding-tax-2026"],
+    evidenceSourceIds: [SOURCE],
     reviewerRequired: "avocat",
     computedResult: {
+      exerciseCloseDate,
+      effectiveForExercise,
+      entitySeat,
+      foreignHoldingPathImplemented: !foreignSeatUnsupported,
       conditionsMet,
+      eligibilityMet,
       isSubjectToCorporateTaxCriteria: criteria.isSubjectToCorporateTax,
       assetThresholdCriteria: criteria.assetThreshold,
       passiveIncomeCriteria: criteria.passiveIncome,
@@ -768,12 +1027,20 @@ export function simulateHoldingTaxV2({
       totalAssets,
       passiveIncomeRatio,
       individualControlRatio,
-      luxuryAssetsValue,
+      listedAssetCount: listedAssetLines.length,
+      excludedAssetCount: excludedAssetLines.length,
+      grossListedValue: Math.round(grossListedValue),
+      excludedNonListedValue: Math.round(excludedNonListedValue),
       financialAssetsValue,
-      realEstateLuxuryValue,
       cashAndReceivablesValue,
-      taxableLuxuryInventory,
+      totalHousingDebtDeducted: Math.round(totalHousingDebtDeducted),
+      taxableBase,
+      taxRate: HOLDING_TAX_RATE,
       holdingTax,
+      undetermined,
+      assetsNeedingReviewCount: assetsNeedingReview.length,
+      assetsNeedingReview: assetsNeedingReview.join(" | "),
+      debtNotes: debtNotes.join(" | "),
     },
   });
 }

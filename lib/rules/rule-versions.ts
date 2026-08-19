@@ -381,6 +381,16 @@ export const ruleVersions: RuleVersion[] = [
     version: "HOLDING-TAX-2026.05-V2",
     title: "Taxe holding patrimoniale art. 235 ter C : critères cumulés et assiette",
     effectiveFrom: "2026-02-21",
+    status: "archived",
+    evidenceSourceIds: ["src-legifrance-holding-tax-2026"],
+  },
+  {
+    id: "rule-holding-tax-2026-v3",
+    ruleSet: "holding-tax",
+    version: "HOLDING-TAX-2026.08-V3",
+    title:
+      "Taxe holding art. 235 ter C : assiette en liste fermée (II A 1° à 7°), affectation opérationnelle, dettes des logements, taux 20 %, exercices clos à compter du 31/12/2026",
+    effectiveFrom: "2026-12-31",
     status: "active",
     evidenceSourceIds: ["src-legifrance-holding-tax-2026"],
   },

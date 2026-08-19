@@ -179,15 +179,38 @@ describe("V2 cabinet fiscal product layer", () => {
   it("computes holding tax only when criteria and taxable inventory are present", () => {
     expect(simulateHoldingTaxV2({ totalAssets: 4_900_000 }).computedResult?.holdingTax).toBe(0);
 
+    // TAX-P0-004 : ce cas verrouillait auparavant une assiette OUVERTE
+    // (100 000 somptuaires + 120 000 financiers + 80 000 immobilier
+    // + 30 000 liquidités = 330 000 € → 66 000 € de taxe). L'art. 235 ter C, II A
+    // définit une liste FERMÉE : trésorerie et titres financiers n'y entrent pas.
+    // Seuls les actifs catégorisés dans la liste sont désormais taxés.
     const run = simulateHoldingTaxV2({
-      luxuryAssetsValue: 100_000,
+      assets: [
+        {
+          id: "asset-boat",
+          label: "Bateau de plaisance",
+          kind: "yacht-or-pleasure-boat",
+          fairMarketValueAtClose: 100_000,
+          operationalUseFraction: 0,
+        },
+        {
+          id: "asset-housing",
+          label: "Logement à jouissance réservée",
+          kind: "owner-use-housing",
+          fairMarketValueAtClose: 80_000,
+          operationalUseFraction: 0,
+          reservedForControllingPersonUse: true,
+        },
+      ],
       financialAssetsValue: 120_000,
-      realEstateLuxuryValue: 80_000,
       cashAndReceivablesValue: 30_000,
     });
 
-    expect(run.computedResult?.taxableLuxuryInventory).toBe(330_000);
-    expect(run.computedResult?.holdingTax).toBe(66_000);
+    // Assiette = 100 000 + 80 000 uniquement ; les 150 000 € de trésorerie et
+    // de titres financiers restent hors assiette.
+    expect(run.computedResult?.taxableBase).toBe(180_000);
+    expect(run.computedResult?.excludedNonListedValue).toBe(150_000);
+    expect(run.computedResult?.holdingTax).toBe(36_000);
   });
 
   it("keeps every dynamic TaxRun attached to proof, limits and professional status", () => {

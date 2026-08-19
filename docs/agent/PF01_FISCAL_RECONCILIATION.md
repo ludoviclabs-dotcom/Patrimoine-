@@ -52,7 +52,7 @@ comme réellement présents dans le code.
 | Dutreil — pivot 21/02/2026 | `individualCommitmentYears >= 6` en dur ; exclusions LF 2026 appliquées à toute date | 4 ans avant le 21/02/2026, 6 ans à compter ; exclusions non rétroactives | Absent | § 17 TAX-P0-007 | MISMATCH | **P0 — corrigé** |
 | PFU | Constante globale 31,4 % (12,8 + 18,6) appliquée à toute assiette | Profil de taux par catégorie de revenu ; assurance-vie maintenue à 17,2 % (PFU 30 %) | Absent → 12 golden cases (PF-01C1) | § 17 TAX-P0-002 | MISMATCH | **P0 — corrigé (PF-01C1)** |
 | Apport-cession | 70 % / 36 mois en dur, sans date du fait générateur | Règle datée : 60 %/2 ans avant le 21/02/2026, 70 %/3 ans à compter | Absent → 9 golden cases (PF-01C2) | § 8.2, § 17 TAX-P0-003 | PARTIAL | **P0 — corrigé (PF-01C2)** |
-| Taxe holding | `(somptuaires + financiers + immobilier + liquidités) × 20 %` | Liste fermée art. 235 ter C, assiette et taux à qualifier | Absent | § 9, § 17 TAX-P0-004 | MISMATCH | **P0 — non corrigé** |
+| Taxe holding | `(somptuaires + financiers + immobilier + liquidités) × 20 %` | Liste fermée art. 235 ter C, assiette et taux à qualifier | Absent → 15 golden cases (PF-01C3) | § 9, § 17 TAX-P0-004 | MISMATCH | **P0 — corrigé (PF-01C3)** |
 | Résidence principale | Booléen `isMainResidence` → exonération 100 % automatique | Questionnaire factuel ; `professional-review` si délai > 1 an | Absent → 7 golden cases (PF-01B) | § 17 TAX-P0-006 | MISMATCH | **P0 — corrigé (PF-01B)** |
 | E-facturation | Échéance en chaîne statique `"1er septembre 2026"` | État daté, bascule au 1er septembre | Absent | § 17 TAX-P0-005 | PARTIAL | **P0 — non corrigé** |
 | IR / CEHR / CDHR | Barème, quotient plafonné, décote, CEHR et CDHR distinctes | Conforme au référentiel | Cas officiel service-public présent | § 1, § 3 | MATCH | N/A |
@@ -283,6 +283,82 @@ comme réellement présents dans le code.
   `lib/tax/v2-engines.ts`, `lib/rules/rule-versions.ts`.
 - **Statut** : **FIXED**, 9 golden cases ajoutés.
 
+### TAX-P0-004 — Assiette ouverte de la taxe holding (PF-01C3)
+
+- **Root cause** : `simulateHoldingTaxV2` calculait
+  `taxableLuxuryInventory = luxuryAssetsValue + financialAssetsValue +
+  realEstateLuxuryValue + cashAndReceivablesValue`, puis `× 20 %`. La
+  **trésorerie et les titres financiers étaient donc directement taxés**, par
+  simple analogie avec leur caractère patrimonial/passif. Assujettissement et
+  assiette étaient en outre fusionnés dans un unique bloc `criteria`, et aucune
+  date de clôture n'existait : la taxe pouvait être chiffrée pour un exercice
+  hors de son champ temporel.
+- **Ancien modèle** : assiette ouverte, générique, alimentée par quatre agrégats
+  scalaires dont deux ne sont pas taxables en droit.
+- **Nouveau modèle** : registre `lib/tax/holding-tax-assets.ts` portant la
+  **liste fermée** du II A sous forme d'union discriminée de catégories, plus
+  les règles de dette et les constantes légales. Le moteur sépare désormais
+  strictement **champ temporel → assujettissement → assiette → liquidation**.
+- **Assujettissement** (conditions cumulatives, distinctes de l'assiette) :
+  exercice clos à compter du **31/12/2026** ; valeur vénale de l'ensemble des
+  actifs **≥ 5 000 000 €** ; contrôle par une personne physique **≥ 50 %** ;
+  revenus passifs **> 50 %** des produits d'exploitation et financiers
+  (strictement supérieur — 50,00 % ne suffit pas).
+- **Liste fermée d'actifs taxables** (II A 1° à 7°) : chasse ; pêche ;
+  véhicules non professionnels et de tourisme, yachts et bateaux de plaisance,
+  aéronefs ; bijoux et métaux précieux (hors exception musée / monument
+  historique / exposition) ; chevaux de course ou de concours ; vins et
+  alcools ; logements dont la personne contrôlante se réserve la jouissance.
+- **Exclusions explicites** : trésorerie, titres financiers, participations
+  actives et œuvres d'art sont inventoriables mais **jamais** agrégés à
+  l'assiette. Ils continuent d'alimenter la valeur totale des actifs (seuil de
+  5 M€) et la qualification des revenus passifs — revenu passif et actif
+  taxable restent deux notions distinctes.
+- **Affectation opérationnelle** : `operationalUseFraction` exclut la proportion
+  affectée à une activité opérationnelle éligible. Une fraction **non
+  renseignée n'est jamais présumée nulle** : l'actif est signalé et le résultat
+  devient `undetermined`.
+- **Logement à jouissance réservée** : un logement réellement loué aux
+  conditions de marché (`reservedForControllingPersonUse: false`) n'est pas
+  visé par le 7° et sort de l'assiette.
+- **Dettes** : aucune déduction générale des dettes de la holding. Seules les
+  dettes d'acquisition rattachées à un logement taxable sont admises, selon la
+  formule légale du mode de remboursement — capital restant dû (échéances
+  constantes), amortissement linéaire (in fine / échéances non constantes),
+  réduction d'un vingtième par an (sans terme). Une échéance contractuelle
+  manquante ne donne lieu à aucune estimation. Les **dettes liées** sont
+  exclues sauf preuve d'un objectif non principalement fiscal ; cette preuve
+  n'est jamais supposée.
+- **Taux** : 20 %, appliqué uniquement à l'assiette nette et seulement après
+  validation du champ temporel et de l'assujettissement.
+- **Société étrangère** : `FOREIGN HOLDING PATH: NOT_IMPLEMENTED`. Le calcul
+  français n'est pas généralisé à une société étrangère : le cas bascule en
+  revue, sans taxe chiffrée.
+- **Rule ID / version** : `rule-holding-tax-2026-v3` (HOLDING-TAX-2026.08-V3),
+  date d'effet 2026-12-31, statut `active` ; `rule-holding-tax-2026-v2`
+  archivée.
+- **Source** : `REGLEMENTATION_AOUT_2026.md` § 9.1 à § 9.5 et § 17
+  (TAX-P0-004) ; CGI art. 235 ter C, II-A et IV ; LF 2026 n° 2026-103 du
+  19/02/2026, art. 7 ; implémentation de référence `MOTEURS_FISCAUX_2026.ts`
+  § 8 (L2085-2370).
+- **RECALCULATION CANDIDATE** : tous les runs `holding-tax` antérieurs ont été
+  liquidés sur une assiette ouverte incluant trésorerie et titres financiers.
+  Les dossiers concernés **surévaluaient la taxe** dès qu'un montant était
+  saisi dans les champs financiers ou de liquidités. Aucune migration
+  automatique n'a été lancée et aucun résultat historique n'a été réécrit.
+  Le cas de démonstration a été recomposé en actifs explicitement catégorisés
+  (bateau 250 000 € + bijoux 90 000 € + vins 80 000 €), ce qui laisse son
+  résultat inchangé à 84 000 €.
+- **Compatibilité** : `financialAssetsValue` et `cashAndReceivablesValue` sont
+  conservés en entrée pour la valeur totale des actifs et l'analytique, mais ne
+  sont plus additionnés à l'assiette. Les agrégats `luxuryAssetsValue` et
+  `realEstateLuxuryValue`, qui n'avaient aucune qualification légale, ont été
+  remplacés par l'inventaire catégorisé `assets`.
+- **Fichiers corrigés** : `lib/tax/holding-tax-assets.ts` (nouveau),
+  `lib/tax/v2-engines.ts`, `lib/rules/rule-versions.ts`,
+  `components/v2/tax-scenario-lab.tsx`.
+- **Statut** : **FIXED**, 15 golden cases ajoutés.
+
 ## 5. Golden cases
 
 Le golden case existant `tests/unit/v3-1-transmission.test.ts` **verrouillait la
@@ -349,6 +425,26 @@ Golden cases ajoutés en PF-01C2 pour TAX-P0-003 (9 nouveaux tests, 210 → 219)
 | G. Date de cession manquante | `regimeId`, seuil et délai `null`, `undetermined`, toutes les étapes `needs_review`, `resultAmount` non renseigné |
 | H. Cession antérieure à 2019 | seuil 50 % repris, conservation `null` non inventée, résultat `undetermined` |
 
+Golden cases ajoutés en PF-01C3 pour TAX-P0-004 (15 nouveaux tests, 219 → 234) :
+
+| Cas | Attendu |
+|---|---|
+| A. Champ temporel | clôture 30/12/2026 → taxe 0 ; 31/12/2026 → 84 000 € |
+| B. Seuil 5 M€ | 4 999 999 € → non assujetti ; 5 000 000 € → assujetti |
+| C. Contrôle | 49,99 % → condition non satisfaite ; 50 % → satisfaite |
+| D. Revenus passifs | 50,00 % → non satisfaite (strictement supérieur exigé) ; 50,01 % → satisfaite |
+| E. Assujettie sans actif listé | trésorerie 4 M€ + financiers 3 M€ → assiette 0 €, taxe 0 € |
+| F. Actifs financiers | `cash`, `financial-security`, `active-participation`, `work-of-art` à 3 M€ → assiette 0 € |
+| G. Sept catégories légales | chacune des 9 catégories mobilières à 100 000 € → 20 000 € ; logement réservé 500 000 € → 100 000 € |
+| H/I. Logement | jouissance réservée → taxé ; location aux conditions de marché → hors assiette |
+| — Exception musée/exposition | bijoux exposés → hors assiette |
+| J. Affectation opérationnelle | 40 % affectés → assiette 600 000 € ; fraction inconnue → `undetermined` + signalement |
+| K. Dette échéances constantes | capital restant dû 300 000 € déduit → assiette 500 000 € |
+| K bis. Formules légales | sans terme → 350 000 € (1/20 par an) ; in fine → 200 000 € ; échéance manquante → `null` |
+| L. Dette liée | sans preuve → non déduite + note ; preuve rapportée → déduite |
+| — Société étrangère | `NOT_IMPLEMENTED`, taxe 0 €, `undetermined` |
+| — Étapes de calcul | les 10 étapes présentes, toutes rattachées à `rule-holding-tax-2026-v3`, taux 0,2 |
+
 ### Écart d'arrondi documenté (non corrigé, volontaire)
 
 Sur le cas de référence à 1 M€ du référentiel
@@ -367,15 +463,13 @@ absorbé silencieusement.
 
 ## 6. P0 confirmés et NON corrigés
 
-Ces deux P0 restent **confirmés présents dans le code** mais volontairement hors
-périmètre des runs PF-01 à PF-01C2 : chacun demande une modification de fond sur
-un moteur distinct, et le protocole impose de corriger « un moteur à la fois ».
-TAX-P0-006 (PF-01B), TAX-P0-002 (PF-01C1) et TAX-P0-003 (PF-01C2),
-initialement dans cette liste, ont été corrigés — voir § 4.
+Ce P0 reste **confirmé présent dans le code** mais volontairement hors périmètre
+des runs PF-01 à PF-01C3 : le protocole impose de corriger « un moteur à la
+fois ». TAX-P0-006 (PF-01B), TAX-P0-002 (PF-01C1), TAX-P0-003 (PF-01C2) et
+TAX-P0-004 (PF-01C3), initialement dans cette liste, ont été corrigés — voir § 4.
 
 | ID | Constat vérifié dans le code | Emplacement |
 |---|---|---|
-| TAX-P0-004 | `holdingTax = taxableLuxuryInventory * 0.2` où l'inventaire additionne intégralement liquidités et actifs financiers : assiette ouverte, non conforme à la liste fermée de l'art. 235 ter C. | `lib/tax/v2-engines.ts`, `simulateHoldingTaxV2` |
 | TAX-P0-005 | Échéance stockée en chaîne statique `"1er septembre 2026"` ; aucun état passé/futur calculé par rapport à la date courante. | `lib/simulations/e-invoicing.ts` L12 |
 
 ## 7. Revue juridique requise / `needs_review`
@@ -396,11 +490,19 @@ initialement dans cette liste, ont été corrigés — voir § 4.
   (marqué `[À VÉRIFIER BOFIP]`) ni par les versions consultées. Le moteur
   s'abstient (`minimumHoldingPeriodMonths: null`) au lieu de supposer une durée.
   Statut pour cette sous-règle : `[BLOCKED — SOURCE VERIFICATION REQUIRED]`.
+- **Taxe holding, société étrangère** : le parcours n'est pas modélisé
+  (`FOREIGN HOLDING PATH: NOT_IMPLEMENTED`). La reconstitution de la fraction
+  de participation représentative des actifs taxables, le démembrement et la
+  clause anti-contournement demandent une analyse dédiée. Le moteur bascule en
+  revue plutôt que de généraliser le calcul français.
+- **Taxe holding, doctrine** : la doctrine administrative n'est pas stabilisée
+  (§ 9.6). Une revue juridique reste obligatoire sur chaque dossier tant qu'elle
+  ne l'est pas.
 - Aucune autre situation `[BLOCKED — SOURCE VERIFICATION REQUIRED]` n'a été
-  rencontrée : les cinq corrections (PF-01 + PF-01B + PF-01C1 + PF-01C2)
-  reposent sur le référentiel approuvé du 18/08/2026 et, pour l'apport-cession,
-  sur une vérification complémentaire des versions consolidées de l'art.
-  150-0 B ter sur legifrance.gouv.fr.
+  rencontrée : les six corrections (PF-01 + PF-01B + PF-01C1 + PF-01C2 +
+  PF-01C3) reposent sur le référentiel approuvé du 18/08/2026 et, pour
+  l'apport-cession, sur une vérification complémentaire des versions
+  consolidées de l'art. 150-0 B ter sur legifrance.gouv.fr.
 
 ## 8. Backlog P1 / P2 (non implémenté)
 
@@ -414,11 +516,11 @@ initialement dans cette liste, ont été corrigés — voir § 4.
 
 ## 9. Validation finale
 
-État après PF-01C2 (TAX-P0-003 inclus) :
+État après PF-01C3 (TAX-P0-004 inclus) :
 
 | Commande | Résultat |
 |---|---|
-| `npm test` | PASS — 20 fichiers, **219 tests**, 0 échec (183 baseline PF-01 → 191 PF-01 → 198 PF-01B → 210 PF-01C1 → +9 nets en PF-01C2) |
+| `npm test` | PASS — 20 fichiers, **234 tests**, 0 échec (183 baseline PF-01 → 191 PF-01 → 198 PF-01B → 210 PF-01C1 → 219 PF-01C2 → +15 nets en PF-01C3) |
 | `npx tsc --noEmit` | PASS (exit 0) |
 | `npm run lint` | PASS (exit 0) |
 | `npm run build` | PASS (exit 0) |

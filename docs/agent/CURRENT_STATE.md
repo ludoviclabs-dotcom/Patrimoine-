@@ -9,6 +9,7 @@ HEAD before PF-01: afe1a79713eeb16935993d04d10d9f263569d1a6
 HEAD before PF-01B: a1a6d0cb2bb0ec7993aa99dd408b0838a126d3d8
 HEAD before PF-01C1: 8531cc900f6bf5eaccbdaa28949cba8f6c15a13c
 HEAD before PF-01C2: b1263b2053ebcd5616fdaac1dc2c3c114b566a9a
+HEAD before PF-01C3: 7c7597a7805f01170c6319232cbaee6e5c7cd7a4
 git diff --check: PASS (exit 0, no whitespace/conflict-marker errors)
 
 ## Current milestone
@@ -31,8 +32,9 @@ P0 — Fiscal engines LF 2026 + golden cases
 - PF-01B — TAX-P0-006 (main residence capital-gain exemption) fixed.
 - PF-01C1 — TAX-P0-002 (PFU as a global constant) fixed.
 - PF-01C2 — TAX-P0-003 (apport-cession not versioned by operative date) fixed.
+- PF-01C3 — TAX-P0-004 (holding-tax base not a closed statutory list) fixed.
 
-## PF-01 → PF-01C2 — Fiscal reconciliation (partial, 5 of 7 P0 fixed)
+## PF-01 → PF-01C3 — Fiscal reconciliation (partial, 6 of 7 P0 fixed)
 
 Full report: `docs/agent/PF01_FISCAL_RECONCILIATION.md`
 
@@ -43,7 +45,7 @@ démembrement, assurance-vie, IS, SCI, exit tax, PER.
 P0 detected: 7 of 7 in the approved P0 register (REGLEMENTATION_AOUT_2026.md
 § 17) confirmed as genuinely present in the code.
 
-P0 fixed (5):
+P0 fixed (6):
 - TAX-P0-001 (Dutreil) — réduction de 50 % rattachée à tort à l'ancien art. 790 I
   et désactivée après le 21/02/2026. L'art. 790 CGI n'a pas été abrogé par la
   LF 2026. Sur le cas de référence, les droits passent de 78 195 € à 39 098 € :
@@ -76,6 +78,19 @@ P0 fixed (5):
   En l'absence de date, le moteur s'abstient (`undetermined`, `needs_review`) —
   le régime 2026 n'est jamais présumé. Vérifié en complément du référentiel sur
   legifrance.gouv.fr (versions consolidées de l'art. 150-0 B ter).
+- TAX-P0-004 (taxe holding 235 ter C, PF-01C3) — l'assiette additionnait
+  `luxuryAssetsValue + financialAssetsValue + realEstateLuxuryValue +
+  cashAndReceivablesValue` puis appliquait 20 % : la trésorerie et les titres
+  financiers étaient donc taxés par analogie. Remplacé par la LISTE FERMÉE du
+  II A (`lib/tax/holding-tax-assets.ts`) : chasse, pêche, véhicules/yachts/
+  aéronefs, bijoux et métaux précieux, chevaux, vins et alcools, logements à
+  jouissance réservée. Champ temporel, assujettissement, assiette et
+  liquidation sont désormais quatre étapes distinctes. Trésorerie et titres
+  financiers alimentent le seuil de 5 M€ et la qualification des revenus
+  passifs, jamais l'assiette. Affectation opérationnelle, exception
+  musée/exposition, dettes des logements (capital restant dû / amortissement
+  linéaire / un vingtième par an, dettes liées exclues sauf preuve) modélisées.
+  Société étrangère : NOT_IMPLEMENTED, bascule en revue.
 
 Rule governance:
 - `rule-dutreil-2026-v4` (DUTREIL-2026.08-V4) active, `rule-dutreil-2026-v3` archived.
@@ -91,16 +106,23 @@ Rule governance:
   `rule-apport-cession-2026-v3` (APPORT-CESSION-2026.08-V3) active — one per
   regime, both selected by disposal date; `rule-apport-cession-pre-2019-v1`
   draft (holding period undocumented); `rule-apport-cession-2026-v2` archived.
+- `rule-holding-tax-2026-v3` (HOLDING-TAX-2026.08-V3) active, effective
+  2026-12-31; `rule-holding-tax-2026-v2` archived.
 
-P0 confirmed but NOT fixed (2): TAX-P0-004 (holding tax base not a closed list),
-TAX-P0-005 (e-invoicing static date). Both require a change of scope to a
-distinct engine, out of bounds for a one-engine-at-a-time run.
+P0 confirmed but NOT fixed (1): TAX-P0-005 (e-invoicing static date). It
+requires a change of scope to a distinct engine, out of bounds for a
+one-engine-at-a-time run.
 
-RECALCULATION CANDIDATE: apport-cession runs produced before PF-01C2 were all
-liquidated under the 70 %/3-year/5-year regime regardless of the actual disposal
-date. Files concerning a disposal before 21/02/2026 were assessed against too
-high a threshold and too long a holding period. No automatic migration was run
-and no historical result was rewritten.
+RECALCULATION CANDIDATE (PF-01C2): apport-cession runs produced before PF-01C2
+were all liquidated under the 70 %/3-year/5-year regime regardless of the actual
+disposal date. Files concerning a disposal before 21/02/2026 were assessed
+against too high a threshold and too long a holding period. No automatic
+migration was run and no historical result was rewritten.
+
+RECALCULATION CANDIDATE (PF-01C3): holding-tax runs produced before PF-01C3 were
+liquidated on an open base including cash and financial securities. Any file
+with a value entered in those fields OVERSTATED the tax. No automatic migration
+was run and no historical result was rewritten.
 
 Two pre-existing golden cases locked in erroneous rules and were replaced (not
 adjusted to pass): the art. 790 abrogation in PF-01, and the bare-boolean main
@@ -125,8 +147,8 @@ None.
 
 ## Tests
 
-Unit: PASS — 20 files, 219 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
-210 PF-01C1 → +9 net in PF-01C2), 0 failing
+Unit: PASS — 20 files, 234 tests (183 PF-01 baseline → 191 PF-01 → 198 PF-01B →
+210 PF-01C1 → 219 PF-01C2 → +15 net in PF-01C3), 0 failing
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -135,14 +157,19 @@ non-interactive environment. Must be run before production release.
 
 ## Open blockers
 
-None blocking the delivered scope. 2 confirmed P0 remain open by design (see
-section above): TAX-P0-004, TAX-P0-005.
+None blocking the delivered scope. 1 confirmed P0 remains open by design (see
+section above): TAX-P0-005.
 
 ## Regulatory verification required
 
 - Holding animatrice: not modelled. Requires a faisceau-d'indices approach with
   `needs_review`, per REGLEMENTATION_AOUT_2026.md § 7.4 and
   Cass. com., 17 déc. 2025, n° 24-17.415.
+- Holding tax, foreign company: FOREIGN HOLDING PATH NOT_IMPLEMENTED. Requires
+  the French participation fraction, dismemberment and anti-avoidance clause
+  (§ 9.6); the engine abstains rather than generalising the French computation.
+- Holding tax doctrine is not stabilised: a legal review remains mandatory on
+  every file until it is.
 - DMTG rounding convention: the repository rounds per bracket (reproducing the
   official service-public example, 50 000 € → 8 195 €) while the reference
   rounds once on an exact base. 1 € divergence on the 1 M€ Dutreil golden case
@@ -156,7 +183,7 @@ section above): TAX-P0-004, TAX-P0-005.
 
 ## Next recommended task
 
-PF-01C3 — Model CGI art. 235 ter C holding-tax base as a closed statutory list.
+PF-01C4 — Make e-invoicing timeline state date-aware (TAX-P0-005).
 
 ## Handoff notes
 

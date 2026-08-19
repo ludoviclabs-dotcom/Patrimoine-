@@ -14,6 +14,10 @@ import {
 import { computeSciIrVsIs, simulateSciIrVsIs } from "../../lib/tax/engines/sci-arbitrage";
 import { resolveApportCessionRegime } from "../../lib/tax/apport-cession-regimes";
 import {
+  statutoryHousingDebtAmount,
+  type HoldingTaxAsset,
+} from "../../lib/tax/holding-tax-assets";
+import {
   simulateApportCessionV2,
   simulateHoldingTaxV2,
   simulatePerDeductionV2,
@@ -154,6 +158,287 @@ describe("V3.2 — polish apport-cession et taxe holding", () => {
     expect(run.steps.some((step) => step.id === "holding-step-ifi-exoneration")).toBe(true);
     const deadline = run.steps.find((step) => step.id === "holding-step-deadline");
     expect(deadline?.outputValue).toBe("Printemps 2027");
+  });
+});
+
+// --- GOLDEN CASES assiette fermée art. 235 ter C (TAX-P0-004) ---------------
+// Sources : REGLEMENTATION_AOUT_2026.md § 9.1 à § 9.5 ; CGI art. 235 ter C, II-A ;
+// LF 2026 n° 2026-103 du 19/02/2026, art. 7.
+// L'assiette est une LISTE FERMÉE. Un actif n'y entre que s'il relève d'une
+// catégorie énumérée : la trésorerie et les titres financiers, même s'ils
+// produisent les revenus passifs qui déclenchent l'assujettissement, n'y
+// entrent jamais par analogie.
+describe("V3.8 — assiette fermée de la taxe holding (TAX-P0-004)", () => {
+  const listedAsset = (
+    kind: HoldingTaxAsset["kind"],
+    fairMarketValueAtClose: number,
+    extra: Partial<HoldingTaxAsset> = {},
+  ): HoldingTaxAsset => ({
+    id: `asset-${kind}`,
+    label: kind,
+    kind,
+    fairMarketValueAtClose,
+    operationalUseFraction: 0,
+    ...extra,
+  });
+
+  it("golden A — champ temporel : exercices clos à compter du 31/12/2026", () => {
+    const before = simulateHoldingTaxV2({ exerciseCloseDate: "2026-12-30" });
+    expect(before.computedResult?.effectiveForExercise).toBe(false);
+    expect(before.computedResult?.holdingTax).toBe(0);
+
+    const onDate = simulateHoldingTaxV2({ exerciseCloseDate: "2026-12-31" });
+    expect(onDate.computedResult?.effectiveForExercise).toBe(true);
+    expect(onDate.computedResult?.holdingTax).toBe(84_000);
+  });
+
+  it("golden B — seuil de 5 M€ de valeur vénale des actifs", () => {
+    expect(
+      simulateHoldingTaxV2({ totalAssets: 4_999_999 }).computedResult?.assetThresholdCriteria,
+    ).toBe(false);
+    expect(simulateHoldingTaxV2({ totalAssets: 4_999_999 }).computedResult?.holdingTax).toBe(0);
+    expect(
+      simulateHoldingTaxV2({ totalAssets: 5_000_000 }).computedResult?.assetThresholdCriteria,
+    ).toBe(true);
+    expect(simulateHoldingTaxV2({ totalAssets: 5_000_000 }).computedResult?.holdingTax).toBe(84_000);
+  });
+
+  it("golden C — contrôle par une personne physique : seuil de 50 %", () => {
+    expect(
+      simulateHoldingTaxV2({ individualControlRatio: 0.4999 }).computedResult
+        ?.individualControlCriteria,
+    ).toBe(false);
+    expect(
+      simulateHoldingTaxV2({ individualControlRatio: 0.5 }).computedResult
+        ?.individualControlCriteria,
+    ).toBe(true);
+  });
+
+  it("golden D — revenus passifs : strictement supérieurs à 50 %", () => {
+    // 50,00 % ne vaut pas « plus de 50 % ».
+    expect(
+      simulateHoldingTaxV2({ passiveIncomeRatio: 0.5 }).computedResult?.passiveIncomeCriteria,
+    ).toBe(false);
+    expect(simulateHoldingTaxV2({ passiveIncomeRatio: 0.5 }).computedResult?.holdingTax).toBe(0);
+    expect(
+      simulateHoldingTaxV2({ passiveIncomeRatio: 0.5001 }).computedResult?.passiveIncomeCriteria,
+    ).toBe(true);
+  });
+
+  it("golden E — holding assujettie mais sans actif listé : assiette nulle", () => {
+    const run = simulateHoldingTaxV2({
+      assets: [],
+      financialAssetsValue: 3_000_000,
+      cashAndReceivablesValue: 4_000_000,
+    });
+    // Les conditions d'assujettissement sont réunies...
+    expect(run.computedResult?.conditionsMet).toBe(true);
+    // ...mais la liste fermée est vide : aucune taxe.
+    expect(run.computedResult?.taxableBase).toBe(0);
+    expect(run.computedResult?.holdingTax).toBe(0);
+    expect(run.computedResult?.excludedNonListedValue).toBe(7_000_000);
+  });
+
+  it("golden F — trésorerie et titres financiers ne rejoignent jamais l'assiette", () => {
+    for (const kind of ["cash", "financial-security", "active-participation", "work-of-art"] as const) {
+      const run = simulateHoldingTaxV2({ assets: [listedAsset(kind, 3_000_000)] });
+      expect(run.computedResult?.listedAssetCount).toBe(0);
+      expect(run.computedResult?.taxableBase).toBe(0);
+      expect(run.computedResult?.holdingTax).toBe(0);
+      expect(run.computedResult?.excludedNonListedValue).toBe(3_000_000);
+    }
+  });
+
+  it("golden G — chaque catégorie de la liste fermée est taxée à 20 %", () => {
+    const categories: HoldingTaxAsset["kind"][] = [
+      "hunting",
+      "fishing",
+      "non-professional-vehicle",
+      "tourism-vehicle",
+      "yacht-or-pleasure-boat",
+      "aircraft",
+      "jewelry-or-precious-metal",
+      "race-or-competition-horse",
+      "wine-or-alcohol",
+    ];
+    for (const kind of categories) {
+      const run = simulateHoldingTaxV2({ assets: [listedAsset(kind, 100_000)] });
+      expect(run.computedResult?.listedAssetCount).toBe(1);
+      expect(run.computedResult?.taxableBase).toBe(100_000);
+      expect(run.computedResult?.holdingTax).toBe(20_000);
+    }
+    // 7e catégorie : logement à jouissance réservée.
+    const housing = simulateHoldingTaxV2({
+      assets: [listedAsset("owner-use-housing", 500_000, { reservedForControllingPersonUse: true })],
+    });
+    expect(housing.computedResult?.taxableBase).toBe(500_000);
+    expect(housing.computedResult?.holdingTax).toBe(100_000);
+  });
+
+  it("golden H/I — logement : jouissance réservée taxée, location normale exclue", () => {
+    const reserved = simulateHoldingTaxV2({
+      assets: [listedAsset("owner-use-housing", 500_000, { reservedForControllingPersonUse: true })],
+    });
+    expect(reserved.computedResult?.taxableBase).toBe(500_000);
+
+    // Logement réellement loué aux conditions de marché : hors 7°.
+    const rented = simulateHoldingTaxV2({
+      assets: [
+        listedAsset("owner-use-housing", 500_000, { reservedForControllingPersonUse: false }),
+      ],
+    });
+    expect(rented.computedResult?.listedAssetCount).toBe(0);
+    expect(rented.computedResult?.taxableBase).toBe(0);
+  });
+
+  it("golden — exception musée/exposition sur bijoux et métaux précieux", () => {
+    const run = simulateHoldingTaxV2({
+      assets: [
+        listedAsset("jewelry-or-precious-metal", 200_000, { statutoryDisplayException: true }),
+      ],
+    });
+    expect(run.computedResult?.listedAssetCount).toBe(0);
+    expect(run.computedResult?.taxableBase).toBe(0);
+  });
+
+  it("golden J — affectation opérationnelle : proportion exclue, inconnue = revue", () => {
+    const partial = simulateHoldingTaxV2({
+      assets: [listedAsset("aircraft", 1_000_000, { operationalUseFraction: 0.4 })],
+    });
+    expect(partial.computedResult?.taxableBase).toBe(600_000);
+    expect(partial.computedResult?.holdingTax).toBe(120_000);
+
+    // Fraction non renseignée : jamais présumée nulle sans signalement.
+    const unknown = simulateHoldingTaxV2({
+      assets: [
+        {
+          id: "asset-aircraft",
+          label: "Aéronef",
+          kind: "aircraft",
+          fairMarketValueAtClose: 1_000_000,
+        },
+      ],
+    });
+    expect(unknown.computedResult?.undetermined).toBe(true);
+    expect(unknown.computedResult?.assetsNeedingReviewCount).toBe(1);
+  });
+
+  it("golden K — dette d'acquisition d'un logement à échéances constantes", () => {
+    const run = simulateHoldingTaxV2({
+      assets: [
+        listedAsset("owner-use-housing", 800_000, { reservedForControllingPersonUse: true }),
+      ],
+      housingDebts: [
+        {
+          id: "debt-1",
+          linkedHousingAssetId: "asset-owner-use-housing",
+          originalPrincipal: 500_000,
+          outstandingPrincipalAtClose: 300_000,
+          repaymentKind: "amortising",
+          disbursementDate: "2020-01-01",
+        },
+      ],
+    });
+    // Capital restant dû déduit ; aucune déduction générale des autres dettes.
+    expect(run.computedResult?.totalHousingDebtDeducted).toBe(300_000);
+    expect(run.computedResult?.taxableBase).toBe(500_000);
+    expect(run.computedResult?.holdingTax).toBe(100_000);
+  });
+
+  it("golden K bis — formules légales in fine et sans terme", () => {
+    const base = {
+      id: "d",
+      linkedHousingAssetId: "h",
+      originalPrincipal: 500_000,
+      outstandingPrincipalAtClose: 500_000,
+      disbursementDate: "2020-01-01",
+    } as const;
+    // Sans terme : réduction d'un vingtième par an (6 années révolues).
+    expect(
+      statutoryHousingDebtAmount({ ...base, repaymentKind: "no-term" }, "2026-12-31"),
+    ).toBe(350_000);
+    // In fine : amortissement linéaire sur la durée contractuelle.
+    expect(
+      statutoryHousingDebtAmount(
+        { ...base, repaymentKind: "bullet-or-nonconstant", contractualEndDate: "2030-01-01" },
+        "2026-12-31",
+      ),
+    ).toBe(200_000);
+    // Échéance manquante : la déduction n'est pas estimée.
+    expect(
+      statutoryHousingDebtAmount({ ...base, repaymentKind: "bullet-or-nonconstant" }, "2026-12-31"),
+    ).toBeNull();
+  });
+
+  it("golden L — dette liée non déductible sans preuve d'objectif non fiscal", () => {
+    const run = simulateHoldingTaxV2({
+      assets: [
+        listedAsset("owner-use-housing", 800_000, { reservedForControllingPersonUse: true }),
+      ],
+      housingDebts: [
+        {
+          id: "debt-related",
+          linkedHousingAssetId: "asset-owner-use-housing",
+          originalPrincipal: 500_000,
+          outstandingPrincipalAtClose: 300_000,
+          repaymentKind: "amortising",
+          disbursementDate: "2020-01-01",
+          relatedPartyDebt: true,
+        },
+      ],
+    });
+    expect(run.computedResult?.totalHousingDebtDeducted).toBe(0);
+    expect(run.computedResult?.taxableBase).toBe(800_000);
+    expect(String(run.computedResult?.debtNotes)).toMatch(/objectif non principalement fiscal/);
+
+    // Preuve rapportée : la déduction redevient possible.
+    const proven = simulateHoldingTaxV2({
+      assets: [
+        listedAsset("owner-use-housing", 800_000, { reservedForControllingPersonUse: true }),
+      ],
+      housingDebts: [
+        {
+          id: "debt-related",
+          linkedHousingAssetId: "asset-owner-use-housing",
+          originalPrincipal: 500_000,
+          outstandingPrincipalAtClose: 300_000,
+          repaymentKind: "amortising",
+          disbursementDate: "2020-01-01",
+          relatedPartyDebt: true,
+          nonTaxPurposeProven: true,
+        },
+      ],
+    });
+    expect(proven.computedResult?.totalHousingDebtDeducted).toBe(300_000);
+  });
+
+  it("golden — société étrangère : parcours non modélisé, pas de calcul français généralisé", () => {
+    const run = simulateHoldingTaxV2({ entitySeat: "foreign" });
+    expect(run.computedResult?.foreignHoldingPathImplemented).toBe(false);
+    expect(run.computedResult?.conditionsMet).toBe(false);
+    expect(run.computedResult?.undetermined).toBe(true);
+    expect(run.computedResult?.holdingTax).toBe(0);
+    expect(run.resultLabel).toMatch(/étrangère/);
+  });
+
+  it("golden — les étapes couvrent date, assujettissement, assiette et liquidation", () => {
+    const run = simulateHoldingTaxV2();
+    for (const id of [
+      "holding-step-effective-date",
+      "holding-step-asset-threshold",
+      "holding-step-control",
+      "holding-step-passive-income",
+      "holding-step-asset-classification",
+      "holding-step-operational-use",
+      "holding-step-housing-debt",
+      "holding-step-net-base",
+      "holding-step-rate",
+      "holding-step-tax",
+    ]) {
+      expect(run.steps.some((step) => step.id === id)).toBe(true);
+    }
+    expect(run.steps.every((step) => step.ruleVersionId === "rule-holding-tax-2026-v3")).toBe(true);
+    expect(run.computedResult?.taxRate).toBe(0.2);
   });
 });
 

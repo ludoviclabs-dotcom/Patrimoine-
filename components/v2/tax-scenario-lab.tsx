@@ -138,14 +138,19 @@ export function TaxScenarioLab({
     fullOwnership: true,
     transmissionDate: "2026-06-11",
   });
+  // Assiette art. 235 ter C : liste fermée. Chaque saisie correspond à une
+  // catégorie légale explicite ; trésorerie et titres financiers restent hors
+  // assiette et ne servent qu'au seuil de 5 M€ (correction P0 TAX-P0-004).
   const [holding, setHolding] = useState({
     isSubjectToCorporateTax: true,
     totalAssets: 5_400_000,
     passiveIncomePercent: 56,
     individualControlPercent: 72,
-    luxuryAssetsValue: 420_000,
+    boatOrAircraftValue: 250_000,
+    jewelryValue: 90_000,
+    wineOrAlcoholValue: 80_000,
+    reservedHousingValue: 0,
     financialAssetsValue: 0,
-    realEstateLuxuryValue: 0,
     cashAndReceivablesValue: 0,
   });
   const [pea, setPea] = useState({
@@ -234,11 +239,46 @@ export function TaxScenarioLab({
       });
     if (activeScenario === "exit-tax") return simulateExitTaxSignal(exitTax);
     if (activeScenario === "dutreil") return simulateDutreilV2(dutreil);
-    if (activeScenario === "holding-tax") return simulateHoldingTaxV2({
-      ...holding,
-      passiveIncomeRatio: holding.passiveIncomePercent / 100,
-      individualControlRatio: holding.individualControlPercent / 100,
-    });
+    if (activeScenario === "holding-tax")
+      return simulateHoldingTaxV2({
+        isSubjectToCorporateTax: holding.isSubjectToCorporateTax,
+        totalAssets: holding.totalAssets,
+        passiveIncomeRatio: holding.passiveIncomePercent / 100,
+        individualControlRatio: holding.individualControlPercent / 100,
+        financialAssetsValue: holding.financialAssetsValue,
+        cashAndReceivablesValue: holding.cashAndReceivablesValue,
+        assets: [
+          {
+            id: "lab-boat",
+            label: "Bateau / aéronef",
+            kind: "yacht-or-pleasure-boat" as const,
+            fairMarketValueAtClose: holding.boatOrAircraftValue,
+            operationalUseFraction: 0,
+          },
+          {
+            id: "lab-jewelry",
+            label: "Bijoux et métaux précieux",
+            kind: "jewelry-or-precious-metal" as const,
+            fairMarketValueAtClose: holding.jewelryValue,
+            operationalUseFraction: 0,
+          },
+          {
+            id: "lab-wine",
+            label: "Vins et alcools",
+            kind: "wine-or-alcohol" as const,
+            fairMarketValueAtClose: holding.wineOrAlcoholValue,
+            operationalUseFraction: 0,
+          },
+          {
+            id: "lab-housing",
+            label: "Logement à jouissance réservée",
+            kind: "owner-use-housing" as const,
+            fairMarketValueAtClose: holding.reservedHousingValue,
+            operationalUseFraction: 0,
+            reservedForControllingPersonUse: true,
+          },
+        ],
+      });
     if (activeScenario === "pea") return simulatePeaWithdrawalV2({
       ...pea,
       socialContributionRate: pea.socialContributionRate / 100,
@@ -380,10 +420,12 @@ export function TaxScenarioLab({
               <NumberInput label="Total actif holding" value={holding.totalAssets} onChange={(value) => setHolding((item) => ({ ...item, totalAssets: value }))} />
               <NumberInput label="Revenus passifs (%)" value={holding.passiveIncomePercent} onChange={(value) => setHolding((item) => ({ ...item, passiveIncomePercent: value }))} />
               <NumberInput label="Contrôle personne physique (%)" value={holding.individualControlPercent} onChange={(value) => setHolding((item) => ({ ...item, individualControlPercent: value }))} />
-              <NumberInput label="Biens somptuaires" value={holding.luxuryAssetsValue} onChange={(value) => setHolding((item) => ({ ...item, luxuryAssetsValue: value }))} />
-              <NumberInput label="Actifs financiers ciblés" value={holding.financialAssetsValue} onChange={(value) => setHolding((item) => ({ ...item, financialAssetsValue: value }))} />
-              <NumberInput label="Immobilier de jouissance" value={holding.realEstateLuxuryValue} onChange={(value) => setHolding((item) => ({ ...item, realEstateLuxuryValue: value }))} />
-              <NumberInput label="Liquidités ciblées" value={holding.cashAndReceivablesValue} onChange={(value) => setHolding((item) => ({ ...item, cashAndReceivablesValue: value }))} />
+              <NumberInput label="Bateau de plaisance / aéronef (II A 3°)" value={holding.boatOrAircraftValue} onChange={(value) => setHolding((item) => ({ ...item, boatOrAircraftValue: value }))} />
+              <NumberInput label="Bijoux et métaux précieux (II A 4°)" value={holding.jewelryValue} onChange={(value) => setHolding((item) => ({ ...item, jewelryValue: value }))} />
+              <NumberInput label="Vins et alcools (II A 6°)" value={holding.wineOrAlcoholValue} onChange={(value) => setHolding((item) => ({ ...item, wineOrAlcoholValue: value }))} />
+              <NumberInput label="Logement à jouissance réservée (II A 7°)" value={holding.reservedHousingValue} onChange={(value) => setHolding((item) => ({ ...item, reservedHousingValue: value }))} />
+              <NumberInput label="Actifs financiers — hors assiette" value={holding.financialAssetsValue} onChange={(value) => setHolding((item) => ({ ...item, financialAssetsValue: value }))} />
+              <NumberInput label="Trésorerie — hors assiette" value={holding.cashAndReceivablesValue} onChange={(value) => setHolding((item) => ({ ...item, cashAndReceivablesValue: value }))} />
               <CheckboxInput label="Holding soumise à l'IS" checked={holding.isSubjectToCorporateTax} onChange={(checked) => setHolding((item) => ({ ...item, isSubjectToCorporateTax: checked }))} />
             </div>
           ) : null}
