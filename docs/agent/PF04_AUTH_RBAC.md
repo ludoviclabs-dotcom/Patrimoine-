@@ -78,7 +78,74 @@ The webhook never creates, activates, changes or revokes an internal
 must explicitly link a known `auth_provider_organizations` row to a
 pre-existing `tenants` row and manage the internal membership in a controlled
 administrative workflow. This preserves the database as the tenant authority.
-PF-04B will add that RBAC workflow and its audit/UI surface.
+## PF-04B — authenticated tenant context and RBAC
+
+**IMPLEMENTED / VERIFIED_LOCALLY.** Migration `0007` adds an explicit
+per-dossier `case_access_grants` table and a security-definer RLS predicate.
+An active tenant membership with role `client` alone grants no dossier access:
+the client must also have an active, non-revoked grant for that dossier.
+
+The legacy enum remains intentionally stable; labels in the matrix are:
+`admin` = TENANT_ADMIN, `conseiller` = ADVISER, `expert` = EXPERT, `client` =
+CLIENT and existing `auditeur` = AUDITOR. No client input can select one of
+these roles: fixture routes use one fixed synthetic actor, and the legacy demo
+identity entry point fails closed in DATABASE and production environments.
+
+| Capability | TENANT_ADMIN | ADVISER | EXPERT | CLIENT | AUDITOR |
+|---|---|---|---|---|---|
+| `dossier.read` | yes | yes | yes | explicit grant + RLS | yes |
+| `dossier.write` | yes | yes | no | no | no |
+| `simulation.run` | yes | yes | no | no | no |
+| `simulation.review` | yes | no | yes | no | no |
+| `report.generate` | yes | yes | yes | no | no |
+| `report.validate` | yes | no | yes | no | no |
+| `document.upload` | yes | yes | no | yes | no |
+| `document.download` | yes | yes | yes | explicit grant + RLS | yes |
+| `member.invite` | yes | no | no | no | no |
+| `rule.review` | yes | no | yes | no | no |
+| `admin.manage` | yes | no | no | no | no |
+
+`lib/auth/authorization.ts` is the single capability matrix. Repositories use
+`withAuthorizedTenantTransaction`, which checks `can(actor, action, resource)`
+before executing a sensitive operation. A capability denial is persisted as a
+sanitized `authorization.denied` audit event in a separate tenant/RLS
+transaction before the caller receives `TENANT_AUTHORIZATION_DENIED`.
+
+The server chain is now:
+
+```text
+Clerk session → internal identity → active DB membership → TenantContext
+→ central capability check → resource-specific RLS → repository transaction
+```
+
+The `case_access_grants` RLS function protects `client_cases`, `documents` and
+private-document metadata. A client can upload only a document attached to an
+explicitly granted dossier; it cannot update/delete it. Client report access is
+denied in PF-04B because no report-read capability was requested. Existing generic RLS still denies all
+cross-tenant dossier/document/report identifiers for every role, including an
+administrator.
+
+Server-only `createMembershipService` provides invite, role-change and revoke
+operations; all require the central policy and record `member.invited`,
+`member.role.changed` or `membership.changed`. Clerk webhooks remain an
+observational audit path and cannot mutate business memberships. Every resolved
+Clerk session records `session.mapped` without a token, email or secret.
+
+### PF-04B local evidence
+
+- `tests/unit/pf04b-rbac.test.ts` proves the matrix, role boundaries and
+  cross-tenant policy denial.
+- `npm run test:postgres` applies migrations through `0007` in fresh native
+  PostgreSQL and proves a client sees only the granted dossier/document,
+  cannot write/run expert actions, cannot read an ungranted same-tenant dossier
+  or a cabinet-B URL/report, and is denied immediately after DB revocation
+  despite a still-usable context object.
+- `tests/postgres/pf03b-tenant-isolation.test.ts` continues to prove direct
+  ID-based A/B dossier, document, simulation, audit and report isolation.
+
+**PRODUCTION_VERIFICATION_PENDING:** real Clerk session, Vercel, managed
+PostgreSQL and signed webhook evidence remain unavailable; no external user or
+database has been modified.
 
 ## Credentials and least privilege
 

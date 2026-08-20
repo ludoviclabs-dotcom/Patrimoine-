@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { sql } from "drizzle-orm";
 import { getDatabase } from "../db/client";
 import { withApplicationRoleTransaction } from "../db/tenant-transaction";
+import { auditLogs } from "../db/schema";
+import { withTenantTransaction } from "../db/tenant-transaction";
 import {
   createInternalTenantContext,
   type TenantContext,
@@ -67,8 +69,21 @@ export async function requireClerkTenantContext(): Promise<TenantContext> {
     `);
   });
 
-  return createClerkTenantContext(
+  const context = createClerkTenantContext(
     { userId: session.userId ?? null, orgId: session.orgId ?? null },
     resolved,
   );
+  await withTenantTransaction(database, context, async (transaction) => {
+    await transaction.insert(auditLogs).values({
+      tenantId: context.tenantId,
+      actorIdentityId: context.identityId,
+      action: "session.mapped",
+      entityType: "session",
+      entityId: "clerk-session",
+      summary: "Session Clerk résolue vers un contexte tenant interne.",
+      correlationId: context.correlationId,
+      metadata: { provider: "clerk" },
+    });
+  });
+  return context;
 }

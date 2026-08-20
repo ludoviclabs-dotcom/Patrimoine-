@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import { getDatabase } from "../db/client";
-import { withTenantTransaction } from "../db/tenant-transaction";
+import { withAuthorizedTenantTransaction } from "../auth/authorization";
 import {
   auditLogs,
   calculationSteps,
@@ -31,7 +31,9 @@ export function createPostgresDataFoundationRepository(
     async persist(context, input): Promise<PersistSimulationResult> {
       const linkage = validateSimulationPersistenceInput(input);
 
-      return withTenantTransaction(database, context, async (transaction) => {
+      return withAuthorizedTenantTransaction(database, context, "simulation.run", {
+          tenantId: context.tenantId, type: "simulation", id: input.dossierId,
+        }, async (transaction) => {
 
         const [existing] = await transaction
           .select({
@@ -186,7 +188,9 @@ export function createPostgresDataFoundationRepository(
     },
 
     async findById(context, runId): Promise<PersistedSimulationSnapshot | null> {
-      return withTenantTransaction(database, context, async (transaction) => {
+      return withAuthorizedTenantTransaction(database, context, "dossier.read", {
+          tenantId: context.tenantId, type: "simulation", id: runId,
+        }, async (transaction) => {
 
         const [run] = await transaction
         .select({

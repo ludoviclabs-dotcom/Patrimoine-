@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDatabase } from "../db/client";
-import { withTenantTransaction } from "../db/tenant-transaction";
+import { withAuthorizedTenantTransaction } from "../auth/authorization";
 import {
   auditLogs,
   clientCases,
@@ -24,7 +24,9 @@ export function createTenantResourceRepository(
 ) {
   return {
     findDossier(context: TenantContext, dossierId: string) {
-      return withTenantTransaction(database, context, async (transaction) => {
+      return withAuthorizedTenantTransaction(database, context, "dossier.read", {
+          tenantId: context.tenantId, type: "dossier", id: dossierId,
+        }, async (transaction) => {
         const [dossier] = await transaction
           .select({
             id: clientCases.id,
@@ -51,7 +53,9 @@ export function createTenantResourceRepository(
       dossierId: string,
       title: string,
     ) {
-      return withTenantTransaction(database, context, async (transaction) => {
+      return withAuthorizedTenantTransaction(database, context, "dossier.write", {
+          tenantId: context.tenantId, type: "dossier", id: dossierId,
+        }, async (transaction) => {
         const [updated] = await transaction
           .update(clientCases)
           .set({ title, updatedAt: new Date() })
@@ -81,7 +85,9 @@ export function createTenantResourceRepository(
     },
 
     deleteDossier(context: TenantContext, dossierId: string) {
-      return withTenantTransaction(database, context, async (transaction) => {
+      return withAuthorizedTenantTransaction(database, context, "dossier.write", {
+          tenantId: context.tenantId, type: "dossier", id: dossierId,
+        }, async (transaction) => {
         const [deleted] = await transaction
           .update(clientCases)
           .set({
@@ -115,7 +121,9 @@ export function createTenantResourceRepository(
     },
 
     findDocumentMetadata(context: TenantContext, documentId: string) {
-      return withTenantTransaction(database, context, async (transaction) => {
+      return withAuthorizedTenantTransaction(database, context, "document.download", {
+          tenantId: context.tenantId, type: "document", id: documentId,
+        }, async (transaction) => {
         const [document] = await transaction
           .select({
             id: documents.id,
@@ -154,7 +162,9 @@ export function createTenantResourceRepository(
     },
 
     findSimulationRun(context: TenantContext, runId: string) {
-      return withTenantTransaction(database, context, async (transaction) => {
+      return withAuthorizedTenantTransaction(database, context, "dossier.read", {
+          tenantId: context.tenantId, type: "simulation", id: runId,
+        }, async (transaction) => {
         const [run] = await transaction
           .select({
             id: simulationRuns.id,
@@ -176,8 +186,10 @@ export function createTenantResourceRepository(
     },
 
     listAuditLogs(context: TenantContext) {
-      return withTenantTransaction(database, context, (transaction) =>
-        transaction
+      return withAuthorizedTenantTransaction(database, context, "audit.read", {
+          tenantId: context.tenantId, type: "tenant",
+        }, async (transaction) => {
+        return transaction
           .select({
             id: auditLogs.id,
             tenantId: auditLogs.tenantId,
@@ -192,8 +204,8 @@ export function createTenantResourceRepository(
           })
           .from(auditLogs)
           .where(eq(auditLogs.tenantId, context.tenantId))
-          .orderBy(desc(auditLogs.createdAt)),
-      );
+          .orderBy(desc(auditLogs.createdAt));
+      });
     },
   };
 }

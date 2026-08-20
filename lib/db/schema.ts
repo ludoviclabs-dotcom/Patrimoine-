@@ -68,6 +68,11 @@ export const auditActionEnum = pgEnum("audit_action", [
   "simulation.recalculation_required",
   "scenario.compared",
   "report.exported",
+  "session.mapped",
+  "authorization.denied",
+  "membership.changed",
+  "member.invited",
+  "member.role.changed",
 ]);
 
 export const tenants = pgTable("tenants", {
@@ -334,6 +339,33 @@ export const clientCases = pgTable(
 // A dossier is represented by the historical client_cases table. This alias
 // keeps domain language explicit without a destructive table rename.
 export const dossiers = clientCases;
+
+// Explicit client access only; a tenant membership alone does not disclose a
+// dossier to a client. The actual check is enforced by the PF-04B RLS policy.
+export const caseAccessGrants = pgTable(
+  "case_access_grants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "restrict" }),
+    caseId: uuid("case_id").notNull(),
+    userIdentityId: uuid("user_identity_id").notNull()
+      .references(() => userIdentities.id, { onDelete: "restrict" }),
+    status: varchar("status", { length: 24 }).notNull().default("active"),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("case_access_grants_tenant_case_identity_unique").on(
+      table.tenantId, table.caseId, table.userIdentityId,
+    ),
+    index("case_access_grants_identity_idx").on(table.userIdentityId),
+    foreignKey({
+      name: "case_access_grants_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
+);
 
 export const assets = pgTable(
   "assets",

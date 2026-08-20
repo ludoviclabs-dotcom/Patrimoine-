@@ -55,5 +55,6 @@ describe("PF-04A Clerk authentication boundary", () => {
     expect(migration).toContain("membership.revoked_at IS NULL");
     expect(migration).toContain("record_clerk_webhook_event");
     expect(resolver).toContain("resolve_clerk_context");
+    expect(resolver).toContain("session.mapped");
   });
 });

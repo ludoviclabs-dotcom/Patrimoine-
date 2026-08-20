@@ -27,9 +27,9 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-04B — RBAC and authenticated tenant context. PF-04A has established Clerk
-identity/Organizations authentication while PostgreSQL membership/RLS remains
-the authorization authority.
+PF-04-PUBLISH — production deployment evidence for Clerk/RBAC and managed
+PostgreSQL. PF-04 is complete locally: authentication, mapping, RBAC, tenant
+context, RLS chain and revocation are covered by tests.
 
 ## Completed
 
@@ -57,6 +57,56 @@ the authorization authority.
 - **PF-04A IMPLEMENTED / VERIFIED_LOCALLY — Clerk sign-in/sign-up, protected
   server-resolved workspace, signed idempotent organization webhook and a
   provider-neutral PostgreSQL mapping boundary.**
+- **PF-04 COMPLETE (PF-04A + PF-04B) — authenticated tenant context, central
+  RBAC, client dossier grants, RLS resource restriction and revocation tests.**
+
+## PF-04B — Authenticated tenant context and RBAC (COMPLETE / VERIFIED_LOCALLY)
+
+Branch: `main`
+
+HEAD before PF-04B: `00ff124e18dc875d6ebbf2c3bf00712d28100489`
+
+PF-04B keeps Clerk as identity/organization provider while PostgreSQL remains
+the final authority. `lib/auth/authorization.ts` contains one explicit
+capability matrix for admin (TENANT_ADMIN), conseiller (ADVISER), expert,
+client and the retained auditeur role. Tenant resource and simulation
+repositories enter only through `withAuthorizedTenantTransaction`; a denied
+capability records a sanitized `authorization.denied` audit then fails closed.
+
+Migration `0007_pf04b_authenticated_tenant_rbac.sql` adds active/revocable
+client `case_access_grants` and RLS predicates for dossiers/documents/private
+metadata. A client cannot read a same-tenant dossier without a grant, cannot
+read cabinet-B resource IDs, cannot write a dossier/run an expert action or
+validate a professional report. Reports are non-client resources. Revoking the
+database membership causes the next repository/transaction request to fail
+even if a Clerk session would still exist.
+
+Session mapping, authorization denials and server-side membership invite/role
+change/revocation have append-only audit actions with no token/secret payload.
+Clerk membership webhooks retain their separate signed, hashed event audit and
+never become business-membership authority. Fixture routes use one fixed
+synthetic actor rather than a browser-selected role; the legacy demo identity
+entry point is additionally refused in database and production environments.
+
+Files changed for PF-04B:
+
+- `drizzle/0007_pf04b_authenticated_tenant_rbac.sql`, migration journal;
+- `lib/auth/authorization.ts`, `lib/auth/membership-service.ts`, Clerk context,
+  database schema/readiness, tenant and simulation repositories;
+- RLS/PostgreSQL and RBAC unit tests;
+- `docs/agent/PF04_AUTH_RBAC.md`, `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (75 files, 949 tests); `npm run
+test:postgres` PASS (14 tests, fresh native PostgreSQL migrations `0000`
+through `0007`); `npx tsc --noEmit` PASS; `npm run lint` PASS; `npm run build`
+PASS; `git diff --check` PASS. Playwright Clerk authentication is NOT RUN:
+there is no configured Clerk test instance, user/session fixture or safe
+managed staging environment; the server/RLS chain is covered natively instead.
+
+PRODUCTION_VERIFICATION_PENDING: no real Clerk/Vercel account, safe managed
+staging database or signed delivery/session evidence was supplied. PF-04 is
+complete locally, but PF-04-PUBLISH must obtain that operational evidence
+before live-user admission.
 
 ## PF-04A — Clerk Organizations authentication foundation (IMPLEMENTED / VERIFIED_LOCALLY)
 
@@ -682,11 +732,9 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-04B — RBAC and authenticated tenant context. Before admitting production
-data, an operator must also execute and retain evidence for the PF-03C managed
-provider migration, runtime credential verification, staging smoke and
-temporary-database restore procedure, then configure/test a real Clerk signed
-webhook and explicit organization-to-tenant mapping.
+PF-04-PUBLISH — configure and prove Clerk/RBAC on Vercel plus the remaining
+PF-03C managed-provider migration, runtime credential, staging smoke and
+temporary-database restore evidence. Do not admit live-user data before it.
 
 ## Handoff notes
 

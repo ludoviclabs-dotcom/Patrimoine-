@@ -50,6 +50,13 @@
       "when": 1787529600000,
       "tag": "0006_pf04a_clerk_organizations_auth_foundation",
       "breakpoints": false
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787616000000,
+      "tag": "0007_pf04b_authenticated_tenant_rbac",
+      "breakpoints": false
     }
   ]
 }
