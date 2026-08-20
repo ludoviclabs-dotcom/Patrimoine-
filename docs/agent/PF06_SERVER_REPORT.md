@@ -392,14 +392,14 @@ offered no validation and is refused server-side → the expert validates into
 version 3 without a watermark → download authorized and streamed, with all four
 report audit actions present → cabinet B sees none of it.
 
-`npm run e2e` — **NOT RUN**. `tests/e2e/report-server-pipeline.spec.ts` was
-added with the required journeys (EXPERT generate → validate → download, and
-CLIENT validate = DENY) guarded by `E2E_CLERK_FIXTURE=1`:
-**SKIPPED — REAL AUTH FIXTURE REQUIRED**. Independently of that guard, the
-Playwright harness itself does not start in this environment: the runner's
-readiness probe fails and the process aborts on a libuv assertion. Verified as
-pre-existing by running the untouched `tests/e2e/demo.spec.ts`, which fails
-identically.
+`npm run e2e` — at the time of PF-06B this was **NOT RUN**: the Playwright
+harness did not start at all. **PF-06C found and fixed the root cause** (an
+IPv4-only bind that broke Next 16's internal proxy hop, see
+`docs/agent/PF06C_STAGING_EVIDENCE.md` § 4). The suite now runs: **12 passed,
+4 skipped**. The 4 skipped are the authenticated journeys in
+`tests/e2e/report-server-pipeline.spec.ts` (EXPERT generate → validate →
+download, and CLIENT validate = DENY), still guarded by `E2E_CLERK_FIXTURE=1`:
+**SKIPPED — REAL AUTH FIXTURE REQUIRED**.
 
 ---
 
@@ -447,3 +447,20 @@ Still to evidence in PF-05-06-PUBLISH:
 - **dossier navigation** — the console reads `?dossier=`, `?runs=` and `?gel=`
   and defaults to the tenant's first dossier; a dossier picker inside the
   screen is product work left for the dossier module.
+
+---
+
+## Verification level after PF-06C
+
+| Level | Reached |
+|---|---|
+| IMPLEMENTED | yes |
+| VERIFIED_LOCALLY | yes — ephemeral PostgreSQL cluster, in-memory private storage |
+| VERIFIED_STAGING | **no** — no managed database, Clerk instance or Blob store exists |
+| PRODUCTION_VERIFICATION_PENDING | yes — see `docs/agent/PF06C_STAGING_EVIDENCE.md` |
+
+PF-06C inventoried the provider surface, linked the repository to the Vercel
+project `patrimoine-fiscal-demo`, and stopped at the cost gate: creating a Blob
+store, a managed PostgreSQL database or a Clerk instance all require owner
+approval, and the marketplace step additionally requires an interactive
+terminal. Nothing was created and no evidence was simulated.

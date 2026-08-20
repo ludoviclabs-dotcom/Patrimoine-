@@ -5,11 +5,17 @@ const require = createRequire(import.meta.url);
 const nextBin = require.resolve("next/dist/bin/next");
 const playwrightCli = require.resolve("@playwright/test/cli");
 const port = process.env.E2E_PORT ?? "3015";
-const serverUrl = `http://127.0.0.1:${port}`;
+// Next 16 proxies each request to its render worker through `localhost`.
+// Pinning the server to IPv4 only makes that internal hop fail on hosts where
+// `localhost` resolves to ::1 first: every request then returns 500 with
+// "Failed to proxy ... socket hang up", and the repeated failures end in a
+// libuv handle assertion. Binding the default dual stack keeps the hop
+// reachable.
+const serverUrl = `http://localhost:${port}`;
 
 const server = spawn(
   process.execPath,
-  [nextBin, "dev", "--port", port, "--hostname", "127.0.0.1"],
+  [nextBin, "dev", "--port", port],
   {
     cwd: process.cwd(),
     env: process.env,
@@ -43,19 +49,25 @@ try {
   process.exit(1);
 }
 
+/**
+ * Waits until the dev server answers. Any HTTP response means it is listening:
+ * `next dev` legitimately answers non-2xx while compiling a route on demand.
+ * The delay applies to every attempt, including a non-2xx one - polling
+ * without it turns this loop into a busy-wait that floods the server.
+ */
 async function waitForServer(url) {
   const startedAt = Date.now();
-  const timeout = 60_000;
+  const timeout = 120_000;
 
   while (Date.now() - startedAt < timeout) {
     try {
-      const response = await fetch(url);
-      if (response.ok) {
-        return;
-      }
+      await fetch(url);
+      return;
     } catch {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Not listening yet.
     }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
   throw new Error(`Next.js dev server did not become ready at ${url}.\n${serverLog}`);

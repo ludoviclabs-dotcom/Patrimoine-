@@ -305,3 +305,20 @@ Known limitations, deliberately left open:
   out of scope;
 - no UI surface consumes the new routes yet; the deterministic chain and its
   safeguards are ready for the S6 product work.
+
+---
+
+## Verification level after PF-06C
+
+| Level | Reached |
+|---|---|
+| IMPLEMENTED | yes |
+| VERIFIED_LOCALLY | yes — ephemeral PostgreSQL cluster, in-memory private storage |
+| VERIFIED_STAGING | **no** — no managed database, Clerk instance or Blob store exists |
+| PRODUCTION_VERIFICATION_PENDING | yes — see `docs/agent/PF06C_STAGING_EVIDENCE.md` |
+
+PF-06C inventoried the provider surface, linked the repository to the Vercel
+project `patrimoine-fiscal-demo`, and stopped at the cost gate: creating a Blob
+store, a managed PostgreSQL database or a Clerk instance all require owner
+approval, and the marketplace step additionally requires an interactive
+terminal. Nothing was created and no evidence was simulated.

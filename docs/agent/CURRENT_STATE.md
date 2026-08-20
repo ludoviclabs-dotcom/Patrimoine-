@@ -5,6 +5,7 @@ Last updated: 2026-08-20
 ## Git state
 
 Branch: claude/private-document-storage-evidence-c569fd
+HEAD before PF-06C: 5096994c41449469eb6cc7441505932ea6c93bbd
 HEAD before PF-06B: b3c1690f7eb1fcfb001f0fe6b2ba03aab09077d1
 HEAD before PF-06: d9c3827f5f2bd2c6bfb0153d968517bdefdb5234
 HEAD before PF-05: ccb5359dd296b9c189321844693d2c8aeec090e1
@@ -74,6 +75,72 @@ cabinet report screen are covered by tests.
   policy, expert-only validation appended as a new version, private PDF
   storage, audited downloads, and the cabinet report screen wired onto the
   server pipeline with staleness detection and explicit error states.**
+
+## PF-06C — Staging inventory, cost gate and E2E harness fix (PARTIAL)
+
+Branch: `claude/private-document-storage-evidence-c569fd`
+
+HEAD before PF-06C: `5096994c41449469eb6cc7441505932ea6c93bbd`
+
+Full evidence matrix: `docs/agent/PF06C_STAGING_EVIDENCE.md`
+
+PF-06C adds no fiscal rule, rate, threshold, effective date or calculation
+step, and changes no golden expected result.
+
+Objective was to stand up a safe staging environment and produce real provider
+evidence. It stopped at the cost gate: **no cloud resource was created**, so
+gates 1 to 9 of the objective remain BLOCKED. What was achieved:
+
+- **Resource inventory (read-only).** Vercel project `patrimoine-fiscal-demo`
+  (`prj_TmKJzWQsY6glAeWPTz7jsvEWrdHS`) exists under team
+  `ludovics-projects-159c139c` with 11+ deployments, but has **no attached
+  marketplace resource** and only one environment variable (`CRON_SECRET`).
+  No PostgreSQL, no Blob store, no Clerk key anywhere. Clerk application state
+  is UNVERIFIED: there is no CLI and no API token from this session. Secret
+  values were never read or printed.
+- **Vercel project link.** The worktree is now linked to
+  `patrimoine-fiscal-demo` — free, local metadata only, and `.vercel/` plus
+  `.env.local` fall under pre-existing `.gitignore` rules. The `.env*` line that
+  `vercel link` appended to `.gitignore` was reverted: it would have shadowed
+  the tracked `.env.example` behind the existing negation.
+- **Project isolation respected.** The only Blob store on the account,
+  `carbonco-workbooks`, belongs to the unrelated `carbon` project. It was not
+  used, modified or detached.
+- **Cost gate enforced.** Blob, managed PostgreSQL and Clerk all fall in
+  category B/C (may bill, or undeterminable). `vercel integration accept-terms`
+  additionally states it requires an interactive terminal, which a
+  non-interactive session cannot provide. RESOURCE CREATION APPROVAL REQUIRED
+  is recorded with resource, provider, reason, known cost and proposed command
+  for each.
+- **Playwright harness fixed.** `npm run e2e` had been BLOCKED since PF-03B.
+  Root cause established by elimination (a bare Node HTTP server answered in
+  8 ms, so local sockets were never the problem): Next 16 proxies every request
+  to its render worker through the literal host `localhost`, which resolves to
+  `::1` first on this machine, while `scripts/run-e2e.mjs` pinned the server to
+  IPv4-only `127.0.0.1`. The internal hop could not connect, every request
+  returned 500 with "Failed to proxy ... socket hang up", and the repeated
+  failures ended in a libuv handle assertion. Dropping the pin restores dual
+  stack binding; the readiness probe was also fixed to delay on every attempt
+  instead of busy-waiting on a non-2xx response. Result: **12 passed, 4
+  skipped**, including the untouched pre-existing `demo.spec.ts` on both
+  browser projects. No security assertion was weakened or bypassed.
+- **Provisioning runbook** written for PF-05-06-PUBLISH, so the work becomes
+  mechanical once the three approvals land.
+
+Files changed for PF-06C:
+
+- `scripts/run-e2e.mjs`;
+- `docs/agent/PF06C_STAGING_EVIDENCE.md` (new),
+  `docs/agent/PF06_SERVER_REPORT.md`, `docs/agent/PF05_PRIVATE_DOCUMENTS.md`,
+  `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (32 files, 398 tests); `npm run
+test:postgres` PASS (4 files, 39 tests, migrations `0000` through `0009`);
+`npx tsc --noEmit` PASS; `npm run lint` PASS; `npm run build` PASS; `npm run
+e2e` PASS (12 passed, 4 skipped); `git diff --check` PASS.
+
+VERIFIED_STAGING: **not reached**. PRODUCTION_VERIFICATION_PENDING stands, now
+with a precise, itemised approval list rather than a generic pending note.
 
 ## PF-06B — Cabinet report UI wired to the server pipeline (COMPLETE / VERIFIED_LOCALLY)
 
@@ -875,9 +942,12 @@ None.
 
 ## Tests
 
-Unit: PASS — `npm test` after PF-06B: 32 files, 398 tests, 0 failures.
+Unit: PASS — `npm test` after PF-06C: 32 files, 398 tests, 0 failures.
 PostgreSQL/RLS: PASS — 4 files, 39 tests, 0 failing on a fresh native ephemeral
 PostgreSQL 18.4 cluster after migrations `0000` through `0009`.
+E2E: PASS — `npm run e2e` runs again after the PF-06C harness fix: 12 passed,
+4 skipped (the authenticated journeys, gated on `E2E_CLERK_FIXTURE=1`). This
+was BLOCKED from PF-03B through PF-06B.
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -895,17 +965,21 @@ No PF-06B implementation blocker. The DRAFT to REVIEW to VALIDATED to DOWNLOAD
 workflow, staleness detection, cross-tenant refusal and the explicit error
 surface pass against real PostgreSQL RLS with an in-memory storage adapter.
 
-The Playwright harness does not start in this environment: the runner's
-readiness probe fails and the process aborts on a libuv assertion. Verified as
-pre-existing by running the untouched `tests/e2e/demo.spec.ts`, which fails
-identically. The PF-06B journeys are written and guarded by
-`E2E_CLERK_FIXTURE=1`.
+The Playwright harness blocker is RESOLVED in PF-06C: Next 16 proxies each
+request to its render worker through `localhost`, and the runner pinned the
+server to IPv4-only `127.0.0.1`, so the internal hop never connected. Removing
+that pin (plus fixing a busy-wait in the readiness probe) restores the suite:
+12 passed, 4 skipped. The 4 skipped are the authenticated journeys, still gated
+on `E2E_CLERK_FIXTURE=1` because no Clerk instance exists.
 
-Real provider evidence remains PRODUCTION_VERIFICATION_PENDING. Checked in this
-session and absent: `DATABASE_URL`, `DATABASE_ADMIN_URL`, Clerk keys,
-`BLOB_READ_WRITE_TOKEN`, `DOCUMENT_DOWNLOAD_SIGNING_SECRET`, and any Vercel
-project link. The Vercel CLI is authenticated but the only existing blob store
-belongs to an unrelated project; nothing was provisioned, written or simulated.
+Real provider evidence remains PRODUCTION_VERIFICATION_PENDING and is now
+blocked on three explicit approvals, itemised in
+`docs/agent/PF06C_STAGING_EVIDENCE.md` § 3: a Vercel Private Blob store, a
+managed PostgreSQL database and a Clerk test instance. All three are metered or
+plan-attached products whose cost could not be confirmed as free from this
+session, and the marketplace step additionally requires an interactive
+terminal. Nothing was created, written or simulated; the unrelated
+`carbonco-workbooks` store was left untouched.
 
 No PF-06 implementation blocker. Snapshot determinism, reproducible PDF
 rendering, the readiness gate, expert-only validation, version immutability and
