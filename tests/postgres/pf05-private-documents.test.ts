@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as schema from "../../lib/db/schema";
+import { managedPostgresMigrationMarker } from "../../lib/db/managed-readiness";
 import { seedClaireMarcDemo } from "../../lib/db/seed-demo";
 import { v21PilotSeedPlan } from "../../lib/db/seed-v2-1";
 import { issueDownloadGrant } from "../../lib/documents/access-grant";
@@ -301,8 +302,9 @@ describe("PF-05 private versioned document storage", () => {
       { relname: "document_versions", relrowsecurity: true, relforcerowsecurity: true },
       { relname: "simulation_document_versions", relrowsecurity: true, relforcerowsecurity: true },
     ]);
+    // The attestation always names the newest applied migration.
     expect(readiness.readiness).toEqual({
-      migration: "0008_pf05_private_document_storage",
+      migration: managedPostgresMigrationMarker,
       rlsReady: true,
     });
   });
@@ -441,7 +443,8 @@ describe("PF-05 private versioned document storage", () => {
     // another cabinet's identifiers still resolves nothing under RLS.
     const forged = issueDownloadGrant(signingSecret, {
       tenantId: tenantB,
-      documentId: versionedDocument,
+      resource: "document",
+      resourceId: versionedDocument,
       versionId: released[0].versionId,
       identityId: identityB,
       expiresAtMs: clock.getTime() + 60_000,

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { can, listCapabilities } from "../../lib/auth/authorization";
-import {
-  managedPostgresMigrationMarker,
-  managedPostgresRlsTables,
-} from "../../lib/db/managed-readiness";
+import { managedPostgresRlsTables } from "../../lib/db/managed-readiness";
 import {
   assertBlobKeyOwnedByTenant,
   buildDocumentVersionBlobKey,
@@ -160,7 +157,8 @@ describe("PF-05 upload validation", () => {
 describe("PF-05 short-lived download grants", () => {
   const payload = {
     tenantId,
-    documentId,
+    resource: "document",
+    resourceId: documentId,
     versionId,
     identityId: "66666666-6666-4666-8666-666666666666",
     expiresAtMs: 2_000_000,
@@ -228,8 +226,7 @@ describe("PF-05 authorization and readiness surface", () => {
     )).toBe(false);
   });
 
-  it("declares the PF-05 migration marker and the new protected tables", () => {
-    expect(managedPostgresMigrationMarker).toBe("0008_pf05_private_document_storage");
+  it("keeps the PF-05 tables under the managed readiness attestation", () => {
     expect(managedPostgresRlsTables).toEqual(expect.arrayContaining([
       "documents",
       "document_versions",

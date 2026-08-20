@@ -5,6 +5,7 @@ Last updated: 2026-08-20
 ## Git state
 
 Branch: claude/private-document-storage-evidence-c569fd
+HEAD before PF-06: d9c3827f5f2bd2c6bfb0153d968517bdefdb5234
 HEAD before PF-05: ccb5359dd296b9c189321844693d2c8aeec090e1
 HEAD before PF-04A: 13d819165fbd3db1e1e2bbb0f3fe14cdb33402e0
 HEAD before PF-03B: 7135daf954e27b3b77db96ec3d4b2be97b886b1a
@@ -28,11 +29,12 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-05-PUBLISH — provision the private Vercel Blob store and prove the real
-upload/download chain, together with the still-pending PF-04-PUBLISH Clerk and
-managed-PostgreSQL deployment evidence. PF-05 is complete locally: private
-versioned storage, RBAC/RLS-scoped upload and download, quarantine, soft
-deletion and evidence linkage are covered by tests.
+PF-06-PUBLISH — provision the private Vercel Blob store and prove the real
+document and report object round-trip, together with the still-pending
+PF-04-PUBLISH Clerk and managed-PostgreSQL deployment evidence. PF-05 and PF-06
+are complete locally: private versioned document storage, immutable report
+snapshots, reproducible server-side PDF rendering, expert-only validation and
+audited downloads are covered by tests.
 
 ## Completed
 
@@ -65,6 +67,88 @@ deletion and evidence linkage are covered by tests.
 - **PF-05 IMPLEMENTED / VERIFIED_LOCALLY — private versioned document storage,
   server-side MIME/size/name validation, SHA-256, short-lived signed download
   grants, quarantine workflow and simulation evidence linkage.**
+- **PF-06 IMPLEMENTED / VERIFIED_LOCALLY — immutable report snapshots,
+  reproducible server-side @react-pdf/renderer output, watermark policy,
+  expert-only validation appended as a new version, private PDF storage and
+  audited downloads.**
+
+## PF-06 — Server report and immutable snapshot (IMPLEMENTED / VERIFIED_LOCALLY)
+
+Branch: `claude/private-document-storage-evidence-c569fd`
+
+HEAD before PF-06: `d9c3827f5f2bd2c6bfb0153d968517bdefdb5234`
+
+Full report: `docs/agent/PF06_SERVER_REPORT.md`
+
+PF-06 adds no fiscal rule, rate, threshold, effective date, calculation step or
+golden expected result. It replaces the browser-only report with a
+snapshot-first server pipeline.
+
+Migration `0009_pf06_server_report_snapshot.sql` adds the `reports` table (one
+per dossier) and extends the existing `report_versions` with the snapshot,
+`snapshot_sha256`, `business_sha256`, the private PDF pointer and hashes, the
+watermark, the validation block, the generator version, the legal freeze date
+and the generated/validated identities. No parallel report model was created.
+
+`lib/report/snapshot.ts` builds the immutable snapshot from database facts
+only: dossier identity, legal freeze date, input snapshots, simulation run ids,
+rule versions, calculation steps, review flags, professional validation state,
+evidence sources, PF-05 document version references, coverage limits and
+limitations. Canonical JSON plus stable sorting make `businessSha256` a pure
+function of the facts; `snapshotSha256` additionally covers validation and
+generation. The PDF is rendered from the snapshot and never from live UI state.
+
+`@react-pdf/renderer` runs server-side through `renderToBuffer`. Document
+creation and modification dates are pinned to the snapshot's own `generatedAt`,
+so the same snapshot renders byte-identically and `pdfSha256` is stable — a
+measured property, not an assumption. Puppeteer was not introduced: no blocker
+appeared and ADR-007 selects `@react-pdf/renderer`.
+
+A draft carries the BROUILLON watermark, a changes-requested version the
+A REVOIR watermark, and a validated version carries no watermark plus an
+explicit validation banner, so the two can never be confused. Only
+`report.validate` holders (admin, expert) may validate, and a validation never
+mutates the reviewed version: it appends version n+1 with the same business
+payload plus actor, timestamp, decision and mandatory comment. Approval
+requires zero blocking review flags. A database trigger refuses every UPDATE
+and DELETE on a server-generated version row.
+
+The PDF is stored through the PF-05 private storage port under
+`tenants/{tenantId}/reports/{reportId}/versions/{reportVersionId}`, enforced by
+a database check constraint. Download reuses the PF-05 short-lived signed
+grant, generalised with a `resource` discriminator so documents and reports
+share one mechanism; the streaming route repeats the full database check and
+audits every served file.
+
+Files changed for PF-06:
+
+- `drizzle/0009_pf06_server_report_snapshot.sql`, migration journal;
+- `lib/db/schema.ts`, `lib/db/managed-readiness.ts`, `lib/auth/authorization.ts`;
+- `lib/report/snapshot.ts`, `lib/report/report-pdf.tsx`, `lib/report/render.tsx`,
+  `lib/report/report-service.ts`, `lib/report/runtime.ts`;
+- `lib/documents/access-grant.ts`, `lib/documents/document-service.ts`,
+  `lib/documents/blob.ts`, `lib/documents/runtime.ts`;
+- report generation, validation and download route handlers under
+  `app/api/v1/reports/`;
+- `tests/unit/pf06-server-report.test.ts`,
+  `tests/postgres/pf06-server-report.test.ts`, PF-05 grant-shape and marker
+  assertions, PF-03C readiness assertion made drift-proof;
+- `docs/agent/PF06_SERVER_REPORT.md`, `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (31 files, 379 tests); `npm run
+test:postgres` PASS (3 files, 32 tests, fresh native PostgreSQL 18.4,
+migrations `0000` through `0009`); `npx tsc --noEmit` PASS; `npm run lint` PASS;
+`npm run build` PASS; `git diff --check` PASS. `npm run e2e` NOT RUN — the
+Playwright harness still needs a Clerk test instance and session fixture.
+
+Deliberately not implemented and documented: the audited derogation to the
+readiness gate, a delivery workflow setting `delivered_at`, separate
+client/adviser documents, cabinet branding, electronic signature, and any UI
+wiring. The fixture `/report` page and the client-only PDF button are untouched
+demo surfaces.
+
+PRODUCTION_VERIFICATION_PENDING: no Vercel Blob store or token was available,
+so no report PDF was written to or read from a real provider container.
 
 ## PF-05 — Private versioned document storage (IMPLEMENTED / VERIFIED_LOCALLY)
 
@@ -720,9 +804,9 @@ None.
 
 ## Tests
 
-Unit: PASS — `npm test` after PF-05: 30 files, 363 tests, 0 failures.
-PostgreSQL/RLS: PASS — 2 files, 24 tests, 0 failing on a fresh native ephemeral
-PostgreSQL 18.4 cluster after migrations `0000` through `0008`.
+Unit: PASS — `npm test` after PF-06: 31 files, 379 tests, 0 failures.
+PostgreSQL/RLS: PASS — 3 files, 32 tests, 0 failing on a fresh native ephemeral
+PostgreSQL 18.4 cluster after migrations `0000` through `0009`.
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -735,6 +819,12 @@ non-interactive environment. PF-03B changes repository/database boundaries, not
 an authenticated browser flow; E2E remains required before production release.
 
 ## Open blockers
+
+No PF-06 implementation blocker. Snapshot determinism, reproducible PDF
+rendering, the readiness gate, expert-only validation, version immutability and
+audited downloads pass against real PostgreSQL RLS with an in-memory storage
+adapter. The real provider round-trip for both document and report objects
+stays PRODUCTION_VERIFICATION_PENDING (PF-06-PUBLISH).
 
 No PF-05 implementation blocker. The private document chain — upload, versioning,
 quarantine, soft deletion, download grants, cross-tenant and revocation refusals
@@ -824,11 +914,12 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-05-PUBLISH — provision the private Vercel Blob store, prove the real
-upload/download chain against it, and complete the still-pending PF-04-PUBLISH
-Clerk/RBAC and PF-03C managed-provider migration, runtime credential, staging
-smoke and temporary-database restore evidence. Do not admit live-user data or
-real client documents before it.
+PF-06-PUBLISH — provision the private Vercel Blob store, prove a real
+upload/download round-trip for both a document version and a report PDF, apply
+migration `0009` to the managed database, and complete the still-pending
+PF-04-PUBLISH Clerk/RBAC and PF-03C managed-provider migration, runtime
+credential, staging smoke and temporary-database restore evidence. Do not admit
+live-user data, real client documents or delivered reports before it.
 
 ## Handoff notes
 

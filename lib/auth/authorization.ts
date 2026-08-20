@@ -10,6 +10,7 @@ export const tenantActions = [
   "simulation.review",
   "report.generate",
   "report.validate",
+  "report.download",
   "document.upload",
   "document.download",
   "document.validate",
@@ -30,15 +31,17 @@ const capabilityMatrix: Readonly<Record<TenantContextRole, readonly TenantAction
   admin: tenantActions,
   conseiller: [
     "dossier.read", "dossier.write", "simulation.run", "report.generate",
-    "document.upload", "document.download", "document.validate", "audit.read",
+    "report.download", "document.upload", "document.download", "document.validate",
+    "audit.read",
   ],
   expert: [
     "dossier.read", "simulation.review", "report.generate", "report.validate",
-    "document.download", "document.validate", "rule.review", "audit.read",
+    "report.download", "document.download", "document.validate", "rule.review",
+    "audit.read",
   ],
   client: ["dossier.read", "document.upload", "document.download"],
   // AUDITOR is retained because it already exists in the database role enum.
-  auditeur: ["dossier.read", "document.download", "audit.read"],
+  auditeur: ["dossier.read", "report.download", "document.download", "audit.read"],
 };
 
 export function can(

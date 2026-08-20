@@ -43,6 +43,8 @@ export const privateDocumentBlobAccess = "private";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const blobKeyPattern =
   /^tenants\/([0-9a-f-]{36})\/dossiers\/([0-9a-f-]{36})\/documents\/([0-9a-f-]{36})\/versions\/([0-9a-f-]{36})$/;
+const reportBlobKeyPattern =
+  /^tenants\/([0-9a-f-]{36})\/reports\/([0-9a-f-]{36})\/versions\/([0-9a-f-]{36})$/;
 
 export type DocumentVersionBlobKeyParts = Readonly<{
   tenantId: string;
@@ -73,6 +75,36 @@ export function buildDocumentVersionBlobKey(parts: DocumentVersionBlobKeyParts) 
   const versionId = assertUuid(parts.versionId, "DOCUMENT_BLOB_KEY_VERSION_INVALID");
 
   return `tenants/${tenantId}/dossiers/${caseId}/documents/${documentId}/versions/${versionId}`;
+}
+
+/**
+ * Report object keys follow the same identifier-only discipline and the same
+ * database-side shape constraint as document versions.
+ */
+export function buildReportVersionBlobKey(parts: {
+  tenantId: string;
+  reportId: string;
+  reportVersionId: string;
+}) {
+  const tenantId = assertUuid(parts.tenantId, "REPORT_BLOB_KEY_TENANT_INVALID");
+  const reportId = assertUuid(parts.reportId, "REPORT_BLOB_KEY_REPORT_INVALID");
+  const versionId = assertUuid(parts.reportVersionId, "REPORT_BLOB_KEY_VERSION_INVALID");
+
+  return `tenants/${tenantId}/reports/${reportId}/versions/${versionId}`;
+}
+
+export function assertReportBlobKeyOwnedByTenant(key: string, tenantId: string) {
+  const match = reportBlobKeyPattern.exec(key);
+
+  if (!match) {
+    throw new Error("REPORT_BLOB_KEY_INVALID");
+  }
+
+  if (match[1] !== tenantId.trim().toLowerCase()) {
+    throw new Error("REPORT_BLOB_KEY_TENANT_MISMATCH");
+  }
+
+  return { tenantId: match[1], reportId: match[2], reportVersionId: match[3] } as const;
 }
 
 export function parseDocumentVersionBlobKey(key: string): DocumentVersionBlobKeyParts | null {

@@ -11,9 +11,16 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const downloadGrantTtlSeconds = 60;
 
+/** The two private resources served through this mechanism. */
+export const downloadGrantResources = ["document", "report_version"] as const;
+export type DownloadGrantResource = (typeof downloadGrantResources)[number];
+
 export type DownloadGrantPayload = Readonly<{
   tenantId: string;
-  documentId: string;
+  resource: DownloadGrantResource;
+  /** Owning entity: the document, or the report the version belongs to. */
+  resourceId: string;
+  /** The precise immutable version being served. */
   versionId: string;
   identityId: string;
   expiresAtMs: number;
@@ -58,9 +65,13 @@ function parsePayload(encodedPayload: string): DownloadGrantPayload | null {
     }
 
     const candidate = parsed as Record<string, unknown>;
-    const fields = ["tenantId", "documentId", "versionId", "identityId"] as const;
+    const fields = ["tenantId", "resourceId", "versionId", "identityId"] as const;
 
     if (fields.some((field) => typeof candidate[field] !== "string" || !candidate[field])) {
+      return null;
+    }
+
+    if (!downloadGrantResources.includes(candidate.resource as DownloadGrantResource)) {
       return null;
     }
 
@@ -70,7 +81,8 @@ function parsePayload(encodedPayload: string): DownloadGrantPayload | null {
 
     return {
       tenantId: candidate.tenantId as string,
-      documentId: candidate.documentId as string,
+      resource: candidate.resource as DownloadGrantResource,
+      resourceId: candidate.resourceId as string,
       versionId: candidate.versionId as string,
       identityId: candidate.identityId as string,
       expiresAtMs: candidate.expiresAtMs,

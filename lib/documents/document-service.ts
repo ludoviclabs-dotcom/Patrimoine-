@@ -534,7 +534,8 @@ export function createPrivateDocumentService(
         ...toSummary(version),
         token: issueDownloadGrant(secret, {
           tenantId: context.tenantId,
-          documentId: input.documentId,
+          resource: "document",
+          resourceId: input.documentId,
           versionId: version.id,
           identityId: context.identityId,
           expiresAtMs,
@@ -552,7 +553,11 @@ export function createPrivateDocumentService(
 
       const { payload } = verification;
 
-      if (payload.tenantId !== context.tenantId || payload.identityId !== context.identityId) {
+      if (
+        payload.tenantId !== context.tenantId
+        || payload.identityId !== context.identityId
+        || payload.resource !== "document"
+      ) {
         throw new Error("DOCUMENT_DOWNLOAD_GRANT_SUBJECT_MISMATCH");
       }
 
@@ -560,9 +565,9 @@ export function createPrivateDocumentService(
         database,
         context,
         "document.download",
-        { tenantId: context.tenantId, type: "document", id: payload.documentId },
+        { tenantId: context.tenantId, type: "document", id: payload.resourceId },
         async (transaction) => {
-          const resolved = await loadDownloadableVersion(transaction, context, payload.documentId, {
+          const resolved = await loadDownloadableVersion(transaction, context, payload.resourceId, {
             versionId: payload.versionId,
           });
 
@@ -573,7 +578,7 @@ export function createPrivateDocumentService(
             entityId: resolved.id,
             summary: "Version documentaire téléchargée.",
             metadata: {
-              documentId: payload.documentId,
+              documentId: payload.resourceId,
               versionNumber: resolved.versionNumber,
               sha256: resolved.sha256,
               byteSize: resolved.byteSize,
