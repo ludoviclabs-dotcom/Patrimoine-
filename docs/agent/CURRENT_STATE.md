@@ -5,6 +5,7 @@ Last updated: 2026-08-20
 ## Git state
 
 Branch: claude/private-document-storage-evidence-c569fd
+HEAD before PF-06C3: 7d0e4e6adcfb8c2612db62abdb0ce9d744964381
 HEAD before PF-06C2: 029cc2bc90a6630bffb14aa15bb417bc3277a8fa
 HEAD before PF-06C: 5096994c41449469eb6cc7441505932ea6c93bbd
 HEAD before PF-06B: b3c1690f7eb1fcfb001f0fe6b2ba03aab09077d1
@@ -76,6 +77,62 @@ cabinet report screen are covered by tests.
   policy, expert-only validation appended as a new version, private PDF
   storage, audited downloads, and the cabinet report screen wired onto the
   server pipeline with staleness detection and explicit error states.**
+
+## PF-06C3 — Re-verification of the two blocking secrets (NO CHANGE)
+
+Branch: `claude/private-document-storage-evidence-c569fd`
+
+HEAD before PF-06C3: `7d0e4e6adcfb8c2612db62abdb0ce9d744964381`
+
+Detail: `docs/agent/PF06C_STAGING_EVIDENCE.md` section 9
+
+PF-06C3 changed no application code, no fiscal rule, rate, threshold, effective
+date, calculation step or golden expected result. It re-checked only the two
+secrets that blocked PF-06C2 and re-ran the validation suite; nothing already
+proven was reconfigured or re-run.
+
+Outcome: **both secrets are still empty**.
+
+| Secret | Preview | Production |
+|---|---|---|
+| `BLOB_READ_WRITE_TOKEN` | EMPTY | EMPTY |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | EMPTY | EMPTY |
+
+Values were never read or printed; only the decoded length was measured and
+both are zero. `vercel env ls` still shows the same `BLOB_READ_WRITE_TOKEN`
+entry created 2 h earlier, so the dashboard reconnect has not been performed.
+The alternative route stays closed: OIDC access to the store fails with "OIDC
+is enabled for this project, but not for the development environment".
+
+The six storage-dependent gates therefore keep their PF-06C2 status: private
+Blob, document upload, document download, server PDF generation, professional
+validation and private PDF download remain BLOCKED, the report-level
+cross-tenant checks remain NOT_RUN, and the authenticated Playwright journeys
+remain BLOCKED (they additionally need Clerk sign-in credentials this session
+must not handle). The Clerk webhook signature path could not be exercised
+because verifying a signed delivery requires the empty signing secret.
+
+Everything proven in PF-06C2 is preserved and was not re-run: real Neon
+PostgreSQL, migrations `0000` to `0009`, FORCE RLS and the `NOBYPASSRLS`
+runtime login, Clerk organizations, Clerk-to-database memberships, cross-tenant
+data isolation, revoked-membership denial, and the public E2E harness.
+
+Build-cache finding, fixed without any code change: `npm run build` failed once
+with `Type error: ';' expected` in `.next/dev/types/routes.d.ts`, a generated
+gitignored dev artifact left by the Playwright dev server. Because the
+committed `next-env.d.ts` references the dev path, a build run straight after
+an E2E run type-checks a stale artifact. Removing `.next` and rebuilding
+succeeds; no repository file was at fault.
+
+Files changed for PF-06C3:
+
+- `docs/agent/PF06C_STAGING_EVIDENCE.md`, `docs/agent/PF06_SERVER_REPORT.md`,
+  `docs/agent/PF05_PRIVATE_DOCUMENTS.md`, `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (32 files, 398 tests); `npm run
+test:postgres` PASS (4 files, 39 tests); `npm run e2e` PASS (12 passed, 4
+skipped); `npx tsc --noEmit` PASS; `npm run lint` PASS; `npm run build` PASS
+after clearing the stale cache; `git diff --check` PASS.
 
 ## PF-06C2 — Staging bootstrap and real provider evidence (PARTIAL)
 

@@ -324,3 +324,8 @@ organizations mapped to internal tenants, and 16 staging gates executed with
 16 PASS and 0 FAIL. Six gates stay BLOCKED because `BLOB_READ_WRITE_TOKEN`
 holds an empty value in both Preview and Production and a store token cannot be
 minted non-interactively. Full detail: `docs/agent/PF06C_STAGING_EVIDENCE.md`.
+
+Re-checked in **PF-06C3**: `BLOB_READ_WRITE_TOKEN` and
+`CLERK_WEBHOOK_SIGNING_SECRET` are still empty in both Preview and
+Production, and local OIDC access to the store is still refused, so the
+storage-dependent gates keep the status above unchanged.

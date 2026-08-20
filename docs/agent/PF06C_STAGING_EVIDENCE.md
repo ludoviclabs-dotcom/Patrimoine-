@@ -303,3 +303,57 @@ credentials handled by the owner, not by this session.
 
 **Ready for PF-05-06-PUBLISH: NO** — six gates remain blocked on the empty
 `BLOB_READ_WRITE_TOKEN`.
+
+---
+
+## 9. PF-06C3 — re-verification of the two blocking secrets
+
+Run after PF-06C2 (`7d0e4e6adcfb8c2612db62abdb0ce9d744964381`) to check whether
+the dashboard reconnect had landed. Only the two blockers were re-checked;
+nothing already proven was re-run or reconfigured.
+
+| Secret | Preview | Production | Verdict |
+|---|---|---|---|
+| `BLOB_READ_WRITE_TOKEN` | EMPTY | EMPTY | still blocking |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | EMPTY | EMPTY | still blocking |
+
+Values were never read or printed; only the decoded length was measured, and
+both are zero-length.
+
+Corroborating evidence that the reconnect has not happened: `vercel env ls`
+still reports the `BLOB_READ_WRITE_TOKEN` entry as created **2 h ago**, the
+same entry observed during PF-06C2 — a dashboard reconnect would have replaced
+it with a fresh entry carrying a real value.
+
+A second route was retried and is still closed: authenticating to the store
+with the local OIDC token fails with *"Vercel Blob: OIDC is enabled for this
+project, but not for the 'development' environment."* There is therefore no way
+to reach `patrimoine-fiscal-demo-blob` from this session.
+
+Consequently the following gates keep their PF-06C2 status, unchanged and not
+upgraded: private Blob, document upload, document download, server PDF
+generation, professional validation, private PDF download, report-level
+cross-tenant denial (NOT_RUN), and the authenticated Playwright journeys
+(BLOCKED — they additionally need Clerk sign-in credentials that this session
+must not request or handle).
+
+The Clerk webhook signature path could not be exercised either: verifying a
+signed delivery requires the signing secret, which is empty.
+
+### Build-cache finding (fixed, no code change)
+
+During this run `npm run build` failed once with `Type error: ';' expected` in
+`.next/dev/types/routes.d.ts`. That file is a **generated, gitignored** dev
+artifact left behind by the Playwright dev server, and the committed
+`next-env.d.ts` references the dev path, so a build run straight after an E2E
+run type-checks a stale artifact. Removing `.next` and rebuilding succeeds
+(exit 0). No repository file was at fault and none was changed; the sequence to
+avoid is `npm run e2e` immediately followed by `npm run build` without clearing
+the cache.
+
+### Everything proven earlier is preserved
+
+Real Neon PostgreSQL, migrations `0000` to `0009`, FORCE RLS and the
+`NOBYPASSRLS` runtime login, the Clerk organizations, the Clerk-to-database
+memberships, cross-tenant data isolation, revoked-membership denial and the
+public E2E harness all remain PASS from PF-06C2 and were not re-run.
