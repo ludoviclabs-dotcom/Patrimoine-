@@ -25,7 +25,8 @@ function runVitest(databaseUrl) {
         "node_modules/vitest/vitest.mjs",
         "run",
         "--globals",
-        "tests/postgres/pf03b-tenant-isolation.test.ts",
+        "--fileParallelism=false",
+        "tests/postgres",
       ],
       {
         cwd: process.cwd(),

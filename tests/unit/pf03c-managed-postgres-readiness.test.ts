@@ -56,8 +56,9 @@ describe("PF-03C managed PostgreSQL operational readiness", () => {
   });
 
   it("ships a non-sensitive readiness attestation and operational commands", () => {
+    // The attestation must live in the newest migration, whichever it is.
     const migration = readFileSync(
-      join(root, "drizzle/0007_pf04b_authenticated_tenant_rbac.sql"),
+      join(root, `drizzle/${managedPostgresMigrationMarker}.sql`),
       "utf8",
     );
     const readiness = readFileSync(join(root, "scripts/managed-postgres-readiness.ts"), "utf8");
@@ -66,7 +67,7 @@ describe("PF-03C managed PostgreSQL operational readiness", () => {
 
     expect(migration).toContain(managedPostgresMigrationMarker);
     expect(migration).toContain("rlsReady");
-    expect(managedPostgresRlsTables).toHaveLength(28);
+    expect(managedPostgresRlsTables).toHaveLength(30);
     expect(readiness).toContain("DATABASE_RUNTIME_ROLE_UNSAFE");
     expect(readiness).toContain("forward_only_no_automatic_rollback");
     expect(readiness).toContain("PF03_SMOKE_WRITE_FORBIDDEN_IN_PRODUCTION");

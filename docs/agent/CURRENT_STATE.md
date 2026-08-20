@@ -4,7 +4,8 @@ Last updated: 2026-08-20
 
 ## Git state
 
-Branch: main
+Branch: claude/private-document-storage-evidence-c569fd
+HEAD before PF-05: ccb5359dd296b9c189321844693d2c8aeec090e1
 HEAD before PF-04A: 13d819165fbd3db1e1e2bbb0f3fe14cdb33402e0
 HEAD before PF-03B: 7135daf954e27b3b77db96ec3d4b2be97b886b1a
 HEAD before PF-03A: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
@@ -27,9 +28,11 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-04-PUBLISH — production deployment evidence for Clerk/RBAC and managed
-PostgreSQL. PF-04 is complete locally: authentication, mapping, RBAC, tenant
-context, RLS chain and revocation are covered by tests.
+PF-05-PUBLISH — provision the private Vercel Blob store and prove the real
+upload/download chain, together with the still-pending PF-04-PUBLISH Clerk and
+managed-PostgreSQL deployment evidence. PF-05 is complete locally: private
+versioned storage, RBAC/RLS-scoped upload and download, quarantine, soft
+deletion and evidence linkage are covered by tests.
 
 ## Completed
 
@@ -59,6 +62,90 @@ context, RLS chain and revocation are covered by tests.
   provider-neutral PostgreSQL mapping boundary.**
 - **PF-04 COMPLETE (PF-04A + PF-04B) — authenticated tenant context, central
   RBAC, client dossier grants, RLS resource restriction and revocation tests.**
+- **PF-05 IMPLEMENTED / VERIFIED_LOCALLY — private versioned document storage,
+  server-side MIME/size/name validation, SHA-256, short-lived signed download
+  grants, quarantine workflow and simulation evidence linkage.**
+
+## PF-05 — Private versioned document storage (IMPLEMENTED / VERIFIED_LOCALLY)
+
+Branch: `claude/private-document-storage-evidence-c569fd`
+
+HEAD before PF-05: `ccb5359dd296b9c189321844693d2c8aeec090e1`
+
+Full report: `docs/agent/PF05_PRIVATE_DOCUMENTS.md`
+
+PF-05 adds no fiscal rule, rate, threshold, effective date, calculation step or
+golden expected result. It binds real private documents to the PF-03 metadata
+model and the PF-04 authentication/RBAC chain.
+
+No parallel document model was created. `documents`, `client_cases`, `tenants`
+and `audit_logs` stay authoritative; the target architecture's separate
+`DocumentAccessLog` was deliberately NOT added because `audit_logs` already
+provides an append-only actor/tenant/action/correlation record. Migration
+`0008_pf05_private_document_storage.sql` adds three storage columns to
+`documents`, the append-only `document_versions` table and the
+`simulation_document_versions` evidence link, all FORCE-RLS protected with the
+same membership + client-grant predicates as PF-04B.
+
+Storage is Vercel Private Blob behind a `PrivateDocumentStorage` port (Vercel
+adapter plus a deterministic in-memory adapter for tests). `access: "private"`
+is hard-coded, `visibility = 'private'` is a database check constraint, and no
+object URL is ever persisted or returned. Object keys are
+`tenants/{tenantId}/dossiers/{caseId}/documents/{documentId}/versions/{versionId}`
+— UUID segments only, with a database check constraint recomputing the expected
+key from the row itself, so no file name or personal data can reach the
+provider path.
+
+Upload validates server-side: media type detected from magic bytes and only
+compared with the browser declaration (mismatch refused, detected type stored),
+closed allowlist PDF/JPEG/PNG/TIFF, 25 MB cap, file names with separators,
+traversal segments or control characters refused. SHA-256 is computed from the
+stored bytes. The write is three-phase (reserve `pending` → object write →
+publish `available`), so a partial failure is never silent.
+
+Download issues a 60-second HMAC grant bound to tenant/document/version/identity
+and re-runs the full membership, RBAC, grant and state check before streaming;
+the grant alone never authorizes anything. Replacing a justificatif creates
+version n+1; a database trigger refuses every DELETE and every rewrite of the
+stored bytes metadata, so version n stays intact and downloadable.
+
+No antivirus product is configured (roadmap dependency still open). Rather than
+claim a scan, a fresh version is undownloadable until a cabinet role records an
+explicit validation outcome through the new `document.validate` capability; an
+`infected` outcome quarantines version and document. Two narrow RLS policies
+plus the `enforce_client_document_scope` trigger let a client complete an upload
+on a granted dossier while refusing any change to business metadata or to their
+own scan status.
+
+Files changed for PF-05:
+
+- `drizzle/0008_pf05_private_document_storage.sql`, migration journal;
+- `lib/db/schema.ts`, `lib/db/managed-readiness.ts`, `lib/auth/authorization.ts`;
+- `lib/documents/blob.ts`, `lib/documents/upload-validation.ts`,
+  `lib/documents/private-storage.ts`, `lib/documents/access-grant.ts`,
+  `lib/documents/document-service.ts`, `lib/documents/runtime.ts`;
+- `app/api/v1/documents/[documentId]/versions/route.ts`,
+  `app/api/v1/documents/[documentId]/download/route.ts`,
+  `app/api/v1/documents/[documentId]/download/stream/route.ts`;
+- `scripts/run-postgres-tests.mjs`, `.env.example`;
+- `tests/unit/pf05-private-documents.test.ts`,
+  `tests/postgres/pf05-private-documents.test.ts`,
+  `tests/unit/pf03c-managed-postgres-readiness.test.ts` (readiness marker and
+  protected-table count follow the newest migration);
+- `docs/agent/PF05_PRIVATE_DOCUMENTS.md`, `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (30 files, 363 tests); `npm run
+test:postgres` PASS (2 files, 24 tests, fresh native PostgreSQL 18.4,
+migrations `0000` through `0008`); `npx tsc --noEmit` PASS; `npm run lint` PASS;
+`npm run build` PASS; `git diff --check` PASS. `npm run e2e` NOT RUN — the
+Playwright harness still needs a Clerk test instance and session fixture that do
+not exist in this environment.
+
+PRODUCTION_VERIFICATION_PENDING: no Vercel Blob store, token or managed staging
+database was available. Nothing was uploaded to, downloaded from or deleted from
+a real provider container. PF-05-PUBLISH must evidence a private store, a
+scoped runtime token, an end-to-end upload/download, the download signing
+secret and its rotation, and migration `0008` applied to the managed database.
 
 ## PF-04B — Authenticated tenant context and RBAC (COMPLETE / VERIFIED_LOCALLY)
 
@@ -633,10 +720,9 @@ None.
 
 ## Tests
 
-Unit: PASS — `npm test` completed with 0 failures after PF-03C. The suite
-includes duplicate suites discovered under existing `.claude/worktrees`.
-PostgreSQL/RLS: PASS — 1 file, 13 tests, 0 failing on a fresh native ephemeral
-PostgreSQL 18.4 cluster after migrations `0000` through `0006`.
+Unit: PASS — `npm test` after PF-05: 30 files, 363 tests, 0 failures.
+PostgreSQL/RLS: PASS — 2 files, 24 tests, 0 failing on a fresh native ephemeral
+PostgreSQL 18.4 cluster after migrations `0000` through `0008`.
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -649,6 +735,12 @@ non-interactive environment. PF-03B changes repository/database boundaries, not
 an authenticated browser flow; E2E remains required before production release.
 
 ## Open blockers
+
+No PF-05 implementation blocker. The private document chain — upload, versioning,
+quarantine, soft deletion, download grants, cross-tenant and revocation refusals
+— passes against real PostgreSQL RLS with an in-memory storage adapter. No
+Vercel Blob store, token or provider container was available, so the real
+provider round-trip stays PRODUCTION_VERIFICATION_PENDING (PF-05-PUBLISH).
 
 No PF-03C implementation blocker. The fresh native PostgreSQL migration/RLS
 exercise passes locally. Managed-provider staging credentials, migration,
@@ -732,9 +824,11 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-04-PUBLISH — configure and prove Clerk/RBAC on Vercel plus the remaining
-PF-03C managed-provider migration, runtime credential, staging smoke and
-temporary-database restore evidence. Do not admit live-user data before it.
+PF-05-PUBLISH — provision the private Vercel Blob store, prove the real
+upload/download chain against it, and complete the still-pending PF-04-PUBLISH
+Clerk/RBAC and PF-03C managed-provider migration, runtime credential, staging
+smoke and temporary-database restore evidence. Do not admit live-user data or
+real client documents before it.
 
 ## Handoff notes
 
