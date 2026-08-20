@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ClerkProvider } from "@clerk/nextjs";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,7 +39,9 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? (
+          <ClerkProvider><ThemeProvider>{children}</ThemeProvider></ClerkProvider>
+        ) : <ThemeProvider>{children}</ThemeProvider>}
       </body>
     </html>
   );

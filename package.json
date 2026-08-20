@@ -12,11 +12,16 @@
     "test:watch": "vitest",
     "e2e": "node scripts/run-e2e.mjs",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx scripts/managed-postgres-readiness.ts migrate",
+    "db:verify": "tsx scripts/managed-postgres-readiness.ts verify",
+    "db:smoke": "tsx scripts/managed-postgres-readiness.ts smoke",
+    "db:backup": "tsx scripts/managed-postgres-backup.ts backup",
+    "db:restore:verify": "tsx scripts/managed-postgres-backup.ts restore-verify",
     "db:seed:demo": "tsx scripts/seed-demo-postgres.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.7.9",
     "@radix-ui/react-accordion": "^1.2.13",
     "@radix-ui/react-dialog": "^1.1.16",
     "@radix-ui/react-dropdown-menu": "^2.1.17",

@@ -4,7 +4,8 @@ Last updated: 2026-08-20
 
 ## Git state
 
-Branch: codex/pf-03b-postgres-tenant-isolation
+Branch: main
+HEAD before PF-04A: 13d819165fbd3db1e1e2bbb0f3fe14cdb33402e0
 HEAD before PF-03B: 7135daf954e27b3b77db96ec3d4b2be97b886b1a
 HEAD before PF-03A: ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
 Merge commit (PR #9): ef64ae7fb64cccca32c8d0af9c21652cc2aa0f88
@@ -26,10 +27,9 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-03-PUBLISH — Draft PR #11 combines the completed PF-02B fiscal work with
-PF-03 PostgreSQL tenant isolation. Resolve the documentary merge conflict,
-then complete managed-PostgreSQL migration, credentials, backup/restore and
-smoke evidence. Clerk authenticated mapping remains PF-04 scope.
+PF-04-PUBLISH — production deployment evidence for Clerk/RBAC and managed
+PostgreSQL. PF-04 is complete locally: authentication, mapping, RBAC, tenant
+context, RLS chain and revocation are covered by tests.
 
 ## Completed
 
@@ -52,6 +52,159 @@ smoke evidence. Clerk authenticated mapping remains PF-04 scope.
 - **PF-03B COMPLETE — PostgreSQL RLS, two-tenant isolation, audit hardening and
   idempotent Claire/Marc fixture migration are enforced and tested.**
 - **PF-03 COMPLETE — data foundation + tenant isolation.**
+- **PF-03C IMPLEMENTED — managed PostgreSQL migration/verification/smoke,
+  backup/restore procedure and non-sensitive health readiness gate.**
+- **PF-04A IMPLEMENTED / VERIFIED_LOCALLY — Clerk sign-in/sign-up, protected
+  server-resolved workspace, signed idempotent organization webhook and a
+  provider-neutral PostgreSQL mapping boundary.**
+- **PF-04 COMPLETE (PF-04A + PF-04B) — authenticated tenant context, central
+  RBAC, client dossier grants, RLS resource restriction and revocation tests.**
+
+## PF-04B — Authenticated tenant context and RBAC (COMPLETE / VERIFIED_LOCALLY)
+
+Branch: `main`
+
+HEAD before PF-04B: `00ff124e18dc875d6ebbf2c3bf00712d28100489`
+
+PF-04B keeps Clerk as identity/organization provider while PostgreSQL remains
+the final authority. `lib/auth/authorization.ts` contains one explicit
+capability matrix for admin (TENANT_ADMIN), conseiller (ADVISER), expert,
+client and the retained auditeur role. Tenant resource and simulation
+repositories enter only through `withAuthorizedTenantTransaction`; a denied
+capability records a sanitized `authorization.denied` audit then fails closed.
+
+Migration `0007_pf04b_authenticated_tenant_rbac.sql` adds active/revocable
+client `case_access_grants` and RLS predicates for dossiers/documents/private
+metadata. A client cannot read a same-tenant dossier without a grant, cannot
+read cabinet-B resource IDs, cannot write a dossier/run an expert action or
+validate a professional report. Reports are non-client resources. Revoking the
+database membership causes the next repository/transaction request to fail
+even if a Clerk session would still exist.
+
+Session mapping, authorization denials and server-side membership invite/role
+change/revocation have append-only audit actions with no token/secret payload.
+Clerk membership webhooks retain their separate signed, hashed event audit and
+never become business-membership authority. Fixture routes use one fixed
+synthetic actor rather than a browser-selected role; the legacy demo identity
+entry point is additionally refused in database and production environments.
+
+Files changed for PF-04B:
+
+- `drizzle/0007_pf04b_authenticated_tenant_rbac.sql`, migration journal;
+- `lib/auth/authorization.ts`, `lib/auth/membership-service.ts`, Clerk context,
+  database schema/readiness, tenant and simulation repositories;
+- RLS/PostgreSQL and RBAC unit tests;
+- `docs/agent/PF04_AUTH_RBAC.md`, `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (75 files, 949 tests); `npm run
+test:postgres` PASS (14 tests, fresh native PostgreSQL migrations `0000`
+through `0007`); `npx tsc --noEmit` PASS; `npm run lint` PASS; `npm run build`
+PASS; `git diff --check` PASS. Playwright Clerk authentication is NOT RUN:
+there is no configured Clerk test instance, user/session fixture or safe
+managed staging environment; the server/RLS chain is covered natively instead.
+
+PRODUCTION_VERIFICATION_PENDING: no real Clerk/Vercel account, safe managed
+staging database or signed delivery/session evidence was supplied. PF-04 is
+complete locally, but PF-04-PUBLISH must obtain that operational evidence
+before live-user admission.
+
+## PF-04A — Clerk Organizations authentication foundation (IMPLEMENTED / VERIFIED_LOCALLY)
+
+Branch: `main`
+
+HEAD before PF-04A: `13d819165fbd3db1e1e2bbb0f3fe14cdb33402e0`
+
+PF-04A installs `@clerk/nextjs` 7.7.9, compatible with the repository's
+resolved Next 16.2.6, and introduces `proxy.ts`, Clerk sign-in/sign-up pages
+and a protected `/workspace`. The workspace repeats authentication and tenant
+resolution server-side; no client-only check authorizes an application request.
+
+Migration `0006_pf04a_clerk_organizations_auth_foundation.sql` creates
+provider-neutral organization/member observations and immutable hashed webhook
+receipts, all FORCE-RLS protected. `app_security.resolve_clerk_context` maps
+the signed Clerk user and active organization to a provider-neutral internal
+identity, active non-revoked internal membership, internal tenant and role.
+The resolver returns nothing for an unknown user, unmapped/wrong organization,
+absent provider observation or revoked database membership. The resulting
+branded context is still passed through `withTenantTransaction` and RLS.
+
+The signed Clerk webhook handles user/organization/membership lifecycle events
+through a separate `patrimoine_webhook_service` `NOBYPASSRLS` role and a
+separate `CLERK_WEBHOOK_DATABASE_URL`. Its idempotency key is the signed Svix
+delivery ID; receipts retain only a SHA-256 payload fingerprint. It never
+creates or modifies authoritative tenants/cabinets/memberships. An operator
+must explicitly link a Clerk organization to an existing tenant and maintain
+the internal membership; this deliberate split keeps Clerk out of final tenant
+authorization.
+
+Files changed for PF-04A:
+
+- `.env.example`, `package.json`, `package-lock.json`, `proxy.ts`;
+- `app/layout.tsx`, Clerk sign-in/sign-up/workspace pages and Clerk webhook route;
+- `drizzle/0006_pf04a_clerk_organizations_auth_foundation.sql`, migration journal;
+- `lib/auth/*`, `lib/db/schema.ts`, `lib/db/tenant-transaction.ts`,
+  `lib/db/managed-readiness.ts`, `lib/tenancy/tenant-context.ts`;
+- PostgreSQL/unit tests and `docs/agent/PF04_AUTH_RBAC.md`.
+
+Validation executed: `npm test` PASS (74 files, 946 tests); `npm run
+test:postgres` PASS (13 tests, fresh native PostgreSQL migrations `0000`
+through `0006`); `npx tsc --noEmit` PASS; `npm run lint` PASS; `npm run build`
+PASS; `git diff --check` PASS.
+
+PRODUCTION_VERIFICATION_PENDING: no real Clerk/Vercel configuration, signed
+delivery, managed staging database or provider credentials were available. No
+external account, user, migration, seed or production database was changed.
+
+## PF-03C — Managed PostgreSQL operational readiness (IMPLEMENTED)
+
+Branch: `main`
+
+HEAD before PF-03C: `e7571a71bdc2bb7e4d22ed863613a81b107a5b83`
+
+PF-03C adds no fiscal calculation, fiscal rule, credential or provider lock-in.
+It adds the operational contracts required to deploy the existing Drizzle/RLS
+foundation to a managed PostgreSQL service:
+
+- `DATABASE_URL` is runtime-only; `drizzle.config.ts` and all migration work
+  use only the distinct `DATABASE_ADMIN_URL`.
+- `npm run db:migrate` applies the journalled migrations and verifies the
+  migration count, controlled group roles and forced RLS without automatic
+  rollback; failures report a non-sensitive machine-readable code.
+- `npm run db:verify` verifies the administrative schema/catalog path and the
+  runtime login's `NOSUPERUSER`/`NOBYPASSRLS` membership in
+  `patrimoine_app`. Repository transactions now reject an unsafe runtime login
+  before it can assume that group role.
+- `npm run db:smoke` is an explicit staging-only, RLS-scoped synthetic audit
+  read/write. It cannot run in production.
+- `npm run db:backup` and `npm run db:restore:verify` provide a `pg_dump` /
+  `pg_restore` procedure with migration, row-count and RLS sanity checks; the
+  restore command cannot run in production and does not create/drop databases.
+- `GET /api/health` returns only `ok` or `not_ready` after runtime database,
+  role and PF-03C migration/RLS-marker checks; it exposes no secret or tenant
+  detail.
+
+Files changed for PF-03C:
+
+- `.env.example`, `drizzle.config.ts`, `package.json`;
+- `drizzle/0005_pf03c_managed_postgresql_operational_readiness.sql`,
+  `drizzle/meta/_journal.json`;
+- `lib/db/managed-readiness.ts`, `lib/db/tenant-transaction.ts`;
+- `scripts/managed-postgres-readiness.ts`, `scripts/managed-postgres-backup.ts`;
+- `app/api/health/route.ts`;
+- `tests/unit/pf03c-managed-postgres-readiness.test.ts`;
+- `docs/agent/PF03_DATA_FOUNDATION.md`, `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS; focused PF-03C unit test PASS (3/3);
+`npm run test:postgres` PASS (1 file, 12 tests, fresh native PostgreSQL 18.4
+with migrations `0000` through `0005`); `npx tsc --noEmit` PASS; `npm run lint`
+PASS; `npm run build` PASS outside the sandbox after Turbopack required access
+to the Windows parent directory; `git diff --check` PASS.
+
+PRODUCTION_VERIFICATION_PENDING: no managed PostgreSQL provider, staging
+credential or safe staging database was available. No migration, seed, backup,
+restore or smoke command was run against a shared/provider database. The
+provider-native backup and the documented temporary-database restore must be
+performed and evidenced before production data is accepted.
 
 ## PF-03B — PostgreSQL RLS and tenant isolation (COMPLETE)
 
@@ -480,16 +633,16 @@ None.
 
 ## Tests
 
-Unit: PASS — 72 files, 939 tests, 0 failing after the PF-02B/PF-03 merge
-resolution. The total includes duplicate suites discovered under existing
-`.claude/worktrees`.
-PostgreSQL/RLS: PASS — 1 file, 12 tests, 0 failing on a fresh native ephemeral
-PostgreSQL 18.4 cluster after migrations `0000` through `0004`.
+Unit: PASS — `npm test` completed with 0 failures after PF-03C. The suite
+includes duplicate suites discovered under existing `.claude/worktrees`.
+PostgreSQL/RLS: PASS — 1 file, 13 tests, 0 failing on a fresh native ephemeral
+PostgreSQL 18.4 cluster after migrations `0000` through `0006`.
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
-PostgreSQL fresh migration + synthetic seed: PASS — executed automatically by
-`npm run test:postgres`; no shared or user database was touched.
+PostgreSQL fresh migration + synthetic seed: PASS — `npm run test:postgres`
+executed migrations `0000` through `0005`, then passed 12 tests; no shared or
+user database was touched.
 git diff --check: PASS — exit 0, no whitespace/conflict-marker errors.
 E2E: NOT RUN — Playwright harness starts a server, not reliably runnable in this
 non-interactive environment. PF-03B changes repository/database boundaries, not
@@ -497,11 +650,11 @@ an authenticated browser flow; E2E remains required before production release.
 
 ## Open blockers
 
-No PF-03 implementation blocker. The fresh native PostgreSQL migration/RLS
-exercise passes locally. Provider-specific staging credentials, migration,
-backup/restore and smoke verification remain PF-03-PUBLISH deployment gates;
-no managed database was supplied or mutated in this task. Clerk mapping remains
-PF-04. The P1/P2 fiscal backlog, regulatory-review items and recalculation
+No PF-03C implementation blocker. The fresh native PostgreSQL migration/RLS
+exercise passes locally. Managed-provider staging credentials, migration,
+backup/restore and smoke evidence remain PRODUCTION_VERIFICATION_PENDING; no
+managed database was supplied or mutated in this task. Clerk mapping remains
+PF-04A. The P1/P2 fiscal backlog, regulatory-review items and recalculation
 candidates below remain open.
 
 ## Regulatory verification required
@@ -579,11 +732,9 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-03-PUBLISH — complete the Draft PR checks, provision the managed PostgreSQL
-login-role memberships, apply migrations, run the guarded synthetic seed only
-in an approved demo environment, and document backup/restore plus staging smoke
-evidence. After PF-03 merges: PF-04 — Clerk Organizations, RBAC and authenticated
-tenant context.
+PF-04-PUBLISH — configure and prove Clerk/RBAC on Vercel plus the remaining
+PF-03C managed-provider migration, runtime credential, staging smoke and
+temporary-database restore evidence. Do not admit live-user data before it.
 
 ## Handoff notes
 

@@ -71,7 +71,7 @@ describe("PF-03B tenant isolation contracts", () => {
     expect(transaction).toContain("set_config('app.tenant_id'");
     expect(transaction).toContain("set_config('app.user_id'");
     expect(transaction).toContain("set_config('app.role'");
-    expect(postgresRepository).toContain("withTenantTransaction");
+    expect(postgresRepository).toContain("withAuthorizedTenantTransaction");
   });
 
   it("keeps the Claire and Marc import explicit, synthetic and idempotent", () => {

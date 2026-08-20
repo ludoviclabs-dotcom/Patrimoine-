@@ -33,6 +33,10 @@ const runB = "99999999-9999-4999-8999-999999999992";
 const evidenceId = "pf03b-official-source";
 const ruleId = "pf03b-global-rule-v1";
 const tenantBRuleId = "pf03b-tenant-b-rule-v1";
+const clerkIdentity = "12121212-1212-4121-8121-121212121212";
+const clientIdentity = "13131313-1313-4131-8131-131313131313";
+const clientDeniedDossier = "14141414-1414-4141-8141-141414141414";
+const reportB = "pf04b-report-b";
 
 const tenantTables = [
   "tenants",
@@ -59,6 +63,10 @@ const tenantTables = [
   "consents",
   "dpia_records",
   "rule_versions",
+  "auth_provider_organizations",
+  "auth_provider_memberships",
+  "auth_webhook_events",
+  "case_access_grants",
 ] as const;
 
 const contextA = createInternalTenantContext({
@@ -74,6 +82,13 @@ const contextB = createInternalTenantContext({
   role: "conseiller",
   source: "internal-test",
   correlationId: "pf03b-correlation-b",
+});
+const contextClient = createInternalTenantContext({
+  tenantId: tenantA,
+  identityId: clientIdentity,
+  role: "client",
+  source: "internal-test",
+  correlationId: "pf04b-client-correlation",
 });
 
 type SqlClient = ReturnType<typeof postgres>;
@@ -100,7 +115,7 @@ async function applyMigrations(client: SqlClient) {
 }
 
 async function runAsTenant<T>(
-  context: typeof contextA | typeof contextB,
+  context: typeof contextA | typeof contextB | typeof contextClient,
   operation: (transaction: postgres.TransactionSql) => Promise<T>,
 ) {
   return application.begin(async (transaction) => {
@@ -172,6 +187,13 @@ async function seedSecondTenantAndLinkedRecords() {
        'case.created', 'dossier', ${dossierB}, 'Dossier B créé.',
        'pf03b-seed-b', ${JSON.stringify({ synthetic: true })}::jsonb)
   `;
+  await admin`
+    insert into report_versions
+      (id, tenant_id, case_id, version, status, simulation_run_ids, validation_decision,
+       evidence_source_ids, coverage_limit_ids)
+    values (${reportB}, ${tenantB}, ${dossierB}, '1', 'draft', '[]'::jsonb,
+      'pending', '[]'::jsonb, '[]'::jsonb)
+  `;
 }
 
 async function seedRuleAndSimulationRuns() {
@@ -232,6 +254,58 @@ async function seedRuleAndSimulationRuns() {
   }
 }
 
+async function seedClerkAuthorizationFixture() {
+  await admin`
+    insert into user_identities
+      (id, provider, provider_subject, email_normalized, display_name)
+    values (${clerkIdentity}, 'clerk', 'user_clerk_a', 'clerk-a@example.test', 'Clerk A')
+  `;
+  await admin`
+    insert into memberships
+      (tenant_id, user_identity_id, role, status, activated_at)
+    values (${tenantA}, ${clerkIdentity}, 'conseiller', 'active', now())
+  `;
+  await admin`
+    insert into auth_provider_organizations
+      (provider, provider_organization_id, tenant_id, slug, display_name)
+    values
+      ('clerk', 'org_clerk_a', ${tenantA}, 'cabinet-a', 'Cabinet A'),
+      ('clerk', 'org_clerk_wrong_tenant', ${tenantB}, 'cabinet-b', 'Cabinet B'),
+      ('clerk', 'org_clerk_without_membership', ${tenantA}, 'cabinet-a-2', 'Cabinet A 2')
+  `;
+  await admin`
+    insert into auth_provider_memberships
+      (provider, provider_organization_id, provider_subject, provider_role, observed_status)
+    values
+      ('clerk', 'org_clerk_a', 'user_clerk_a', 'org:member', 'active'),
+      ('clerk', 'org_clerk_wrong_tenant', 'user_clerk_a', 'org:member', 'active'),
+      ('clerk', 'org_clerk_without_membership', 'user_clerk_without_membership', 'org:member', 'active')
+  `;
+}
+
+async function seedClientGrantFixture() {
+  await admin`
+    insert into user_identities
+      (id, provider, provider_subject, email_normalized, display_name)
+    values (${clientIdentity}, 'clerk', 'user_client_a', 'client-a@example.test', 'Client A')
+  `;
+  await admin`
+    insert into memberships
+      (tenant_id, user_identity_id, role, status, activated_at)
+    values (${tenantA}, ${clientIdentity}, 'client', 'active', now())
+  `;
+  await admin`
+    insert into client_cases
+      (id, tenant_id, client_id, household_id, reference, title, status, fiscal_year)
+    values (${clientDeniedDossier}, ${tenantA}, ${v21PilotSeedPlan.client.id},
+      ${householdA}, 'CLIENT-DENIED', 'Dossier non partagé au client', 'draft', 2026)
+  `;
+  await admin`
+    insert into case_access_grants (tenant_id, case_id, user_identity_id, status)
+    values (${tenantA}, ${dossierA}, ${clientIdentity}, 'active')
+  `;
+}
+
 beforeAll(async () => {
   const databaseUrl = process.env.PF03_TEST_DATABASE_URL;
   if (!databaseUrl) {
@@ -252,6 +326,8 @@ beforeAll(async () => {
   await seedClaireMarcDemo(adminDb);
   await seedSecondTenantAndLinkedRecords();
   await seedRuleAndSimulationRuns();
+  await seedClerkAuthorizationFixture();
+  await seedClientGrantFixture();
 
   application = postgres(applicationUrl(databaseUrl), {
     max: 1,
@@ -280,18 +356,21 @@ describe("PF-03B PostgreSQL RLS tenant isolation", () => {
     const roles = await admin<{ rolname: string; rolsuper: boolean; rolbypassrls: boolean }[]>`
       select rolname, rolsuper, rolbypassrls
       from pg_roles
-      where rolname in ('patrimoine_app', 'patrimoine_fixture_service')
+      where rolname in ('patrimoine_app', 'patrimoine_fixture_service', 'patrimoine_webhook_service')
       order by rolname
     `;
     const [serviceMembership] = await admin<{
       application_has_service_role: boolean;
       deployment_has_service_role: boolean;
+      application_has_webhook_role: boolean;
     }[]>`
       select
         pg_has_role('pf03_test_app', 'patrimoine_fixture_service', 'member')
           as application_has_service_role,
         pg_has_role(current_user, 'patrimoine_fixture_service', 'member')
-          as deployment_has_service_role
+          as deployment_has_service_role,
+        pg_has_role('pf03_test_app', 'patrimoine_webhook_service', 'member')
+          as application_has_webhook_role
     `;
 
     expect(rows).toHaveLength(tenantTables.length);
@@ -299,10 +378,12 @@ describe("PF-03B PostgreSQL RLS tenant isolation", () => {
     expect(roles).toEqual([
       { rolname: "patrimoine_app", rolsuper: false, rolbypassrls: false },
       { rolname: "patrimoine_fixture_service", rolsuper: false, rolbypassrls: false },
+      { rolname: "patrimoine_webhook_service", rolsuper: false, rolbypassrls: false },
     ]);
     expect(serviceMembership).toEqual({
       application_has_service_role: false,
       deployment_has_service_role: true,
+      application_has_webhook_role: false,
     });
   });
 
@@ -399,6 +480,57 @@ describe("PF-03B PostgreSQL RLS tenant isolation", () => {
     await expect(
       createTenantResourceRepository(applicationDb).findDossier(mismatched, dossierA),
     ).rejects.toThrow("TENANT_MEMBERSHIP_REQUIRED");
+  });
+
+  it("resolves Clerk only through the active internal membership and tenant mapping", async () => {
+    const resolve = (userId: string, organizationId: string) => application.begin(async (transaction) => {
+      await transaction.unsafe("set local role patrimoine_app");
+      return transaction<{ tenant_id: string; identity_id: string; role: string }[]>`
+        select * from app_security.resolve_clerk_context(${userId}, ${organizationId})
+      `;
+    });
+
+    await expect(resolve("unknown_clerk_user", "org_clerk_a")).resolves.toEqual([]);
+    await expect(resolve("user_clerk_without_membership", "org_clerk_without_membership")).resolves.toEqual([]);
+    await expect(resolve("user_clerk_a", "org_clerk_wrong_tenant")).resolves.toEqual([]);
+    await expect(resolve("user_clerk_a", "org_clerk_a")).resolves.toEqual([
+      { tenant_id: tenantA, identity_id: clerkIdentity, role: "conseiller" },
+    ]);
+
+    await admin`
+      update memberships set status = 'disabled', revoked_at = now()
+      where tenant_id = ${tenantA} and user_identity_id = ${clerkIdentity}
+    `;
+    await expect(resolve("user_clerk_a", "org_clerk_a")).resolves.toEqual([]);
+  });
+
+  it("limits a client to explicitly granted dossiers and denies expert or cabinet actions", async () => {
+    const repository = createTenantResourceRepository(applicationDb);
+    await expect(repository.findDossier(contextClient, dossierA)).resolves.toMatchObject({ id: dossierA });
+    await expect(repository.findDossier(contextClient, clientDeniedDossier)).resolves.toBeNull();
+    await expect(repository.findDossier(contextClient, dossierB)).resolves.toBeNull();
+    await expect(repository.findDocumentMetadata(contextClient, documentA)).resolves.toMatchObject({ id: documentA });
+    await expect(repository.findDocumentMetadata(contextClient, documentB)).resolves.toBeNull();
+    await expect(repository.updateDossierTitle(contextClient, dossierA, "forbidden"))
+      .rejects.toThrow("TENANT_AUTHORIZATION_DENIED");
+
+    const direct = await runAsTenant(contextClient, async (transaction) => ({
+      granted: (await transaction`select id from client_cases where id = ${dossierA}`).length,
+      ungranted: (await transaction`select id from client_cases where id = ${clientDeniedDossier}`).length,
+      foreignReport: (await transaction`select id from report_versions where id = ${reportB}`).length,
+    }));
+    expect(direct).toEqual({ granted: 1, ungranted: 0, foreignReport: 0 });
+
+    const audits = await repository.listAuditLogs(contextA);
+    expect(audits.some((entry) => entry.action === "authorization.denied"
+      && entry.metadata?.action === "dossier.write")).toBe(true);
+
+    await admin`
+      update memberships set status = 'disabled', revoked_at = now()
+      where tenant_id = ${tenantA} and user_identity_id = ${clientIdentity}
+    `;
+    await expect(repository.findDossier(contextClient, dossierA))
+      .rejects.toThrow("TENANT_MEMBERSHIP_REQUIRED");
   });
 
   it("rejects a composite foreign key crossing the tenant boundary", async () => {

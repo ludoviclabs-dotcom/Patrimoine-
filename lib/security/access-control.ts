@@ -134,14 +134,18 @@ export function getDemoRequestContext(role: UserAccount["role"] = "conseiller"):
   };
 }
 
-export function getDemoRoleFromRequest(request: Request) {
-  const requested = request.headers.get("x-demo-role") as UserAccount["role"] | null;
-  const allowed: UserAccount["role"][] = ["admin", "conseiller", "expert", "client"];
+export function getDemoRoleFromRequest(_request: Request): UserAccount["role"] {
+  void _request;
 
-  if (requested && allowed.includes(requested)) {
-    return requested;
+  if (
+    process.env.PERSISTENCE_MODE?.trim().toUpperCase() === "DATABASE"
+    || process.env.NODE_ENV === "production"
+  ) {
+    throw new Error("DEMO_REQUEST_IDENTITY_FORBIDDEN");
   }
 
+  // Fixture routes have one fixed synthetic actor. Browser input must never
+  // select a tenant role, even outside the DATABASE/production fail-closed path.
   return "conseiller";
 }
 
