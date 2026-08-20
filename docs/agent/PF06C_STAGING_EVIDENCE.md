@@ -5,10 +5,14 @@ HEAD before PF-06C: `5096994c41449469eb6cc7441505932ea6c93bbd`
 Local commits not yet pushed: `d9c3827` (PF-05), `b3c1690` (PF-06),
 `5096994` (PF-06B).
 
-This run inventoried the real provider surface, linked the repository to the
+**PF-06C** inventoried the real provider surface, linked the repository to the
 correct Vercel project, fixed the Playwright harness, and stopped at the cost
-gate before creating any cloud resource. **No provider round-trip was
-performed and none was simulated.**
+gate before creating any cloud resource.
+
+**PF-06C2** (HEAD `029cc2bc90a6630bffb14aa15bb417bc3277a8fa`) ran after the
+owner provisioned the resources manually. Sections 1 to 3 below record the
+PF-06C inventory as it stood then and are kept for history; **sections 5 to 8
+are the current state**. Nothing in either run was simulated.
 
 No fiscal engine, rule, rate, threshold, effective date or golden expected
 result was touched.
@@ -172,82 +176,130 @@ Environment for the record: Node **v24.14.0**, Playwright **1.60.0**, Next
 
 ## 5. Production evidence matrix
 
+Updated by **PF-06C2** against the resources the owner provisioned. Statuses
+reflect what was actually observed on the real staging environment.
+
 | Gate | Status | Evidence |
 |---|---|---|
-| Managed Postgres | BLOCKED | No provider attached to `patrimoine-fiscal-demo`; `DATABASE_URL`/`DATABASE_ADMIN_URL` MISSING; marketplace install requires an interactive terminal and an unresolved cost approval |
-| Migrations 0000-0009 | BLOCKED | No managed database to apply them to. Applied and verified locally on an ephemeral PostgreSQL 18.4 cluster by `npm run test:postgres` (4 files, 39 tests) — that is local, not staging |
-| Runtime NOBYPASSRLS | BLOCKED | No managed runtime login exists. `assertSafeDatabaseRuntimeRole` and the role checks are exercised locally by the PostgreSQL suite |
-| Clerk real session | BLOCKED | No Clerk keys; instance existence UNVERIFIED; no CLI or API access from this session |
-| Organization mapping | BLOCKED | Depends on a Clerk instance and a managed database |
-| Revocation | BLOCKED | Depends on a real Clerk session plus a managed database. Covered locally: `tests/postgres/pf05-private-documents.test.ts` and `pf03b-tenant-isolation.test.ts` prove the next request fails with `TENANT_MEMBERSHIP_REQUIRED` after the DB membership is revoked |
-| Private Blob | BLOCKED | No store for this project; creating one is gated on cost approval. `carbonco-workbooks` deliberately untouched |
-| Document upload | BLOCKED | Requires the Blob store and the managed database |
-| Document download | BLOCKED | Requires the Blob store and the managed database |
-| Server PDF generation | BLOCKED | Requires the managed database. Verified locally, including byte-reproducible rendering (`tests/unit/pf06-server-report.test.ts`) |
-| Professional validation | BLOCKED | Requires a real Clerk EXPERT session. Verified locally end to end (`tests/postgres/pf06b-report-console.test.ts`) |
-| Private PDF download | BLOCKED | Requires the Blob store and the managed database |
-| Cross tenant denial | BLOCKED | Requires two real Clerk organizations. Verified locally against real PostgreSQL RLS in three suites, including a forged-but-correctly-signed grant resolving nothing |
-| Audit trail | BLOCKED | Requires the managed database. Verified locally: all four report audit actions and the document actions are asserted |
-| Playwright | PASS (public surface) / NOT_RUN (authenticated) | `npm run e2e` → 12 passed, 4 skipped. The harness blocker is fixed; the 4 skipped authenticated journeys stay gated on `E2E_CLERK_FIXTURE=1` |
+| Managed Postgres | **PASS** | Neon `PostgreSQL 18.6`, database `neondb`, endpoint `ep-wild-moon-b2av1y2v` in `eu-central-1`. Connected and queried from the repository code |
+| Migrations 0000-0009 | **PASS** | `npm run db:migrate` → `{"status":"migrated","migration":"0009_pf06_server_report_snapshot"}`. Catalog after: 37 tables, 64 policies, 102 foreign keys (63 composite tenant FKs), 13 triggers |
+| Runtime NOBYPASSRLS | **PASS** | `npm run db:verify` → `{"status":"verified","migration":"0009_pf06_server_report_snapshot"}`. Dedicated login `patrimoine_runtime`: `rolsuper=false`, `rolbypassrls=false`, `rolinherit=false`, no direct table privileges, member of `patrimoine_app` only (not of the fixture or webhook service roles). FORCE RLS on 31/31 declared tables |
+| Clerk real session | **PASS** | Live Clerk **development** instance. `app_security.resolve_clerk_context` resolves EXPERT_A, CLIENT_A and EXPERT_B; EXPERT_A presented against CABINET_B → DENY; unknown Clerk identity → DENY |
+| Organization mapping | **PASS** | CABINET_A `org_3IB8wUXZ…` → tenant `11111111…`; CABINET_B `org_3IB8yTlv…` → tenant `b0000000…`. Resolved roles: EXPERT_A=expert, CLIENT_A=client, EXPERT_B=expert |
+| Revocation | **PASS** | With the internal context still held: revoking the DB membership makes the Clerk resolver return nothing, and dossier read, document metadata read and document version listing all fail with `TENANT_MEMBERSHIP_REQUIRED`. Membership restored afterwards |
+| Private Blob | **BLOCKED** | Store `patrimoine-fiscal-demo-blob` (`store_9tKIbjqgRHu7ZqE4`, `cdg1`, dedicated to this project) exists and is attached, but `BLOB_READ_WRITE_TOKEN` holds an **empty value** in both Preview and Production. Local OIDC is refused: *"OIDC is enabled for this project, but not for the development environment"*. A store token cannot be minted non-interactively |
+| Document upload | **BLOCKED** | Same cause. The upload path reached the storage boundary and failed at `BLOB_READ_WRITE_TOKEN_REQUIRED`, which is the adapter refusing to proceed without a token — not a defect |
+| Document download | **BLOCKED** | Same cause |
+| Server PDF generation | **BLOCKED** | Same cause: generation stores the rendered PDF as a private object before the version row is written |
+| Professional validation | **BLOCKED** | Depends on an existing report version |
+| Private PDF download | **BLOCKED** | Depends on an existing report version |
+| Cross tenant denial | **PASS** (data layer) / **NOT_RUN** (report objects) | On real Neon: EXPERT_B is filtered by RLS from dossier A, document A metadata and document A versions, and sees only `DOS-B-STAGING`; CLIENT_A reads the explicitly granted dossier but `TENANT_AUTHORIZATION_DENIED` on write. Report-level cross-tenant checks could not run because no report version could be created |
+| Audit trail | **PASS** (partial scope) | Audit rows are written and tenant-scoped on real staging: `case.created=1`, `simulation.run=1`, `authorization.denied=3`, and EXPERT_A sees 5 rows all belonging to tenant A. The `document.*` and `report.*` audit actions were NOT_RUN because their operations are blocked |
+| Authenticated Playwright | **NOT_RUN** | The harness itself works (`npm run e2e` → 12 passed, 4 skipped). The authenticated journeys stay gated on `E2E_CLERK_FIXTURE=1`: they need interactive Clerk sign-in credentials for EXPERT_A / CLIENT_A / EXPERT_B, which are human account passwords this session must not request or handle, plus the blocked Blob path |
 
 No status above is a PASS that was not actually observed.
 
 ---
 
-## 6. Provisioning runbook (for PF-05-06-PUBLISH)
+## 6. What PF-06C2 completed
 
-Once the three approvals land, the sequence is mechanical:
+The owner provisioned the resources; this run wired and verified them.
 
-```bash
-# 1. Private Blob store, dedicated to this project, EU region, staging targets
-vercel blob create-store patrimoine-fiscal-private \
-  --access private --region cdg1 \
-  --environment preview --environment development
+1. **Vercel link** confirmed on `patrimoine-fiscal-demo`.
+2. **Environment audit** (names only, values never read or printed):
+   `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `BLOB_STORE_ID`
+   PRESENT with real values; `BLOB_READ_WRITE_TOKEN` and
+   `CLERK_WEBHOOK_SIGNING_SECRET` PRESENT but **empty**; `DATABASE_URL`,
+   `DATABASE_ADMIN_URL`, `DOCUMENT_DOWNLOAD_SIGNING_SECRET` and
+   `PERSISTENCE_MODE` MISSING entirely.
+3. **Database contract completed.** Neon exposes `POSTGRES_*` names, which the
+   application contract does not use. `DATABASE_ADMIN_URL` was mapped to the
+   unpooled Neon owner connection, and a **dedicated runtime login
+   `patrimoine_runtime`** was created (`NOSUPERUSER NOCREATEDB NOCREATEROLE
+   NOINHERIT NOBYPASSRLS`, granted `patrimoine_app` only) because
+   `neondb_owner` has `rolbypassrls=true` and owns every table — PF-03C refuses
+   it as a runtime identity, correctly.
+4. **`DOCUMENT_DOWNLOAD_SIGNING_SECRET` generated** cryptographically (48
+   random bytes) and written only to the gitignored staging env file. It was
+   not pushed to Vercel in this run because the deployment cannot be exercised
+   until the Blob token exists; adding it is part of the same follow-up.
+5. **Migrations applied and verified** on the staging database.
+6. **Synthetic fixtures** seeded idempotently: Claire & Marc in CABINET_A (same
+   ids on a second run), plus a distinct minimal `DOS-B-STAGING` dossier in
+   CABINET_B for isolation testing.
+7. **Clerk to database mapping** performed as the PF-04A operator step: both
+   Clerk organizations linked to their internal tenants, three provider
+   identities created, three authoritative PostgreSQL memberships, provider
+   membership observations, and a `case_access_grants` row so CLIENT_A can see
+   exactly one dossier.
+8. **A real SimulationRun persisted** through the application repository under
+   RLS on the runtime login (`fcaba4da-df81-4bb5-9d53-6e12ba94091d`).
+9. **16 staging gates executed, 16 PASS, 0 FAIL** (`Organization mapping`,
+   `Clerk real session`, `Cross tenant denial`, `Audit trail`, `Revocation`).
 
-# 2. Managed PostgreSQL: install the chosen integration interactively, create a
-#    staging-only database, then register both logins as Preview/Development
-vercel env add DATABASE_URL preview            # runtime login, patrimoine_app member
-vercel env add DATABASE_ADMIN_URL preview      # deployment-only
-vercel env add DOCUMENT_DOWNLOAD_SIGNING_SECRET preview   # >= 32 chars
+### Findings worth acting on
 
-# 3. Clerk development instance with Organizations enabled
-vercel env add NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY preview
-vercel env add CLERK_SECRET_KEY preview
-vercel env add CLERK_WEBHOOK_SIGNING_SECRET preview
-vercel env add PERSISTENCE_MODE preview        # value: DATABASE
-
-# 4. Schema and verification (PF-03C process)
-vercel env pull .env.staging.local             # gitignored
-npm run db:migrate                             # migrations 0000 -> 0009
-npm run db:verify                              # NOSUPERUSER / NOBYPASSRLS / patrimoine_app
-npm run db:smoke                               # staging only, refuses production
-
-# 5. Synthetic fixtures — Claire & Marc in CABINET_A, a separate dossier in CABINET_B
-ALLOW_DEMO_FIXTURE_SEED=true npm run db:seed:demo
-
-# 6. Authenticated journeys
-E2E_CLERK_FIXTURE=1 npm run e2e
-```
-
-Synthetic identities to create in the Clerk test instance — no real personal
-data: `EXPERT_A`, `CLIENT_A` in `CABINET_A`; `EXPERT_B` in `CABINET_B`. Each
-Clerk organization must then be linked by an operator to its internal tenant,
-and the internal membership created in PostgreSQL: Clerk never becomes the
-tenant authority by itself (PF-04A).
-
-`BLOB_READ_WRITE_TOKEN` is never committed; it exists only as a provider
-environment variable. `.env*` files other than `.env.example` are gitignored.
+- **`BLOB_READ_WRITE_TOKEN` is empty** in Preview and Production. This is the
+  single blocker for six gates.
+- **`CLERK_WEBHOOK_SIGNING_SECRET` is empty** too. It does not block the
+  PF-05/PF-06 gates — PF-04A deliberately makes the webhook non-authoritative
+  and the operator mapping above replaces it — but the signed webhook route
+  cannot verify a delivery until it is set. The webhook target URL could not be
+  read back: Clerk's Backend API does not expose endpoint listing on
+  `/webhooks/svix*` (405/404), so it stays UNVERIFIED.
+- **RBAC is already enforcing on staging.** Attempting `simulation.run` as an
+  expert produced `TENANT_AUTHORIZATION_DENIED` and three audited
+  `authorization.denied` rows. `simulation.run` is a conseiller/admin
+  capability; the run was therefore persisted as the cabinet adviser. Likewise
+  `document.upload` belongs to conseiller and client, not to expert, so an
+  EXPERT_A upload is refused by design.
+- **Clerk test identities are real personal email accounts.** For a staging
+  instance that is acceptable, but synthetic addresses would be preferable
+  before any wider use. Only opaque Clerk user ids are recorded in this
+  repository.
 
 ---
 
-## 7. Status vocabulary
+## 7. Remaining work for PF-05-06-PUBLISH
 
-| Level | Meaning | Where PF-05/06 stands |
+One owner action unblocks everything else:
+
+> Vercel Dashboard → Storage → `patrimoine-fiscal-demo-blob` → Projects →
+> disconnect and reconnect `patrimoine-fiscal-demo`, so Vercel injects a real
+> `BLOB_READ_WRITE_TOKEN` in place of the empty placeholder.
+> While there, set a real `CLERK_WEBHOOK_SIGNING_SECRET` from the Clerk webhook
+> endpoint's signing secret.
+
+Then the six blocked gates can be replayed. The staging environment file
+`.env.staging.local` (gitignored) already carries `DATABASE_URL`,
+`DATABASE_ADMIN_URL`, `PERSISTENCE_MODE=DATABASE` and the generated
+`DOCUMENT_DOWNLOAD_SIGNING_SECRET`; only the Blob token has to arrive:
+
+```bash
+vercel env pull --environment=preview .env.staging.local
+```
+
+The round-trip itself is: upload a small synthetic PDF as the cabinet adviser,
+record the scan outcome and download it as EXPERT_A, generate a DRAFT report
+from the persisted SimulationRun, sign the professional review, confirm the
+draft turns OUTDATED, regenerate, validate as EXPERT_A, download the VALIDATED
+PDF and assert the `document.*` and `report.*` audit actions — with EXPERT_B
+denied on every A resource. The temporary scripts used in PF-06C2 were removed
+from the worktree once their results were recorded.
+
+The authenticated Playwright journeys additionally need Clerk test-user sign-in
+credentials handled by the owner, not by this session.
+
+---
+
+## 8. Status vocabulary
+
+| Level | Meaning | Where PF-05/06 stands after PF-06C2 |
 |---|---|---|
 | IMPLEMENTED | Code exists | PF-05, PF-06, PF-06B |
-| VERIFIED_LOCALLY | Proven against an ephemeral PostgreSQL cluster and in-memory storage | PF-05, PF-06, PF-06B |
-| VERIFIED_STAGING | Proven against real managed provider resources | **not reached** |
-| PRODUCTION_VERIFICATION_PENDING | Real provider evidence still owed | PF-05, PF-06, PF-06B |
+| VERIFIED_LOCALLY | Proven against an ephemeral cluster and in-memory storage | PF-05, PF-06, PF-06B |
+| VERIFIED_STAGING | Proven against real managed provider resources | **partial** — database, Clerk mapping, tenant isolation and revocation are proven on real staging; private object storage and the report round-trip are not |
+| PRODUCTION_VERIFICATION_PENDING | Real provider evidence still owed | private Blob, document upload/download, server PDF generation, professional validation, private PDF download, authenticated E2E |
 
-**Ready for PF-05-06-PUBLISH: NO** — the three provider approvals in §3 must
-land first.
+**Ready for PF-05-06-PUBLISH: NO** — six gates remain blocked on the empty
+`BLOB_READ_WRITE_TOKEN`.

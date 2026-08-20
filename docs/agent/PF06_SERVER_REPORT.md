@@ -450,17 +450,19 @@ Still to evidence in PF-05-06-PUBLISH:
 
 ---
 
-## Verification level after PF-06C
+## Verification level after PF-06C2
 
 | Level | Reached |
 |---|---|
 | IMPLEMENTED | yes |
-| VERIFIED_LOCALLY | yes — ephemeral PostgreSQL cluster, in-memory private storage |
-| VERIFIED_STAGING | **no** — no managed database, Clerk instance or Blob store exists |
-| PRODUCTION_VERIFICATION_PENDING | yes — see `docs/agent/PF06C_STAGING_EVIDENCE.md` |
+| VERIFIED_LOCALLY | yes |
+| VERIFIED_STAGING | **partial** — real Neon PostgreSQL, real Clerk organizations, tenant isolation and revocation are proven on staging; private object storage is not |
+| PRODUCTION_VERIFICATION_PENDING | private Blob, document upload/download, server PDF generation, professional validation, private PDF download, authenticated E2E |
 
-PF-06C inventoried the provider surface, linked the repository to the Vercel
-project `patrimoine-fiscal-demo`, and stopped at the cost gate: creating a Blob
-store, a managed PostgreSQL database or a Clerk instance all require owner
-approval, and the marketplace step additionally requires an interactive
-terminal. Nothing was created and no evidence was simulated.
+PF-06C2 wired the owner-provisioned resources: migrations `0000` to `0009`
+applied and verified on Neon, a dedicated `patrimoine_runtime` login
+(`NOBYPASSRLS`, no direct grants, `patrimoine_app` member only), the Clerk
+organizations mapped to internal tenants, and 16 staging gates executed with
+16 PASS and 0 FAIL. Six gates stay BLOCKED because `BLOB_READ_WRITE_TOKEN`
+holds an empty value in both Preview and Production and a store token cannot be
+minted non-interactively. Full detail: `docs/agent/PF06C_STAGING_EVIDENCE.md`.

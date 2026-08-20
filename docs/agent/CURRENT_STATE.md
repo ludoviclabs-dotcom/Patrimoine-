@@ -5,6 +5,7 @@ Last updated: 2026-08-20
 ## Git state
 
 Branch: claude/private-document-storage-evidence-c569fd
+HEAD before PF-06C2: 029cc2bc90a6630bffb14aa15bb417bc3277a8fa
 HEAD before PF-06C: 5096994c41449469eb6cc7441505932ea6c93bbd
 HEAD before PF-06B: b3c1690f7eb1fcfb001f0fe6b2ba03aab09077d1
 HEAD before PF-06: d9c3827f5f2bd2c6bfb0153d968517bdefdb5234
@@ -75,6 +76,86 @@ cabinet report screen are covered by tests.
   policy, expert-only validation appended as a new version, private PDF
   storage, audited downloads, and the cabinet report screen wired onto the
   server pipeline with staleness detection and explicit error states.**
+
+## PF-06C2 — Staging bootstrap and real provider evidence (PARTIAL)
+
+Branch: `claude/private-document-storage-evidence-c569fd`
+
+HEAD before PF-06C2: `029cc2bc90a6630bffb14aa15bb417bc3277a8fa`
+
+Full evidence matrix: `docs/agent/PF06C_STAGING_EVIDENCE.md` sections 5 to 8
+
+PF-06C2 adds no fiscal rule, rate, threshold, effective date or calculation
+step, and changes no golden expected result. It runs after the owner
+provisioned the Vercel Blob store, the Neon database and the Clerk development
+application, and its job was to wire and verify them rather than ask for more
+manual configuration.
+
+Completed:
+
+- **Environment audit** (names only, values never read or printed). Real values
+  present for `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` and
+  `BLOB_STORE_ID`. `BLOB_READ_WRITE_TOKEN` and `CLERK_WEBHOOK_SIGNING_SECRET`
+  exist but hold **empty values**. `DATABASE_URL`, `DATABASE_ADMIN_URL`,
+  `DOCUMENT_DOWNLOAD_SIGNING_SECRET` and `PERSISTENCE_MODE` were absent.
+- **Database contract completed.** Neon publishes `POSTGRES_*` names that the
+  application contract does not use. `DATABASE_ADMIN_URL` was mapped to the
+  unpooled owner connection, and a dedicated runtime login
+  `patrimoine_runtime` was created — `NOSUPERUSER NOCREATEDB NOCREATEROLE
+  NOINHERIT NOBYPASSRLS`, granted `patrimoine_app` only — because
+  `neondb_owner` has `rolbypassrls=true` and owns every table, which PF-03C
+  correctly refuses as a runtime identity.
+- **`DOCUMENT_DOWNLOAD_SIGNING_SECRET` generated** from 48 cryptographically
+  random bytes, written only to the gitignored staging env file.
+- **Migrations `0000` to `0009` applied and verified** on Neon PostgreSQL 18.6
+  (`eu-central-1`): `db:migrate` then `db:verify` both report migration
+  `0009_pf06_server_report_snapshot`. Catalog: 37 tables, 64 policies, 102
+  foreign keys of which 63 are composite tenant keys, 13 triggers, FORCE RLS on
+  31 of 31 declared tables.
+- **Synthetic fixtures seeded idempotently**: Claire and Marc in CABINET_A with
+  identical ids on a second run, plus a distinct minimal `DOS-B-STAGING`
+  dossier in CABINET_B for isolation testing.
+- **Clerk to database mapping** performed as the PF-04A operator step: both
+  Clerk organizations linked to internal tenants, three provider identities,
+  three authoritative PostgreSQL memberships, provider membership observations,
+  and one `case_access_grants` row so CLIENT_A sees exactly one dossier.
+- **A real SimulationRun persisted** through the application repository under
+  RLS on the runtime login.
+- **16 staging gates executed, 16 PASS, 0 FAIL**: organization mapping, Clerk
+  session negatives (wrong organization and unknown identity both DENY),
+  cross-tenant isolation on dossier, document metadata and document versions,
+  tenant-scoped audit reads, client capability boundary, and revocation with a
+  still-valid session context.
+
+Blocked, with a single cause: `BLOB_READ_WRITE_TOKEN` is empty in both Preview
+and Production and local OIDC is refused for the development environment, so no
+store token can be obtained non-interactively. That blocks private Blob,
+document upload, document download, server PDF generation, professional
+validation and private PDF download. Report-level cross-tenant checks are
+NOT_RUN for the same reason.
+
+Findings worth acting on: RBAC is already enforcing on staging — an expert
+attempting `simulation.run` produced `TENANT_AUTHORIZATION_DENIED` and audited
+`authorization.denied` rows, so the run was persisted as the cabinet adviser;
+`document.upload` likewise belongs to conseiller and client, not to expert. The
+Clerk webhook target URL could not be read back because Clerk's Backend API
+does not expose endpoint listing, so it stays UNVERIFIED. The Clerk test
+identities are real personal email accounts; only opaque Clerk user ids are
+recorded in this repository.
+
+Files changed for PF-06C2:
+
+- `docs/agent/PF06C_STAGING_EVIDENCE.md`, `docs/agent/PF06_SERVER_REPORT.md`,
+  `docs/agent/PF05_PRIVATE_DOCUMENTS.md`, `docs/agent/CURRENT_STATE.md`.
+
+No application code changed. Staging scripts were run from a temporary
+untracked directory and removed; no secret was committed and no secret value
+was printed.
+
+Validation executed: `npm test` PASS (32 files, 398 tests); `npm run
+test:postgres` PASS (4 files, 39 tests); `npm run e2e` PASS (12 passed, 4
+skipped); `npx tsc --noEmit` PASS; `npm run lint` PASS; `npm run build` PASS;
+`git diff --check` PASS.
 
 ## PF-06C — Staging inventory, cost gate and E2E harness fix (PARTIAL)
 
@@ -948,6 +1029,10 @@ PostgreSQL 18.4 cluster after migrations `0000` through `0009`.
 E2E: PASS — `npm run e2e` runs again after the PF-06C harness fix: 12 passed,
 4 skipped (the authenticated journeys, gated on `E2E_CLERK_FIXTURE=1`). This
 was BLOCKED from PF-03B through PF-06B.
+Staging gates: PASS — 16 gates executed against real Neon PostgreSQL and the
+real Clerk development instance in PF-06C2, 16 PASS and 0 FAIL (organization
+mapping, Clerk session negatives, cross-tenant isolation, audit scoping,
+revocation).
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
 Build: PASS — `npm run build` exit 0
@@ -972,14 +1057,21 @@ that pin (plus fixing a busy-wait in the readiness probe) restores the suite:
 12 passed, 4 skipped. The 4 skipped are the authenticated journeys, still gated
 on `E2E_CLERK_FIXTURE=1` because no Clerk instance exists.
 
-Real provider evidence remains PRODUCTION_VERIFICATION_PENDING and is now
-blocked on three explicit approvals, itemised in
-`docs/agent/PF06C_STAGING_EVIDENCE.md` § 3: a Vercel Private Blob store, a
-managed PostgreSQL database and a Clerk test instance. All three are metered or
-plan-attached products whose cost could not be confirmed as free from this
-session, and the marketplace step additionally requires an interactive
-terminal. Nothing was created, written or simulated; the unrelated
-`carbonco-workbooks` store was left untouched.
+Real provider evidence is now PARTIALLY delivered. The owner provisioned the
+resources and PF-06C2 wired and verified them: managed PostgreSQL, migrations
+`0000` to `0009`, the `NOBYPASSRLS` runtime login, the real Clerk session
+resolution, the organization mapping, cross-tenant isolation and revocation all
+PASS on staging.
+
+Six gates stay BLOCKED on a single cause: `BLOB_READ_WRITE_TOKEN` holds an
+**empty value** in both Preview and Production, and local OIDC is refused for
+the development environment, so no store token can be obtained
+non-interactively. Blocked: private Blob, document upload, document download,
+server PDF generation, professional validation, private PDF download. The
+authenticated Playwright journeys additionally need Clerk sign-in credentials
+that this session must not handle. `CLERK_WEBHOOK_SIGNING_SECRET` is likewise
+empty; it does not block these gates but the signed webhook route cannot verify
+a delivery until it is set.
 
 No PF-06 implementation blocker. Snapshot determinism, reproducible PDF
 rendering, the readiness gate, expert-only validation, version immutability and
@@ -1075,16 +1167,16 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-05-06-PUBLISH — provision the private Vercel Blob store, the managed
-PostgreSQL database and a Clerk test instance, then evidence on a safe staging
-environment: a document private upload/download round-trip, server PDF
-generation, validation, private PDF download, the audit entries and a
-cross-tenant denial. Apply migration `0009` with `npm run db:migrate`, run the
-PF-06B Playwright journeys with `E2E_CLERK_FIXTURE=1`, and complete the
-still-pending PF-04-PUBLISH Clerk/RBAC and PF-03C managed-provider migration,
-runtime credential, staging smoke and temporary-database restore evidence. Do
-not admit live-user data, real client documents or delivered reports before
-it.
+PF-05-06-PUBLISH — one owner action unblocks the rest: reconnect
+`patrimoine-fiscal-demo-blob` to the project in the Vercel dashboard so a real
+`BLOB_READ_WRITE_TOKEN` replaces the empty placeholder, and set a real
+`CLERK_WEBHOOK_SIGNING_SECRET`. Then re-pull the preview environment and replay
+the round-trip to close the six blocked gates: document upload and download,
+server PDF generation, professional validation, private PDF download and the
+report-level cross-tenant denial. The authenticated
+Playwright journeys need Clerk test-user sign-in credentials handled by the
+owner. Do not admit live-user data, real client documents or delivered reports
+before those gates pass.
 
 ## Handoff notes
 
