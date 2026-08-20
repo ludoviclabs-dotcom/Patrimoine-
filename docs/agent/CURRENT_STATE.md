@@ -5,6 +5,7 @@ Last updated: 2026-08-20
 ## Git state
 
 Branch: claude/private-document-storage-evidence-c569fd
+HEAD before PF-06B: b3c1690f7eb1fcfb001f0fe6b2ba03aab09077d1
 HEAD before PF-06: d9c3827f5f2bd2c6bfb0153d968517bdefdb5234
 HEAD before PF-05: ccb5359dd296b9c189321844693d2c8aeec090e1
 HEAD before PF-04A: 13d819165fbd3db1e1e2bbb0f3fe14cdb33402e0
@@ -29,12 +30,13 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-06-PUBLISH — provision the private Vercel Blob store and prove the real
-document and report object round-trip, together with the still-pending
-PF-04-PUBLISH Clerk and managed-PostgreSQL deployment evidence. PF-05 and PF-06
-are complete locally: private versioned document storage, immutable report
-snapshots, reproducible server-side PDF rendering, expert-only validation and
-audited downloads are covered by tests.
+PF-05-06-PUBLISH — provision the private Vercel Blob store, the managed
+PostgreSQL database and a Clerk test instance, then prove the real document and
+report round-trip on a safe staging environment. PF-05 and PF-06 (including the
+PF-06B product wiring) are complete locally: private versioned document
+storage, immutable report snapshots, reproducible server-side PDF rendering,
+staleness detection, expert-only validation, audited private downloads and the
+cabinet report screen are covered by tests.
 
 ## Completed
 
@@ -67,10 +69,79 @@ audited downloads are covered by tests.
 - **PF-05 IMPLEMENTED / VERIFIED_LOCALLY — private versioned document storage,
   server-side MIME/size/name validation, SHA-256, short-lived signed download
   grants, quarantine workflow and simulation evidence linkage.**
-- **PF-06 IMPLEMENTED / VERIFIED_LOCALLY — immutable report snapshots,
-  reproducible server-side @react-pdf/renderer output, watermark policy,
-  expert-only validation appended as a new version, private PDF storage and
-  audited downloads.**
+- **PF-06 COMPLETE (PF-06 + PF-06B) / VERIFIED_LOCALLY — immutable report
+  snapshots, reproducible server-side @react-pdf/renderer output, watermark
+  policy, expert-only validation appended as a new version, private PDF
+  storage, audited downloads, and the cabinet report screen wired onto the
+  server pipeline with staleness detection and explicit error states.**
+
+## PF-06B — Cabinet report UI wired to the server pipeline (COMPLETE / VERIFIED_LOCALLY)
+
+Branch: `claude/private-document-storage-evidence-c569fd`
+
+HEAD before PF-06B: `b3c1690f7eb1fcfb001f0fe6b2ba03aab09077d1`
+
+Full report: `docs/agent/PF06_SERVER_REPORT.md` (sections 10 to 16)
+
+Branch ancestry verified before starting: `merge-base` with `origin/main` is
+`ccb5359` (merged PR #12 Clerk/RBAC). The branch is two commits ahead of main
+and zero behind; `d9c3827` (PF-05) and `b3c1690` (PF-06) are the commits not
+yet merged. Nothing was rebased, reset or rewritten.
+
+PF-06B adds no fiscal rule, rate, threshold, effective date or calculation
+step, and changes no golden expected result. It finishes the PF-06 product
+integration.
+
+`app/report/page.tsx` was adapted, not duplicated: it is now a dynamic server
+component that resolves the Clerk tenant context and renders the cabinet
+console as the primary path. `lib/report/report-console.ts` is a read-only
+server model listing dossiers, simulation runs, report versions, the freshness
+verdict, the readiness gate and explicit blockers; every action stays behind
+the audited PF-06 routes. The screen shows status, version number, generation
+date, legal freeze date, simulations, rule versions, review status, evidence
+count, DRAFT/VALIDATED badges, both fingerprints, the version history, and the
+Générer / Régénérer / Valider / Télécharger actions.
+
+`lib/report/freshness.ts` detects a stale report by rebuilding the business
+payload from today's facts and comparing it with the stored snapshot through
+the same canonical hash. A difference yields `REPORT_REGENERATION_REQUIRED`
+plus the sections that moved; unreadable facts also resolve to outdated, never
+silently to current. A delivered PDF is never rewritten — the PostgreSQL suite
+asserts the stored `pdf_sha256` and `snapshot_sha256` are unchanged after the
+underlying fact moved.
+
+Validation UX follows the server: a client is never offered validation and is
+refused with `TENANT_AUTHORIZATION_DENIED` if the route is called directly, and
+the approval button is disabled while the gate is closed or the report is
+stale. Every error state carries its own machine-readable code — missing legal
+freeze date, missing review, blocking item, missing evidence, generation
+failure, private Blob unavailable, stale report, cross-tenant dossier — with no
+generic toast anywhere.
+
+The browser rendering survives only as an explicitly non-final preview
+(« Aperçu de travail — NON FINAL », print button « Imprimer l'aperçu (non
+final) »). `components/v3-4/pdf-download-button.tsx` was left untouched: it
+serves the DER, lettre de mission and adéquation documents, not the report.
+
+Files changed for PF-06B:
+
+- `app/report/page.tsx`, `components/report/server-report-console.tsx`,
+  `components/report-print-button.tsx`;
+- `lib/report/report-console.ts`, `lib/report/freshness.ts`,
+  `lib/report/report-service.ts` (readiness preview and freshness evaluation);
+- `tests/unit/pf06b-report-ui-wiring.test.ts`,
+  `tests/postgres/pf06b-report-console.test.ts`,
+  `tests/e2e/report-server-pipeline.spec.ts`;
+- `docs/agent/PF06_SERVER_REPORT.md`, `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (32 files, 398 tests); `npm run
+test:postgres` PASS (4 files, 39 tests, fresh native PostgreSQL 18.4,
+migrations `0000` through `0009`); `npx tsc --noEmit` PASS; `npm run lint` PASS;
+`npm run build` PASS with `/report` server-rendered on demand; `git diff
+--check` PASS. `npm run e2e` NOT RUN — see Open blockers.
+
+PRODUCTION_VERIFICATION_PENDING: no managed database, Clerk instance or private
+Blob store was available; nothing was provisioned or simulated.
 
 ## PF-06 — Server report and immutable snapshot (IMPLEMENTED / VERIFIED_LOCALLY)
 
@@ -804,8 +875,8 @@ None.
 
 ## Tests
 
-Unit: PASS — `npm test` after PF-06: 31 files, 379 tests, 0 failures.
-PostgreSQL/RLS: PASS — 3 files, 32 tests, 0 failing on a fresh native ephemeral
+Unit: PASS — `npm test` after PF-06B: 32 files, 398 tests, 0 failures.
+PostgreSQL/RLS: PASS — 4 files, 39 tests, 0 failing on a fresh native ephemeral
 PostgreSQL 18.4 cluster after migrations `0000` through `0009`.
 TypeScript: PASS — `npx tsc --noEmit` exit 0
 Lint: PASS — `npm run lint` exit 0
@@ -819,6 +890,22 @@ non-interactive environment. PF-03B changes repository/database boundaries, not
 an authenticated browser flow; E2E remains required before production release.
 
 ## Open blockers
+
+No PF-06B implementation blocker. The DRAFT to REVIEW to VALIDATED to DOWNLOAD
+workflow, staleness detection, cross-tenant refusal and the explicit error
+surface pass against real PostgreSQL RLS with an in-memory storage adapter.
+
+The Playwright harness does not start in this environment: the runner's
+readiness probe fails and the process aborts on a libuv assertion. Verified as
+pre-existing by running the untouched `tests/e2e/demo.spec.ts`, which fails
+identically. The PF-06B journeys are written and guarded by
+`E2E_CLERK_FIXTURE=1`.
+
+Real provider evidence remains PRODUCTION_VERIFICATION_PENDING. Checked in this
+session and absent: `DATABASE_URL`, `DATABASE_ADMIN_URL`, Clerk keys,
+`BLOB_READ_WRITE_TOKEN`, `DOCUMENT_DOWNLOAD_SIGNING_SECRET`, and any Vercel
+project link. The Vercel CLI is authenticated but the only existing blob store
+belongs to an unrelated project; nothing was provisioned, written or simulated.
 
 No PF-06 implementation blocker. Snapshot determinism, reproducible PDF
 rendering, the readiness gate, expert-only validation, version immutability and
@@ -914,12 +1001,16 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-06-PUBLISH — provision the private Vercel Blob store, prove a real
-upload/download round-trip for both a document version and a report PDF, apply
-migration `0009` to the managed database, and complete the still-pending
-PF-04-PUBLISH Clerk/RBAC and PF-03C managed-provider migration, runtime
-credential, staging smoke and temporary-database restore evidence. Do not admit
-live-user data, real client documents or delivered reports before it.
+PF-05-06-PUBLISH — provision the private Vercel Blob store, the managed
+PostgreSQL database and a Clerk test instance, then evidence on a safe staging
+environment: a document private upload/download round-trip, server PDF
+generation, validation, private PDF download, the audit entries and a
+cross-tenant denial. Apply migration `0009` with `npm run db:migrate`, run the
+PF-06B Playwright journeys with `E2E_CLERK_FIXTURE=1`, and complete the
+still-pending PF-04-PUBLISH Clerk/RBAC and PF-03C managed-provider migration,
+runtime credential, staging smoke and temporary-database restore evidence. Do
+not admit live-user data, real client documents or delivered reports before
+it.
 
 ## Handoff notes
 

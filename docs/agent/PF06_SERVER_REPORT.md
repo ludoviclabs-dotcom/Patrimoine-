@@ -22,9 +22,10 @@ The existing report was entirely browser-side:
   in the browser on click.
 
 Nothing was persisted, nothing was hashed, nothing was versioned, and the
-output depended on live UI state. Those files are untouched by PF-06: they
-remain the fixture demo surface. The authoritative pipeline is now the server
-one described below; wiring the UI onto it is product work, not this task.
+output depended on live UI state. PF-06 left those files untouched and built
+the authoritative server pipeline described below. **PF-06B (section 10
+onwards) then wired the user-facing flow onto it** and demoted the browser
+rendering to an explicitly non-final preview.
 
 ---
 
@@ -261,26 +262,188 @@ the marker from `managedPostgresMigrationMarker` (instead of hardcoding
 
 ---
 
-## 9. Open items
+# PF-06B — Cabinet report UI wired to the server pipeline
 
-**PRODUCTION_VERIFICATION_PENDING**, inherited from PF-05 and unchanged: no
-Vercel Blob store or token was available, so no report PDF was written to or
-read from a real provider container. The in-memory adapter stood in.
+HEAD before PF-06B: `b3c1690f7eb1fcfb001f0fe6b2ba03aab09077d1`
 
-Deliberately not implemented, and documented as such:
+Branch ancestry checked before starting: `git merge-base HEAD origin/main` =
+`ccb5359` (the merged PR #12 Clerk/RBAC commit). The branch is **two commits
+ahead of `origin/main` and zero behind** — `d9c3827` (PF-05) and `b3c1690`
+(PF-06) are the commits not yet in main. Nothing was rebased, reset or
+rewritten.
+
+## 10. The user-facing flow is now the server pipeline
+
+`app/report/page.tsx` was **adapted, not duplicated**. It is now a dynamic
+server component that resolves the Clerk tenant context, loads the console read
+model and renders `ServerReportConsole` as the primary path:
+
+```text
+dossier → simulations sélectionnées → preuves → revue
+       → snapshot serveur → PDF DRAFT → validation professionnelle
+       → PDF VALIDATED → téléchargement privé audité
+```
+
+`lib/report/report-console.ts` is a read-only server model: it lists the
+tenant's dossiers and simulation runs, the report versions, the freshness
+verdict, the readiness gate and the explicit blockers. It performs no mutation
+— every action stays behind the audited PF-06 routes, so authorization is
+decided once, server-side.
+
+The console shows report status, version number, generation timestamp,
+`legalFreezeDate`, the simulations used, the rule versions, the review status,
+the evidence count, DRAFT/VALIDATED badges, both integrity fingerprints and the
+version history. Buttons: **Générer** / **Régénérer** (when a version exists),
+**Valider** (rendered only for a role the server would accept) and
+**Télécharger**.
+
+## 11. Stale snapshot detection
+
+`lib/report/freshness.ts` rebuilds the business payload from today's facts —
+using the delivered version's own run selection, freeze date and limitations —
+and compares it with the stored snapshot through the **same canonical hash**
+PF-06 already relies on. Equal hash → `current`; different → `outdated` with
+`REPORT_REGENERATION_REQUIRED` and the list of sections that moved, translated
+into readable labels.
+
+That single criterion covers all four required triggers, because each of them
+changes the business payload: a new simulation selection (`runs`,
+`simulationRunIds`), a new professional validation (`professionalValidation`,
+`reviewFlags`), a changed evidence/document version (`documentReferences`), and
+any business data inside the snapshot (`calculationSteps`, `ruleVersions`, …).
+Facts that can no longer be read at all resolve to `outdated` carrying the
+underlying code, never silently to `current`.
+
+**No delivered PDF is ever rewritten.** A stale report keeps its bytes, its
+snapshot and both hashes; the only remedy offered is regeneration, which
+appends a new version. The PostgreSQL suite asserts the stored `pdf_sha256` and
+`snapshot_sha256` are byte-for-byte unchanged after the underlying fact moved.
+
+## 12. Validation UX
+
+DRAFT displays the watermark text verbatim, states the document cannot be
+handed to a client, and the console never labels it a final deliverable.
+VALIDATED displays the decision, the version number, the generation timestamp
+and both fingerprints, with the download button enabled.
+
+A client never validates: `report.validate` is absent from the client, adviser
+and auditor rows of the capability matrix, the button is not rendered for them,
+and `validateVersion` refuses with `TENANT_AUTHORIZATION_DENIED` — audited —
+even if the route is called directly. The approval button is additionally
+disabled while the readiness gate is closed or the report is stale, mirroring
+exactly what the server enforces.
+
+## 13. Explicit error states
+
+Each condition is surfaced with its own machine-readable code and its own
+sentence; nothing is collapsed into a generic toast.
+
+| Condition | Code |
+|---|---|
+| missing legal freeze date | `REPORT_LEGAL_FREEZE_DATE_REQUIRED` |
+| no simulation selected | `REPORT_SIMULATION_RUN_REQUIRED` |
+| unsigned professional review | `review.professional_not_signed` |
+| blocking review item | the flag's own code |
+| missing evidence | `REPORT_EVIDENCE_MISSING` (vigilance, not blocking) |
+| generation failure | the route's error code, with its HTTP status |
+| private Blob unavailable | `BLOB_READ_WRITE_TOKEN_REQUIRED` |
+| download secret absent | `DOCUMENT_DOWNLOAD_SIGNING_SECRET_REQUIRED` |
+| stale report | `REPORT_REGENERATION_REQUIRED` |
+| cross-tenant dossier | `REPORT_DOSSIER_NOT_ACCESSIBLE` |
+| revoked membership / denied role | `TENANT_MEMBERSHIP_REQUIRED`, `TENANT_AUTHORIZATION_DENIED` |
+| pipeline off / no session | `PERSISTENCE_MODE_FIXTURE`, `CLERK_SESSION_REQUIRED`, … |
+
+Asking for a dossier outside the tenant resolves to **nothing** — there is no
+fallback to another dossier, and the reason is displayed.
+
+## 14. Browser PDF path
+
+The old browser rendering is kept as an explicitly non-final working preview:
+the section is titled « Aperçu de travail — NON FINAL », it states it is
+neither versioned, timestamped, signed nor stored, and the print button now
+reads « Imprimer l'aperçu (non final) ». `components/report-document.tsx` is
+unchanged behind it.
+
+`components/v3-4/pdf-download-button.tsx` was left alone on purpose: it serves
+the DER, lettre de mission and adéquation documents, not the cabinet report, so
+it is outside this task's scope.
+
+## 15. PF-06B validation
+
+| Command | Result |
+|---|---|
+| `npm test` | PASS — 32 files, 398 tests |
+| `npm run test:postgres` | PASS — 4 files, 39 tests, migrations `0000` → `0009` |
+| `npx tsc --noEmit` | PASS |
+| `npm run lint` | PASS |
+| `npm run build` | PASS — `/report` now server-rendered on demand |
+| `git diff --check` | PASS |
+
+`tests/unit/pf06b-report-ui-wiring.test.ts` (19 tests) covers staleness for
+each of the four triggers, unreadable facts, the section labels, the whole
+blocker surface, the unavailability catalogue, and the fact that the page wires
+the server console while the preview stays non-final.
+
+`tests/postgres/pf06b-report-console.test.ts` (7 tests) proves the workflow end
+to end on a fresh cluster: empty gate → DRAFT generated with its watermark →
+a signed review makes the report OUTDATED while the stored PDF and hashes stay
+identical → regeneration returns to `current` and opens the gate → a client is
+offered no validation and is refused server-side → the expert validates into
+version 3 without a watermark → download authorized and streamed, with all four
+report audit actions present → cabinet B sees none of it.
+
+`npm run e2e` — **NOT RUN**. `tests/e2e/report-server-pipeline.spec.ts` was
+added with the required journeys (EXPERT generate → validate → download, and
+CLIENT validate = DENY) guarded by `E2E_CLERK_FIXTURE=1`:
+**SKIPPED — REAL AUTH FIXTURE REQUIRED**. Independently of that guard, the
+Playwright harness itself does not start in this environment: the runner's
+readiness probe fails and the process aborts on a libuv assertion. Verified as
+pre-existing by running the untouched `tests/e2e/demo.spec.ts`, which fails
+identically.
+
+---
+
+## 16. Open items
+
+### Real provider evidence — PRODUCTION_VERIFICATION_PENDING
+
+The session was checked for real credentials before writing anything. Result:
+
+| Requirement | Status |
+|---|---|
+| `DATABASE_URL` / managed PostgreSQL | **absent** — no value in the environment, no `.env` file |
+| `DATABASE_ADMIN_URL` | **absent** |
+| Clerk test instance (`CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) | **absent** |
+| `BLOB_READ_WRITE_TOKEN` / private Blob store | **absent** — the Vercel account holds one store, `carbonco-workbooks`, attached to the unrelated `carbon` project; none exists for `patrimoine-fiscal-demo` |
+| `DOCUMENT_DOWNLOAD_SIGNING_SECRET` | **absent** |
+| Repository linked to a Vercel project | **no** — no `.vercel` directory |
+
+The Vercel CLI *is* authenticated (`ludoviclabs-7443`), so a store could be
+provisioned in one command — but that creates a billable cloud resource and
+requires the owner's explicit go-ahead, and it would still not unblock steps 2
+to 6, which need a managed database and a Clerk session. **No evidence was
+simulated:** nothing was uploaded, generated, validated or downloaded against a
+real provider, and no unrelated store was written to.
+
+Still to evidence in PF-05-06-PUBLISH:
+
+1. document private upload/download round-trip;
+2. server PDF generation;
+3. validation;
+4. private PDF download;
+5. audit entries;
+6. cross-tenant denial.
+
+### Deliberately not implemented
 
 - **Dérogation** to the readiness gate (AUDIT_DESIGN: "une dérogation nécessite
   un motif, un rôle autorisé et une trace d'audit"). The gate is strictly
-  blocking today; the override workflow is a separate decision;
+  blocking; the override workflow is a separate decision;
 - **`deliveredAt`** exists as a column but no delivery workflow sets it;
 - **two-layer rendering** (client synthesis vs adviser annex as separate
   documents) — the current PDF carries both layers in one document with
   separate sections;
 - **cabinet branding** (logo, footer) and electronic signature (S7 P1/P2);
-- **UI wiring** — no screen consumes the four new routes yet, exactly as with
-  PF-05. The fixture `/report` page still renders the old browser view.
-
-Before live use, PF-06-PUBLISH should evidence a real private blob round-trip
-for a report PDF, migration `0009` applied to the managed database, and a
-generation → validation → download cycle performed by a real Clerk expert
-session.
+- **dossier navigation** — the console reads `?dossier=`, `?runs=` and `?gel=`
+  and defaults to the tenant's first dossier; a dossier picker inside the
+  screen is product work left for the dossier module.

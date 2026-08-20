@@ -27,6 +27,7 @@ import {
   verifyDownloadGrant,
 } from "../documents/access-grant";
 import type { PrivateDocumentStorage } from "../documents/private-storage";
+import { evaluateFreshness, type ReportFreshness } from "./freshness";
 import { renderReportPdf } from "./render";
 import {
   assembleReportSnapshot,
@@ -37,6 +38,7 @@ import {
   reportGeneratorVersion,
   resolveWatermark,
   type ReportBusinessPayload,
+  type ReportReviewFlag,
   type ReportSnapshot,
   type ReportValidationBlock,
   type ReportVersionStatus,
@@ -99,6 +101,37 @@ export type ReportDownloadPayload = Readonly<{
 }>;
 
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Readiness verdict shown before any write. `canValidateFinal` mirrors exactly
+ * what validateVersion enforces, so the interface can never offer a final
+ * validation the server would refuse.
+ */
+export type ReportReadiness = Readonly<{
+  business: ReportBusinessPayload;
+  businessSha256: string;
+  blockingFlags: readonly ReportReviewFlag[];
+  reviewFlags: readonly ReportReviewFlag[];
+  evidenceCount: number;
+  simulationRunIds: readonly string[];
+  professionalReviewSigned: boolean;
+  canValidateFinal: boolean;
+}>;
+
+function summariseReadiness(business: ReportBusinessPayload): ReportReadiness {
+  const blocking = blockingFlags(business);
+
+  return {
+    business,
+    businessSha256: hashBusinessPayload(business),
+    blockingFlags: blocking,
+    reviewFlags: business.reviewFlags.filter((flag) => flag.severity !== "blocking"),
+    evidenceCount: business.documentReferences.length,
+    simulationRunIds: business.simulationRunIds,
+    professionalReviewSigned: business.professionalValidation.decision === "approved",
+    canValidateFinal: blocking.length === 0,
+  };
+}
 
 function auditIdentity(context: TenantContext) {
   return {
@@ -502,6 +535,79 @@ export function createServerReportService(dependencies: ServerReportServiceDepen
   }
 
   return {
+    /**
+     * Read-only readiness gate. It builds the business payload the next
+     * generation would use, without writing anything and without rendering,
+     * so the UI can show exactly what blocks a final report before acting.
+     */
+    previewReadiness(
+      context: TenantContext,
+      input: { caseId: string; simulationRunIds: readonly string[]; legalFreezeDate: string; limitations?: readonly string[] },
+    ): Promise<ReportReadiness> {
+      if (!isoDatePattern.test(input.legalFreezeDate)) {
+        throw new Error("REPORT_LEGAL_FREEZE_DATE_REQUIRED");
+      }
+
+      return withAuthorizedTenantTransaction(
+        database,
+        context,
+        "report.generate",
+        { tenantId: context.tenantId, type: "report", id: input.caseId },
+        async (transaction) => {
+          const business = await readBusinessFacts(transaction, context, {
+            caseId: input.caseId,
+            simulationRunIds: input.simulationRunIds,
+            legalFreezeDate: input.legalFreezeDate,
+            limitations: input.limitations ?? defaultReportLimitations,
+          });
+
+          return summariseReadiness(business);
+        },
+      );
+    },
+
+    /**
+     * Compares a delivered version's stored snapshot with the payload rebuilt
+     * from today's facts. Nothing is written and no stored PDF is touched: a
+     * changed dossier yields OUTDATED plus the sections that moved.
+     */
+    async evaluateFreshness(
+      context: TenantContext,
+      reportVersionId: string,
+    ): Promise<ReportFreshness> {
+      return withAuthorizedTenantTransaction(
+        database,
+        context,
+        "report.download",
+        { tenantId: context.tenantId, type: "report", id: reportVersionId },
+        async (transaction) => {
+          const { row, snapshot } = await loadVersion(transaction, context, reportVersionId);
+
+          try {
+            const currentBusiness = await readBusinessFacts(transaction, context, {
+              caseId: row.caseId,
+              simulationRunIds: snapshot.business.simulationRunIds,
+              legalFreezeDate: snapshot.business.legalFreezeDate,
+              limitations: snapshot.business.limitations,
+            });
+
+            return evaluateFreshness({
+              reportVersionId,
+              snapshotBusiness: snapshot.business,
+              currentBusiness,
+            });
+          } catch (error) {
+            return evaluateFreshness({
+              reportVersionId,
+              snapshotBusiness: snapshot.business,
+              currentBusiness: null,
+              unreadableReasonCode: error instanceof Error ? error.message : null,
+            });
+          }
+        },
+      );
+    },
+
     /** Builds the snapshot from database facts, then renders the draft PDF. */
     generateDraft(context: TenantContext, input: GenerateReportDraftInput) {
       if (!isoDatePattern.test(input.legalFreezeDate)) {
