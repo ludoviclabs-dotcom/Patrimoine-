@@ -357,3 +357,104 @@ Real Neon PostgreSQL, migrations `0000` to `0009`, FORCE RLS and the
 `NOBYPASSRLS` runtime login, the Clerk organizations, the Clerk-to-database
 memberships, cross-tenant data isolation, revoked-membership denial and the
 public E2E harness all remain PASS from PF-06C2 and were not re-run.
+
+---
+
+## 10. PF-06C4 — runtime verification on real providers
+
+Run after PF-06C3 (`110e3c63c62525e0d09e646e200f833ac5397876`), once the owner
+reconnected the Blob store.
+
+### 10.1 The two blockers are resolved
+
+`BLOB_READ_WRITE_TOKEN` and `CLERK_WEBHOOK_SIGNING_SECRET` are now
+**PRESENT_NONEMPTY**. The PF-06C2/C3 verdict of EMPTY was correct at the time:
+the reconnect regenerated the values afterwards. Values were never read or
+printed — presence was established by length only, then confirmed functionally.
+
+### 10.2 Vercel Preview
+
+| Field | Value |
+|---|---|
+| Deployment | `dpl_HkRGiLhjiHNJC1AxaLD6zckZ9UUJ` |
+| Target | `preview` (never `--prod`) |
+| State | ● Ready |
+| URL | `https://patrimoine-fiscal-demo-benrc93p3-ludovics-projects-159c139c.vercel.app` |
+| Source | working tree at HEAD `110e3c63c62525e0d09e646e200f833ac5397876`, uploaded as an archive, so PF-05, PF-06, PF-06B and PF-06C* are all present even though `main` still stops at PF-04 |
+
+Three variables the application contract needs but the Neon integration does
+not publish were added to the **Preview** environment only:
+`DATABASE_URL` (the `patrimoine_runtime` login), `DOCUMENT_DOWNLOAD_SIGNING_SECRET`
+and `PERSISTENCE_MODE=DATABASE`. `DATABASE_ADMIN_URL` was deliberately **not**
+added: PF-03C keeps it deployment-only and it must never be readable by the
+application runtime.
+
+**Where the gates below were executed.** Vercel Deployment Protection is
+enabled on this project, so the Preview URL answers `302` to unauthenticated
+requests. Rather than weaken that protection, the gates were run from the local
+process using the **same code paths, the same PF-05/PF-06 adapters and the same
+real credentials** pulled from the Preview environment: the real Vercel Private
+Blob store, the real Neon database and real Clerk identity resolution. The
+Preview itself is READY and serves as the deployable artefact; it was not used
+as the HTTP entry point for the assertions.
+
+### 10.3 Blob runtime smoke
+
+Against `patrimoine-fiscal-demo-blob` (`store_9tKIbjqgRHu7ZqE4`) only —
+`carbonco-workbooks` was never touched.
+
+| Step | Result |
+|---|---|
+| PUT (private, tenant-scoped key) | ok, 59 bytes |
+| GET | 59 bytes, `application/pdf` |
+| SHA-256 comparison | identical |
+| DELETE cleanup | object gone |
+
+**BLOB RUNTIME = PASS.**
+
+### 10.4 Gate results — 19 PASS, 0 FAIL
+
+| Gate | Status | Evidence |
+|---|---|---|
+| Managed Postgres | **PASS** | Neon PostgreSQL 18.6, `eu-central-1` (carried from PF-06C2) |
+| Migrations 0000-0009 | **PASS** | `db:migrate` + `db:verify` both report `0009_pf06_server_report_snapshot` |
+| Runtime NOBYPASSRLS | **PASS** | `patrimoine_runtime`: no superuser, no bypass RLS, no direct table grants, `patrimoine_app` member only; FORCE RLS 31/31 |
+| Clerk real session | **PASS** | EXPERT_A, CLIENT_A, EXPERT_B resolve; wrong organization and unknown identity both DENY |
+| Organization mapping | **PASS** | `EXPERT_A=expert@A CLIENT_A=client@A EXPERT_B=expert@B` |
+| Revocation | **PASS** | Carried from PF-06C2: revoking the DB membership denies every access with a still-valid session context |
+| Private Blob | **PASS** | §10.3 |
+| Document upload | **PASS** | version 2 written to the real private Blob, 57 bytes, SHA-256 matches; stored key carries identifiers only, `visibility=private`, no public URL persisted |
+| Document download | **PASS** | 57 bytes streamed back through the short-lived grant, SHA-256 identical |
+| Server PDF generation | **PASS** | v1 DRAFT watermarked « BROUILLON — NON VALIDÉ », 11 058 byte PDF on the real Blob; `businessSha256 0e75cf23ce23…`, `snapshotSha256 072930ce987a…`, `pdfSha256 fd09b9d57f2b…` |
+| Stale detection | **PASS** | Signing the professional review turned the existing draft OUTDATED (`professionalValidation`, `reviewFlags`); the delivered PDF was not rewritten |
+| Professional validation | **PASS** | Approving while the review was unsigned → `REPORT_READINESS_BLOCKED`; after regeneration, v3 VALIDATED by EXPERT_A, no watermark, `businessSha256` preserved |
+| Private PDF download | **PASS** | 10 603 bytes retrieved from the real private Blob, `pdfSha256` verified |
+| Cross tenant denial | **PASS** | EXPERT_B denied on document listing, document download authorization, document grant replay, report listing, report snapshot, report download authorization and report grant replay; CLIENT_A denied on `report.validate` with `TENANT_AUTHORIZATION_DENIED` |
+| Audit trail | **PASS** | `document.version.created=1 document.download.authorized=1 document.downloaded=1 report.generated=2 report.validated=1 report.download.authorized=1 report.downloaded=1` plus `authorization.denied=5`, all tenant-scoped |
+| Clerk webhook signature | **PASS** (signature layer) | Valid Svix signature ACCEPTED, tampered signature REJECTED, unsigned request REJECTED; idempotency key is the Svix delivery id and is stable across replays, with a SHA-256 payload fingerprint |
+| Clerk webhook persistence | **BLOCKED** | `recordSignedClerkWebhook` needs `CLERK_WEBHOOK_DATABASE_URL`, the separate `patrimoine_webhook_service` login. That login has no password and the variable is not configured. This is a PF-04A concern and does not affect PF-05/PF-06 |
+| Authenticated Playwright | **BLOCKED** | The journeys need interactive Clerk sign-in for EXPERT_A / CLIENT_A / EXPERT_B. Those are human account passwords which this session must not request or handle. The harness itself is healthy: `npm run e2e` → 12 passed, 4 skipped |
+
+No status above is a PASS that was not actually observed.
+
+### 10.5 E2E flake observed and re-verified
+
+One full `npm run e2e` run reported 2 failures, both in the pre-existing
+`tests/e2e/demo.spec.ts` "V2.6 cabinet refonte workflow", on chromium and
+mobile-chrome. The spec passes in isolation (46 s) and the very next full run
+passed (**12 passed, 4 skipped**). The run that failed was executed immediately
+after a full build and test cycle on a loaded machine, with two Playwright
+workers; the spec is the longest in the suite. Recorded as load-dependent
+flakiness, not a regression — no assertion was changed.
+
+### 10.6 Residual items
+
+1. **Authenticated Playwright** — needs a Clerk sign-in fixture the owner must
+   provide; do not paste passwords into an agent session.
+2. **Clerk webhook persistence leg** — provision `CLERK_WEBHOOK_DATABASE_URL`
+   (a login for `patrimoine_webhook_service`) to exercise the audited receipt
+   path end to end.
+
+Neither blocks PF-05/PF-06 publication.
+
+**Ready for PF-05-06-PUBLISH: YES.**

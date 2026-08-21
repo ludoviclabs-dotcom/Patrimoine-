@@ -471,3 +471,13 @@ Re-checked in **PF-06C3**: `BLOB_READ_WRITE_TOKEN` and
 `CLERK_WEBHOOK_SIGNING_SECRET` are still empty in both Preview and
 Production, and local OIDC access to the store is still refused, so the
 storage-dependent gates keep the status above unchanged.
+
+**PF-06C4 update — VERIFIED_STAGING reached.** With the Blob token restored,
+the full chain was exercised against the real Vercel Private Blob, the real
+Neon database and real Clerk identity resolution: 19 gates PASS, 0 FAIL.
+Private storage, upload, download, server PDF generation, stale detection,
+expert validation, private PDF download, cross-tenant denial and the audit
+trail are all proven on real providers. Remaining: authenticated Playwright
+(needs a Clerk sign-in fixture) and the Clerk webhook persistence leg
+(needs `CLERK_WEBHOOK_DATABASE_URL`). Detail:
+`docs/agent/PF06C_STAGING_EVIDENCE.md` section 10.
