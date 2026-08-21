@@ -5,11 +5,13 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import {
+  assertSafeClerkWebhookRole,
   assertSafeDatabaseRuntimeRole,
   isProductionEnvironment,
   managedPostgresMigrationMarker,
   managedPostgresRlsTables,
   type DatabaseRuntimeRole,
+  type DatabaseWebhookRole,
 } from "../lib/db/managed-readiness";
 
 type SqlClient = ReturnType<typeof postgres>;
@@ -161,6 +163,73 @@ async function verify() {
   }
 }
 
+/**
+ * PF-07 — proves CLERK_WEBHOOK_DATABASE_URL is provisioned and correctly
+ * narrow, without writing an event. Read-only: it asserts the login's
+ * privileges and that it can reach only the webhook function.
+ */
+async function verifyClerkWebhookDatabase() {
+  const webhook = client(
+    required(process.env.CLERK_WEBHOOK_DATABASE_URL, "CLERK_WEBHOOK_DATABASE_URL_REQUIRED"),
+  );
+
+  try {
+    const [role] = await webhook<DatabaseWebhookRole[]>`
+      select
+        current_user as "roleName",
+        pg_role.rolsuper as "isSuperuser",
+        pg_role.rolbypassrls as "bypassesRls",
+        pg_has_role(current_user, 'patrimoine_webhook_service', 'member') as "canAssumeWebhookRole",
+        pg_has_role(current_user, 'patrimoine_app', 'member') as "canAssumeApplicationRole",
+        exists (
+          select 1
+          from pg_catalog.pg_class as relation
+          cross join lateral pg_catalog.aclexplode(
+            coalesce(relation.relacl, pg_catalog.acldefault('r', relation.relowner))
+          ) as privilege
+          where relation.relnamespace = 'public'::regnamespace
+            and relation.relkind in ('r', 'p')
+            and privilege.grantee = pg_role.oid
+        ) as "hasDirectTablePrivileges",
+        exists (
+          select 1
+          from pg_catalog.pg_class as relation
+          where relation.relnamespace = 'public'::regnamespace
+            and relation.relkind in ('r', 'p')
+            and relation.relowner = pg_role.oid
+        ) as "ownsTables"
+      from pg_catalog.pg_roles as pg_role
+      where pg_role.rolname = current_user
+    `;
+
+    if (!role) throw new Error("CLERK_WEBHOOK_DATABASE_ROLE_UNSAFE");
+    assertSafeClerkWebhookRole(role);
+
+    // The login inherits nothing on its own (NOINHERIT) and holds no schema
+    // grant, so reachability is checked the way the runtime does it: inside a
+    // transaction that explicitly assumes the service role.
+    const reachable = await webhook.begin(async (transaction) => {
+      await transaction.unsafe("set local role patrimoine_webhook_service");
+      const [row] = await transaction<{ canExecute: boolean }[]>`
+        select has_function_privilege(
+          current_user,
+          'app_security.record_clerk_webhook_event(text, text, text, text, text, text, text, text, text, text, text)',
+          'execute'
+        ) as "canExecute"
+      `;
+      return row?.canExecute === true;
+    });
+
+    if (!reachable) {
+      throw new Error("CLERK_WEBHOOK_FUNCTION_NOT_EXECUTABLE");
+    }
+
+    process.stdout.write(`${JSON.stringify({ status: "verified", role: "patrimoine_webhook_service" })}\n`);
+  } finally {
+    await webhook.end();
+  }
+}
+
 async function migrateManagedDatabase() {
   const adminUrl = required(process.env.DATABASE_ADMIN_URL, "DATABASE_ADMIN_URL_REQUIRED");
   const admin = client(adminUrl);
@@ -222,6 +291,7 @@ const command = process.argv[2];
 const commands: Record<string, () => Promise<void>> = {
   migrate: migrateManagedDatabase,
   verify,
+  "verify:webhook": verifyClerkWebhookDatabase,
   smoke,
 };
 

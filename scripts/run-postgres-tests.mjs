@@ -17,6 +17,11 @@ function availablePort() {
   });
 }
 
+// Optional CLI arguments narrow the run to specific suites, e.g.
+// `npm run test:postgres -- pf07-clerk-webhook`. With none, the whole
+// directory runs sequentially, which is what validation uses.
+const testFilters = process.argv.slice(2);
+
 function runVitest(databaseUrl) {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -26,7 +31,7 @@ function runVitest(databaseUrl) {
         "run",
         "--globals",
         "--fileParallelism=false",
-        "tests/postgres",
+        ...(testFilters.length > 0 ? testFilters : ["tests/postgres"]),
       ],
       {
         cwd: process.cwd(),

@@ -14,6 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/managed-postgres-readiness.ts migrate",
     "db:verify": "tsx scripts/managed-postgres-readiness.ts verify",
+    "db:verify:webhook": "tsx scripts/managed-postgres-readiness.ts verify:webhook",
     "db:smoke": "tsx scripts/managed-postgres-readiness.ts smoke",
     "db:backup": "tsx scripts/managed-postgres-backup.ts backup",
     "db:restore:verify": "tsx scripts/managed-postgres-backup.ts restore-verify",
