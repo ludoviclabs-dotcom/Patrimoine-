@@ -1,6 +1,6 @@
 # PATRIMOINE FISCAL — CURRENT STATE
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 ## Git state
 
@@ -36,7 +36,7 @@ MVP cabinet-ready — Q1 2027
 
 PF-05-06-PUBLISH — **DONE**. The branch is pushed and Draft PR
 [#13](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/13) is open
-against `main` with 7 commits and 44 changed files. GitHub CI (`quality`) and
+against `main` with 8 commits and 44 changed files. GitHub CI (`quality`) and
 both Vercel checks PASS. PF-05 and PF-06 are **VERIFIED_STAGING**: the full
 private-document and server-report chain was exercised against the real Vercel
 Private Blob store, the real Neon database and real Clerk identity resolution,
@@ -73,14 +73,16 @@ Clerk webhook persistence leg (`CLERK_WEBHOOK_DATABASE_URL`).
   provider-neutral PostgreSQL mapping boundary.**
 - **PF-04 COMPLETE (PF-04A + PF-04B) — authenticated tenant context, central
   RBAC, client dossier grants, RLS resource restriction and revocation tests.**
-- **PF-05 IMPLEMENTED / VERIFIED_LOCALLY — private versioned document storage,
+- **PF-05 COMPLETE / VERIFIED_STAGING — private versioned document storage,
   server-side MIME/size/name validation, SHA-256, short-lived signed download
-  grants, quarantine workflow and simulation evidence linkage.**
-- **PF-06 COMPLETE (PF-06 + PF-06B) / VERIFIED_LOCALLY — immutable report
+  grants, quarantine workflow and simulation evidence linkage. Proven against
+  the real Vercel Private Blob store and real Neon PostgreSQL in PF-06C4.**
+- **PF-06 COMPLETE (PF-06 + PF-06B) / VERIFIED_STAGING — immutable report
   snapshots, reproducible server-side @react-pdf/renderer output, watermark
   policy, expert-only validation appended as a new version, private PDF
   storage, audited downloads, and the cabinet report screen wired onto the
-  server pipeline with staleness detection and explicit error states.**
+  server pipeline with staleness detection and explicit error states. Proven
+  against real providers in PF-06C4.**
 
 ## PF-06C4 — Runtime verification on real providers (COMPLETE / VERIFIED_STAGING)
 
@@ -361,6 +363,9 @@ with a precise, itemised approval list rather than a generic pending note.
 
 ## PF-06B — Cabinet report UI wired to the server pipeline (COMPLETE / VERIFIED_LOCALLY)
 
+*Historical record of the PF-06B run. Superseded by PF-06C4: PF-06 is now
+VERIFIED_STAGING.*
+
 Branch: `claude/private-document-storage-evidence-c569fd`
 
 HEAD before PF-06B: `b3c1690f7eb1fcfb001f0fe6b2ba03aab09077d1`
@@ -428,6 +433,9 @@ PRODUCTION_VERIFICATION_PENDING: no managed database, Clerk instance or private
 Blob store was available; nothing was provisioned or simulated.
 
 ## PF-06 — Server report and immutable snapshot (IMPLEMENTED / VERIFIED_LOCALLY)
+
+*Historical record of the PF-06 run. Superseded by PF-06C4: PF-06 is now
+VERIFIED_STAGING.*
 
 Branch: `claude/private-document-storage-evidence-c569fd`
 
@@ -506,6 +514,9 @@ PRODUCTION_VERIFICATION_PENDING: no Vercel Blob store or token was available,
 so no report PDF was written to or read from a real provider container.
 
 ## PF-05 — Private versioned document storage (IMPLEMENTED / VERIFIED_LOCALLY)
+
+*Historical record of the PF-05 run. Superseded by PF-06C4: PF-05 is now
+VERIFIED_STAGING.*
 
 Branch: `claude/private-document-storage-evidence-c569fd`
 
@@ -1191,7 +1202,8 @@ request to its render worker through `localhost`, and the runner pinned the
 server to IPv4-only `127.0.0.1`, so the internal hop never connected. Removing
 that pin (plus fixing a busy-wait in the readiness probe) restores the suite:
 12 passed, 4 skipped. The 4 skipped are the authenticated journeys, still gated
-on `E2E_CLERK_FIXTURE=1` because no Clerk instance exists.
+on `E2E_CLERK_FIXTURE=1`: the Clerk development instance exists and is mapped,
+but an interactive browser sign-in fixture does not.
 
 Real provider evidence is DELIVERED as of PF-06C4. The owner reconnected the
 Blob store, both previously empty secrets now carry real values, and the whole
@@ -1212,22 +1224,21 @@ Two residual items remain, neither blocking PF-05/PF-06 publication:
 
 No PF-06 implementation blocker. Snapshot determinism, reproducible PDF
 rendering, the readiness gate, expert-only validation, version immutability and
-audited downloads pass against real PostgreSQL RLS with an in-memory storage
-adapter. The real provider round-trip for both document and report objects
-stays PRODUCTION_VERIFICATION_PENDING (PF-06-PUBLISH).
+audited downloads are proven, and the report round-trip on the real private
+Blob store PASSED in PF-06C4.
 
-No PF-05 implementation blocker. The private document chain — upload, versioning,
-quarantine, soft deletion, download grants, cross-tenant and revocation refusals
-— passes against real PostgreSQL RLS with an in-memory storage adapter. No
-Vercel Blob store, token or provider container was available, so the real
-provider round-trip stays PRODUCTION_VERIFICATION_PENDING (PF-05-PUBLISH).
+No PF-05 implementation blocker. The private document chain — upload,
+versioning, quarantine, soft deletion, download grants, cross-tenant and
+revocation refusals — is proven, and the document round-trip on the real
+private Blob store PASSED in PF-06C4.
 
-No PF-03C implementation blocker. The fresh native PostgreSQL migration/RLS
-exercise passes locally. Managed-provider staging credentials, migration,
-backup/restore and smoke evidence remain PRODUCTION_VERIFICATION_PENDING; no
-managed database was supplied or mutated in this task. Clerk mapping remains
-PF-04A. The P1/P2 fiscal backlog, regulatory-review items and recalculation
-candidates below remain open.
+No PF-03C implementation blocker. Managed-provider credentials and migrations
+`0000` to `0009` are delivered on the real Neon staging database, with FORCE
+RLS and a `NOBYPASSRLS` runtime login verified. Still NOT_RUN on the managed
+database, and unrelated to the PF-05/PF-06 merge: the provider-native
+backup/restore procedure and the `db:smoke` staging write. The P1/P2 fiscal
+backlog, regulatory-review items and recalculation candidates below remain
+open.
 
 ## Regulatory verification required
 
