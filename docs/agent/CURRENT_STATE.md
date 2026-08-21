@@ -34,12 +34,16 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-05-06-PUBLISH — open the pull request. PF-05 and PF-06 are now
-**VERIFIED_STAGING**: the full private-document and server-report chain has
-been exercised against the real Vercel Private Blob store, the real Neon
-database and real Clerk identity resolution, 19 gates PASS and 0 FAIL. Only two
-non-blocking items remain: an authenticated Playwright fixture and the Clerk
-webhook persistence leg.
+PF-05-06-PUBLISH — **DONE**. The branch is pushed and Draft PR
+[#13](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/13) is open
+against `main` with 7 commits and 44 changed files. GitHub CI (`quality`) and
+both Vercel checks PASS. PF-05 and PF-06 are **VERIFIED_STAGING**: the full
+private-document and server-report chain was exercised against the real Vercel
+Private Blob store, the real Neon database and real Clerk identity resolution,
+19 gates PASS and 0 FAIL. The PR is **not merged** and auto-merge is off.
+
+Two non-blocking follow-ups remain: an authenticated Playwright fixture and the
+Clerk webhook persistence leg (`CLERK_WEBHOOK_DATABASE_URL`).
 
 ## Completed
 
@@ -1300,14 +1304,18 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PF-05-06-PUBLISH — the staging gates are closed, so the remaining work is
-publication: push this branch and open the pull request for the six commits
-`d9c3827`, `b3c1690`, `5096994`, `029cc2b`, `7d0e4e6` and the PF-06C4 commit.
-Nothing was pushed and no PR was created in this run. Optionally, before
-production: provide a Clerk sign-in fixture so the authenticated Playwright
-journeys can run, and provision `CLERK_WEBHOOK_DATABASE_URL` to exercise the
-webhook persistence leg. Do not admit live-user data or real client documents
-until those two are settled.
+Review the PF-05/PF-06 Draft PR
+([#13](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/13)), verify
+GitHub CI and the final diff, then merge before starting PF-07 in a fresh
+session.
+
+Optionally, before production: provide a Clerk sign-in fixture so the
+authenticated Playwright journeys can run, and provision
+`CLERK_WEBHOOK_DATABASE_URL` to exercise the webhook persistence leg. Do not
+admit live-user data or real client documents until those two are settled.
+
+PF-07 — Cabinet UX, responsive workflow and full authenticated E2E — must not
+start before the PR is merged.
 
 ## Handoff notes
 
