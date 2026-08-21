@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  date,
   foreignKey,
   index,
   integer,
@@ -42,6 +43,23 @@ export const documentStatusEnum = pgEnum("document_status", [
   "to_review",
   "validated",
 ]);
+export const documentStorageStatusEnum = pgEnum("document_storage_status", [
+  "pending",
+  "available",
+  "quarantined",
+  "deleted",
+]);
+export const documentVersionStatusEnum = pgEnum("document_version_status", [
+  "pending",
+  "available",
+  "quarantined",
+  "failed",
+]);
+export const documentScanStatusEnum = pgEnum("document_scan_status", [
+  "pending",
+  "clean",
+  "infected",
+]);
 export const reviewDecisionEnum = pgEnum("review_decision", [
   "pending",
   "approved",
@@ -73,6 +91,16 @@ export const auditActionEnum = pgEnum("audit_action", [
   "membership.changed",
   "member.invited",
   "member.role.changed",
+  "document.version.created",
+  "document.download.authorized",
+  "document.downloaded",
+  "document.quarantined",
+  "document.deleted",
+  "document.evidence.linked",
+  "report.generated",
+  "report.validated",
+  "report.download.authorized",
+  "report.downloaded",
 ]);
 
 export const tenants = pgTable("tenants", {
@@ -459,6 +487,9 @@ export const documents = pgTable(
     byteSize: bigint("byte_size", { mode: "number" }),
     sha256: varchar("sha256", { length: 64 }),
     required: boolean("required").notNull().default(true),
+    storageStatus: documentStorageStatusEnum("storage_status").notNull().default("pending"),
+    currentVersionNumber: integer("current_version_number").notNull().default(0),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -473,6 +504,61 @@ export const documents = pgTable(
     }).onDelete("restrict"),
     foreignKey({
       name: "documents_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
+);
+
+/**
+ * Append-only record of the bytes actually stored in the private container.
+ * A replacing justificatif creates version n+1; version n is never rewritten
+ * or deleted (enforced by the database trigger installed in PF-05).
+ */
+export const documentVersions = pgTable(
+  "document_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    documentId: uuid("document_id").notNull(),
+    caseId: uuid("case_id").notNull(),
+    versionNumber: integer("version_number").notNull(),
+    blobKey: text("blob_key").notNull(),
+    storageProvider: varchar("storage_provider", { length: 64 })
+      .notNull()
+      .default("vercel-blob-private"),
+    visibility: varchar("visibility", { length: 16 }).notNull().default("private"),
+    status: documentVersionStatusEnum("status").notNull().default("pending"),
+    scanStatus: documentScanStatusEnum("scan_status").notNull().default("pending"),
+    originalFileName: text("original_file_name").notNull(),
+    mimeType: varchar("mime_type", { length: 160 }).notNull(),
+    byteSize: bigint("byte_size", { mode: "number" }).notNull(),
+    sha256: varchar("sha256", { length: 64 }).notNull(),
+    uploadedByIdentityId: uuid("uploaded_by_identity_id")
+      .notNull()
+      .references(() => userIdentities.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    availableAt: timestamp("available_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("document_versions_tenant_document_idx").on(
+      table.tenantId,
+      table.documentId,
+      table.versionNumber,
+    ),
+    index("document_versions_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("document_versions_tenant_id_unique").on(table.tenantId, table.id),
+    unique("document_versions_document_number_unique").on(table.documentId, table.versionNumber),
+    unique("document_versions_blob_key_unique").on(table.blobKey),
+    foreignKey({
+      name: "document_versions_tenant_document_fk",
+      columns: [table.tenantId, table.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "document_versions_tenant_case_fk",
       columns: [table.tenantId, table.caseId],
       foreignColumns: [clientCases.tenantId, clientCases.id],
     }).onDelete("restrict"),
@@ -635,6 +721,41 @@ export const simulationRuleVersions = pgTable(
   ],
 );
 
+/**
+ * Evidence linkage between a simulation trace and one precise document
+ * version. A report referencing a run can therefore cite the exact version
+ * number and its SHA-256, not a mutable document pointer.
+ */
+export const simulationDocumentVersions = pgTable(
+  "simulation_document_versions",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    simulationRunId: uuid("simulation_run_id").notNull(),
+    documentVersionId: uuid("document_version_id").notNull(),
+    purpose: varchar("purpose", { length: 80 }).notNull().default("supporting-evidence"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.simulationRunId, table.documentVersionId] }),
+    index("simulation_document_versions_tenant_run_idx").on(
+      table.tenantId,
+      table.simulationRunId,
+    ),
+    foreignKey({
+      name: "simulation_document_versions_tenant_run_fk",
+      columns: [table.tenantId, table.simulationRunId],
+      foreignColumns: [simulationRuns.tenantId, simulationRuns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "simulation_document_versions_tenant_version_fk",
+      columns: [table.tenantId, table.documentVersionId],
+      foreignColumns: [documentVersions.tenantId, documentVersions.id],
+    }).onDelete("restrict"),
+  ],
+);
+
 export const professionalReviews = pgTable(
   "professional_reviews",
   {
@@ -739,6 +860,37 @@ export const ruleDiffs = pgTable(
   (table) => [index("rule_diffs_source_idx").on(table.sourceId)],
 );
 
+/** One report per dossier; its versions are the immutable deliverables. */
+export const reports = pgTable(
+  "reports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "restrict" }),
+    caseId: uuid("case_id").notNull(),
+    title: varchar("title", { length: 220 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("draft"),
+    currentVersionNumber: integer("current_version_number").notNull().default(0),
+    createdByIdentityId: uuid("created_by_identity_id")
+      .notNull()
+      .references(() => userIdentities.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("reports_tenant_case_idx").on(table.tenantId, table.caseId),
+    unique("reports_tenant_id_unique").on(table.tenantId, table.id),
+    unique("reports_tenant_case_unique").on(table.tenantId, table.caseId),
+    foreignKey({
+      name: "reports_tenant_case_fk",
+      columns: [table.tenantId, table.caseId],
+      foreignColumns: [clientCases.tenantId, clientCases.id],
+    }).onDelete("restrict"),
+  ],
+);
+
 export const reportVersions = pgTable(
   "report_versions",
   {
@@ -757,11 +909,34 @@ export const reportVersions = pgTable(
     evidenceSourceIds: jsonb("evidence_source_ids").$type<string[]>().notNull(),
     coverageLimitIds: jsonb("coverage_limit_ids").$type<string[]>().notNull(),
     generatedAt: timestamp("generated_at", { withTimezone: true }).notNull().defaultNow(),
+    // PF-06 server-generated provenance. A row carrying reportId is immutable
+    // and rendered exclusively from its own stored snapshot.
+    reportId: uuid("report_id"),
+    versionNumber: integer("version_number"),
+    legalFreezeDate: date("legal_freeze_date"),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>(),
+    snapshotSha256: varchar("snapshot_sha256", { length: 64 }),
+    businessSha256: varchar("business_sha256", { length: 64 }),
+    pdfBlobKey: text("pdf_blob_key"),
+    pdfSha256: varchar("pdf_sha256", { length: 64 }),
+    pdfByteSize: bigint("pdf_byte_size", { mode: "number" }),
+    watermark: varchar("watermark", { length: 64 }),
+    validationBlock: jsonb("validation_block").$type<Record<string, unknown>>(),
+    generatorVersion: varchar("generator_version", { length: 64 }),
+    generatedByIdentityId: uuid("generated_by_identity_id")
+      .references(() => userIdentities.id, { onDelete: "restrict" }),
+    validatedByIdentityId: uuid("validated_by_identity_id")
+      .references(() => userIdentities.id, { onDelete: "restrict" }),
+    validatedAt: timestamp("validated_at", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   },
   (table) => [
     index("report_versions_case_idx").on(table.caseId),
     index("report_versions_tenant_case_idx").on(table.tenantId, table.caseId),
+    index("report_versions_report_idx").on(table.reportId, table.versionNumber),
     unique("report_versions_tenant_id_unique").on(table.tenantId, table.id),
+    unique("report_versions_report_number_unique").on(table.reportId, table.versionNumber),
+    unique("report_versions_pdf_blob_key_unique").on(table.pdfBlobKey),
     foreignKey({
       name: "report_versions_tenant_case_fk",
       columns: [table.tenantId, table.caseId],
@@ -771,6 +946,11 @@ export const reportVersions = pgTable(
       name: "report_versions_tenant_reviewer_fk",
       columns: [table.tenantId, table.reviewerUserId],
       foreignColumns: [users.tenantId, users.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "report_versions_tenant_report_fk",
+      columns: [table.tenantId, table.reportId],
+      foreignColumns: [reports.tenantId, reports.id],
     }).onDelete("restrict"),
   ],
 );

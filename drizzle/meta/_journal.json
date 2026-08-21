@@ -57,6 +57,20 @@
       "when": 1787616000000,
       "tag": "0007_pf04b_authenticated_tenant_rbac",
       "breakpoints": false
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787702400000,
+      "tag": "0008_pf05_private_document_storage",
+      "breakpoints": false
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787788800000,
+      "tag": "0009_pf06_server_report_snapshot",
+      "breakpoints": false
     }
   ]
 }

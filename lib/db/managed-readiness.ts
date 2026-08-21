@@ -1,5 +1,5 @@
 export const managedPostgresMigrationMarker =
-  "0007_pf04b_authenticated_tenant_rbac";
+  "0009_pf06_server_report_snapshot";
 
 export const managedPostgresRlsTables = [
   "tenants",
@@ -30,6 +30,9 @@ export const managedPostgresRlsTables = [
   "auth_provider_memberships",
   "auth_webhook_events",
   "case_access_grants",
+  "document_versions",
+  "simulation_document_versions",
+  "reports",
 ] as const;
 
 export type DatabaseRuntimeRole = Readonly<{
