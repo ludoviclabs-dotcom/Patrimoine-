@@ -67,6 +67,7 @@ async function startAuthenticatedFixture() {
     "E2E_CLERK_USER_EXPERT_A",
     "E2E_CLERK_USER_CLIENT_A",
     "E2E_CLERK_USER_EXPERT_B",
+    "E2E_CLERK_USER_UNKNOWN_A",
   ].filter((name) => !process.env[name]?.trim());
 
   if (missing.length > 0) {

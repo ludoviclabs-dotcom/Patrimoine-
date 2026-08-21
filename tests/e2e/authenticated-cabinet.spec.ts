@@ -227,6 +227,27 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
     expect(generate.status()).not.toBe(201);
   });
 
+  test("Identité inconnue : appartenir à l'organisation Clerk n'autorise rien", async ({ page }) => {
+    // A genuine Clerk member of the organization with no internal row at all.
+    // PF-04A's central claim is that the identity provider grants nothing on
+    // its own; PostgreSQL remains the authority.
+    await signInAs(page, "E2E_UNKNOWN_A");
+    await page.goto("/report");
+
+    await expect(consoleState(page)).toHaveCount(0);
+    await expect(page.getByText("CLERK_TENANT_CONTEXT_DENIED")).toBeVisible();
+    // The refusal names the cause and what to do, without leaking any dossier.
+    await expect(page.getByText(/Compte non rattaché à un cabinet/)).toBeVisible();
+    await expect(page.getByText(/Prochaine action/)).toBeVisible();
+    await expect(page.getByText("DOS-CLAIRE-MARC-2026")).toHaveCount(0);
+    await expect(page.getByText("DOS-B-E2E")).toHaveCount(0);
+
+    // The API refuses it too: hiding the console is not the control.
+    const versions = await page.request.get(`/api/v1/reports/cases/${dossierA}/versions`);
+    expect(versions.status()).toBe(401);
+    expect((await versions.json()).error).toBe("CLERK_TENANT_CONTEXT_DENIED");
+  });
+
   test("Membership révoquée : la session Clerk reste valide, l'accès ne l'est plus", async ({ page }) => {
     const adviser = e2eFixtureRole("E2E_ADVISER_A");
 

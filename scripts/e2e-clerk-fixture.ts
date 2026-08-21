@@ -102,7 +102,19 @@ async function ensureUser(role: E2EFixtureRole) {
   return { id: created.id, created: true } as const;
 }
 
+async function isAlreadyMember(organizationId: string, userId: string) {
+  const memberships = listData<{ public_user_data?: { user_id?: string } }>(
+    await clerkRequest<unknown>(`/organizations/${organizationId}/memberships?limit=100`),
+  );
+  return memberships.some((membership) => membership.public_user_data?.user_id === userId);
+}
+
 async function ensureMembership(organizationId: string, userId: string, clerkRole: string) {
+  // A development instance enforces its membership quota before it checks for
+  // a duplicate, so re-running provision would fail on members that already
+  // exist. Look first, create only when genuinely missing.
+  if (await isAlreadyMember(organizationId, userId)) return "existing";
+
   try {
     await clerkRequest(`/organizations/${organizationId}/memberships`, {
       method: "POST",
@@ -113,6 +125,11 @@ async function ensureMembership(organizationId: string, userId: string, clerkRol
     // Clerk answers 422 when the membership already exists; that is the
     // idempotent outcome, not a failure.
     if (error instanceof Error && /CLERK_API_422/.test(error.message)) return "existing";
+    // A development instance caps organization memberships. Say so plainly
+    // rather than failing with a raw provider payload.
+    if (error instanceof Error && /organization_membership_quota_exceeded/.test(error.message)) {
+      throw new Error("CLERK_ORGANIZATION_MEMBERSHIP_QUOTA_EXCEEDED");
+    }
     throw error;
   }
 }

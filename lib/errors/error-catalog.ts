@@ -128,6 +128,16 @@ const configuration: Readonly<Record<string, Entry>> = {
   },
 };
 
+/** Raised by the browser itself, not by a route, but it must read the same. */
+const transport: Readonly<Record<string, Entry>> = {
+  NETWORK_UNAVAILABLE: {
+    title: "Serveur injoignable",
+    explanation: "La requête n'a pas abouti : rien n'a été enregistré côté serveur.",
+    nextAction: "Vérifiez votre connexion, puis relancez l'action.",
+    severity: "blocking",
+  },
+};
+
 const documents: Readonly<Record<string, Entry>> = {
   DOCUMENT_NOT_FOUND: {
     title: "Document introuvable",
@@ -456,6 +466,7 @@ const reviewFlags: Readonly<Record<string, Entry>> = {
 export const errorCatalog: Readonly<Record<string, Entry>> = {
   ...authentication,
   ...configuration,
+  ...transport,
   ...documents,
   ...grants,
   ...reports,

@@ -6,6 +6,7 @@ import { AlertTriangle, Download, FileCheck2, RefreshCw, ShieldCheck } from "luc
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
+import { describeError } from "@/lib/errors/error-catalog";
 import type { ReportConsoleState } from "@/lib/report/report-console";
 
 /**
@@ -34,25 +35,6 @@ const statusLabel = {
   changes_requested: "À REVOIR",
   validated: "VALIDÉ",
 } as const;
-
-const errorCopy: Readonly<Record<string, string>> = {
-  REPORT_LEGAL_FREEZE_DATE_REQUIRED: "Date de gel juridique manquante ou mal formée (AAAA-MM-JJ).",
-  REPORT_SIMULATION_RUN_REQUIRED: "Sélectionnez au moins une simulation.",
-  REPORT_READINESS_BLOCKED: "Validation refusée : au moins un point bloquant reste ouvert.",
-  REPORT_VALIDATION_COMMENT_REQUIRED: "Un commentaire de validation est obligatoire.",
-  REPORT_ALREADY_VALIDATED: "Cette version est déjà validée : générez une nouvelle version.",
-  REPORT_VERSION_SUPERSEDED: "Cette version n'est plus la version courante du rapport.",
-  REPORT_VERSION_NOT_FOUND: "Version introuvable dans le périmètre de votre cabinet.",
-  DOSSIER_NOT_FOUND: "Dossier introuvable dans le périmètre de votre cabinet.",
-  SIMULATION_RUN_NOT_FOUND: "Une simulation sélectionnée n'appartient pas à ce dossier.",
-  TENANT_AUTHORIZATION_DENIED: "Votre rôle ne permet pas cette action ; le refus est journalisé.",
-  TENANT_MEMBERSHIP_REQUIRED: "Votre adhésion au tenant n'est plus active.",
-  BLOB_READ_WRITE_TOKEN_REQUIRED: "Stockage privé non configuré : aucun PDF n'a été écrit.",
-  DOCUMENT_DOWNLOAD_SIGNING_SECRET_REQUIRED: "Secret de signature absent : aucune autorisation émise.",
-  REPORT_DOWNLOAD_GRANT_EXPIRED: "Le lien temporaire a expiré ; relancez le téléchargement.",
-  REPORT_OBJECT_NOT_FOUND: "Le binaire PDF est introuvable dans le conteneur privé.",
-  REPORT_REQUEST_INVALID: "Requête incomplète.",
-};
 
 function Definition({ label, value }: { label: string; value: string }) {
   return (
@@ -386,17 +368,25 @@ export function ServerReportConsole({ state }: { state: ReportConsoleState }) {
         </Card>
       )}
 
-      {action.kind === "error" && (
-        <Card className="border-[var(--danger)]">
-          <p className="text-sm font-medium text-[var(--danger)]">
-            Échec de l&apos;action « {action.action} » (HTTP {action.status})
-          </p>
-          <p className="mt-1 text-sm">{errorCopy[action.code] ?? "Échec non catalogué."}</p>
-          <code className="text-xs text-muted">{action.code}</code>
-        </Card>
-      )}
+      {action.kind === "error" && (() => {
+        // The interactive path reads the same catalog as the server-rendered
+        // blockers, so a refusal is worded identically wherever it appears and
+        // always names the next action.
+        const descriptor = describeError(action.code);
+        return (
+          <Card className="border-[var(--danger)]" role="alert">
+            <p className="text-sm font-medium text-[var(--danger)]">
+              {descriptor.title} — action « {action.action} »
+              {action.status > 0 ? ` (HTTP ${action.status})` : ""}
+            </p>
+            <p className="mt-1 text-sm">{descriptor.explanation}</p>
+            <p className="mt-1 text-sm font-medium">Prochaine action : {descriptor.nextAction}</p>
+            <code className="text-xs text-muted">{action.code}</code>
+          </Card>
+        );
+      })()}
       {action.kind === "done" && (
-        <Card className="border-[var(--success)]">
+        <Card className="border-[var(--success)]" role="status">
           <p className="text-sm">{action.message}</p>
         </Card>
       )}

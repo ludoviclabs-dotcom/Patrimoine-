@@ -18,7 +18,8 @@ export type E2EFixtureRoleKey =
   | "E2E_ADVISER_A"
   | "E2E_EXPERT_A"
   | "E2E_CLIENT_A"
-  | "E2E_EXPERT_B";
+  | "E2E_EXPERT_B"
+  | "E2E_UNKNOWN_A";
 
 export type E2EFixtureTenant = Readonly<{
   key: E2EFixtureTenantKey;
@@ -43,6 +44,12 @@ export type E2EFixtureRole = Readonly<{
   userIdEnv: string;
   /** Only a client needs an explicit dossier grant to see anything. */
   requiresCaseGrant: boolean;
+  /**
+   * When false, the identity exists in Clerk and belongs to the organization
+   * but has no internal row at all. PF-04A's central claim is that this
+   * authorizes nothing, so the fixture has to be able to express it.
+   */
+  seedInternalMembership: boolean;
 }>;
 
 const cabinetA: E2EFixtureTenant = {
@@ -77,6 +84,7 @@ export const e2eClerkFixturePlan = {
       identityId: "e2e1a000-0000-4000-8000-000000000001",
       userIdEnv: "E2E_CLERK_USER_ADVISER_A",
       requiresCaseGrant: false,
+      seedInternalMembership: true,
     },
     {
       key: "E2E_EXPERT_A",
@@ -89,6 +97,7 @@ export const e2eClerkFixturePlan = {
       identityId: "e2e1a000-0000-4000-8000-000000000002",
       userIdEnv: "E2E_CLERK_USER_EXPERT_A",
       requiresCaseGrant: false,
+      seedInternalMembership: true,
     },
     {
       key: "E2E_CLIENT_A",
@@ -101,6 +110,7 @@ export const e2eClerkFixturePlan = {
       identityId: "e2e1a000-0000-4000-8000-000000000003",
       userIdEnv: "E2E_CLERK_USER_CLIENT_A",
       requiresCaseGrant: true,
+      seedInternalMembership: true,
     },
     {
       key: "E2E_EXPERT_B",
@@ -113,6 +123,25 @@ export const e2eClerkFixturePlan = {
       identityId: "e2e0b000-0000-4000-8000-000000000001",
       userIdEnv: "E2E_CLERK_USER_EXPERT_B",
       requiresCaseGrant: false,
+      seedInternalMembership: true,
+    },
+    {
+      // A real Clerk organization member with no internal membership at all.
+      // PF-04A's central claim is that this authorizes nothing, so the fixture
+      // has to be able to express it. It sits in CABINET_B only because the
+      // development instance caps CABINET_A at five memberships; the property
+      // proven is identical.
+      key: "E2E_UNKNOWN_A",
+      tenantKey: "CABINET_B",
+      email: "pf07-unknown-a+clerk_test@example.com",
+      firstName: "E2E",
+      lastName: "Unknown A",
+      clerkRole: "org:member",
+      internalRole: "client",
+      identityId: "e2e1a000-0000-4000-8000-000000000009",
+      userIdEnv: "E2E_CLERK_USER_UNKNOWN_A",
+      requiresCaseGrant: false,
+      seedInternalMembership: false,
     },
   ] as const satisfies readonly E2EFixtureRole[],
 } as const;

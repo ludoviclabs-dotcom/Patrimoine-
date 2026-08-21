@@ -123,6 +123,11 @@ export async function seedE2EClerkFixture(
         throw new Error(`E2E_FIXTURE_IDENTITY_MISSING:${role.key}`);
       }
 
+      // A Clerk member with no internal row must stay completely unknown to
+      // the database: seeding an identity or an observation would already be
+      // more than PF-04A grants.
+      if (!role.seedInternalMembership) continue;
+
       await transaction.insert(userIdentities).values({
         id: role.identityId,
         provider: "clerk",
