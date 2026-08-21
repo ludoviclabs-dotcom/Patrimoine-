@@ -36,7 +36,8 @@ MVP cabinet-ready — Q1 2027
 
 PF-05-06-PUBLISH — **DONE**. The branch is pushed and Draft PR
 [#13](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/13) is open
-against `main` with 8 commits and 44 changed files. GitHub CI (`quality`) and
+against `main` with 44 changed files, carrying the PF-05, PF-06, PF-06B and
+PF-06C* work plus its documentation records. GitHub CI (`quality`) and
 both Vercel checks PASS. PF-05 and PF-06 are **VERIFIED_STAGING**: the full
 private-document and server-report chain was exercised against the real Vercel
 Private Blob store, the real Neon database and real Clerk identity resolution,
