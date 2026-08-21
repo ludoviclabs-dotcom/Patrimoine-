@@ -11,6 +11,7 @@
     "test:postgres": "node scripts/run-postgres-tests.mjs",
     "test:watch": "vitest",
     "e2e": "node scripts/run-e2e.mjs",
+    "e2e:fixture": "tsx scripts/e2e-clerk-fixture.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/managed-postgres-readiness.ts migrate",
     "db:verify": "tsx scripts/managed-postgres-readiness.ts verify",
@@ -43,6 +44,7 @@
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
+    "@clerk/testing": "^2.2.28",
     "@playwright/test": "^1.49.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.0",

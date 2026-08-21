@@ -151,7 +151,18 @@ export function ServerReportConsole({ state }: { state: ReportConsoleState }) {
   const busy = action.kind === "working";
 
   return (
-    <div className="space-y-5">
+    <div
+      className="space-y-5"
+      // Stable hooks for the authenticated E2E journeys: the visible status
+      // words appear in several places (badge, history, watermark), so the
+      // machine-readable state is exposed once here instead.
+      data-report-console=""
+      data-report-status={current?.status ?? "none"}
+      data-report-version-id={current?.reportVersionId ?? ""}
+      data-report-version-number={current ? String(current.versionNumber) : ""}
+      data-report-dossier={state.selectedDossier?.reference ?? ""}
+      data-report-role={state.role}
+    >
       <Card accent elevated>
         <CardHeader>
           <div>
