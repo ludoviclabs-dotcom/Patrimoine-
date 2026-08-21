@@ -2,6 +2,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import { can, withAuthorizedTenantTransaction } from "../auth/authorization";
 import { getDatabase } from "../db/client";
 import { clientCases, simulationRuns } from "../db/schema";
+import { describeError } from "../errors/error-catalog";
 import { resolvePersistenceRuntime } from "../persistence/mode";
 import type { TenantContext } from "../tenancy/tenant-context";
 import { resolveDownloadSigningSecret } from "../documents/access-grant";
@@ -44,6 +45,7 @@ export type ReportConsoleBlocker = Readonly<{
   code: string;
   title: string;
   detail: string;
+  nextAction: string;
   severity: "blocking" | "review" | "info";
 }>;
 
@@ -68,49 +70,26 @@ export type ReportConsoleUnavailable = Readonly<{
   code: string;
   title: string;
   detail: string;
+  nextAction: string;
 }>;
 
 export type ReportConsoleResult =
   | (ReportConsoleState & Readonly<{ available: true }>)
   | ReportConsoleUnavailable;
 
-const unavailableCopy: Readonly<Record<string, { title: string; detail: string }>> = {
-  PERSISTENCE_MODE_FIXTURE: {
-    title: "Pipeline serveur inactif",
-    detail:
-      "Le rapport cabinet exige PERSISTENCE_MODE=DATABASE et une base PostgreSQL managée. En mode fixtures, seul l'aperçu de travail est disponible.",
-  },
-  CLERK_SESSION_REQUIRED: {
-    title: "Authentification requise",
-    detail: "Connectez-vous avec votre compte cabinet pour accéder aux rapports du tenant.",
-  },
-  CLERK_ORGANIZATION_REQUIRED: {
-    title: "Organisation cabinet requise",
-    detail: "Sélectionnez l'organisation du cabinet : le tenant est résolu côté serveur, jamais depuis le navigateur.",
-  },
-  CLERK_TENANT_CONTEXT_DENIED: {
-    title: "Accès refusé",
-    detail:
-      "Aucune adhésion active ne relie ce compte à un tenant interne. Un administrateur doit rattacher l'organisation et la membership en base.",
-  },
-  TENANT_MEMBERSHIP_REQUIRED: {
-    title: "Adhésion révoquée",
-    detail: "Votre adhésion au tenant n'est plus active : l'accès aux rapports est refusé jusqu'à sa réactivation.",
-  },
-  TENANT_AUTHORIZATION_DENIED: {
-    title: "Rôle insuffisant",
-    detail: "Votre rôle ne dispose pas de la capacité requise sur les rapports de ce tenant.",
-  },
-};
-
+/**
+ * PF-07 — wording now comes from the shared catalog, so the same refusal reads
+ * identically wherever it surfaces and always names the next action.
+ */
 export function describeUnavailable(code: string): ReportConsoleUnavailable {
-  const copy = unavailableCopy[code];
+  const descriptor = describeError(code);
 
   return {
     available: false,
     code,
-    title: copy?.title ?? "Rapport serveur indisponible",
-    detail: copy?.detail ?? "Le pipeline serveur n'a pas pu être ouvert. Le code technique est affiché pour diagnostic.",
+    title: descriptor.title,
+    detail: descriptor.explanation,
+    nextAction: descriptor.nextAction,
   };
 }
 
@@ -139,104 +118,54 @@ export function buildBlockers(input: {
 }): readonly ReportConsoleBlocker[] {
   const blockers: ReportConsoleBlocker[] = [];
 
-  if (input.requestedDossierOutOfScope) {
+  /**
+   * Every blocker keeps its own machine-readable code and takes its wording
+   * from the shared catalog, so nothing is collapsed into a generic message
+   * and the same refusal reads identically on every screen.
+   */
+  const add = (code: string, override?: Parameters<typeof describeError>[1]) => {
+    const descriptor = describeError(code, override);
     blockers.push({
-      code: "REPORT_DOSSIER_NOT_ACCESSIBLE",
-      severity: "blocking",
-      title: "Dossier hors périmètre",
-      detail:
-        "Le dossier demandé n'existe pas dans le périmètre de votre cabinet. Aucun repli sur un autre dossier n'est effectué.",
+      code,
+      title: descriptor.title,
+      detail: descriptor.explanation,
+      nextAction: descriptor.nextAction,
+      severity: descriptor.severity,
     });
-  }
+  };
 
-  if (!input.legalFreezeDate) {
-    blockers.push({
-      code: "REPORT_LEGAL_FREEZE_DATE_REQUIRED",
-      severity: "blocking",
-      title: "Date de gel juridique manquante",
-      detail:
-        "Aucune date de gel juridique n'est renseignée. Elle n'est jamais déduite : indiquez la date à laquelle le droit applicable est figé.",
-    });
-  }
-
-  if (input.selectedRunIds.length === 0) {
-    blockers.push({
-      code: "REPORT_SIMULATION_RUN_REQUIRED",
-      severity: "blocking",
-      title: "Aucune simulation sélectionnée",
-      detail: "Sélectionnez au moins une simulation du dossier à intégrer au rapport.",
-    });
-  }
+  if (input.requestedDossierOutOfScope) add("REPORT_DOSSIER_NOT_ACCESSIBLE");
+  if (!input.legalFreezeDate) add("REPORT_LEGAL_FREEZE_DATE_REQUIRED");
+  if (input.selectedRunIds.length === 0) add("REPORT_SIMULATION_RUN_REQUIRED");
 
   if (input.readinessErrorCode) {
-    blockers.push({
-      code: input.readinessErrorCode,
-      severity: "blocking",
+    // An unreadable dossier keeps the underlying code; it never resolves to
+    // "everything is fine".
+    add(input.readinessErrorCode, {
       title: "Faits du dossier illisibles",
-      detail:
-        "Les données nécessaires au rapport n'ont pas pu être lues dans le périmètre du tenant. Le code technique est affiché pour diagnostic.",
+      severity: "blocking",
     });
   }
 
   for (const flag of input.readiness?.blockingFlags ?? []) {
-    blockers.push({
-      code: flag.code,
-      severity: "blocking",
-      title: flag.code === "review.professional_not_signed"
-        ? "Revue professionnelle non signée"
-        : "Point bloquant",
-      detail: flag.detail,
-    });
+    add(flag.code, { explanation: flag.detail, severity: "blocking" });
   }
 
   for (const flag of input.readiness?.reviewFlags ?? []) {
-    blockers.push({
-      code: flag.code,
-      severity: "review",
-      title: "Point de vigilance",
-      detail: flag.detail,
-    });
+    add(flag.code, { explanation: flag.detail, severity: "review" });
   }
 
-  if (input.readiness && input.readiness.evidenceCount === 0) {
-    blockers.push({
-      code: "REPORT_EVIDENCE_MISSING",
-      severity: "review",
-      title: "Aucune pièce justificative rattachée",
-      detail:
-        "Aucune version de document n'est reliée aux simulations retenues : l'index des preuves du rapport sera vide.",
-    });
-  }
+  if (input.readiness && input.readiness.evidenceCount === 0) add("REPORT_EVIDENCE_MISSING");
 
   if (input.freshness?.status === "outdated") {
-    blockers.push({
-      code: input.freshness.reasonCode ?? "REPORT_REGENERATION_REQUIRED",
+    add(input.freshness.reasonCode ?? "REPORT_REGENERATION_REQUIRED", {
+      ...(input.freshness.reason ? { explanation: input.freshness.reason } : {}),
       severity: "blocking",
-      title: "Rapport obsolète — régénération requise",
-      detail: input.freshness.reason
-        ?? "Les faits du dossier ont changé depuis la dernière génération.",
     });
   }
 
-  if (!input.storageConfigured) {
-    blockers.push({
-      code: "BLOB_READ_WRITE_TOKEN_REQUIRED",
-      severity: "blocking",
-      title: "Stockage privé indisponible",
-      detail:
-        "Aucun conteneur Vercel Private Blob n'est configuré : la génération d'un PDF serveur échouerait avant tout enregistrement.",
-    });
-  }
-
-  if (!input.downloadSecretConfigured) {
-    blockers.push({
-      code: "DOCUMENT_DOWNLOAD_SIGNING_SECRET_REQUIRED",
-      severity: "blocking",
-      title: "Secret de téléchargement absent",
-      detail:
-        "Sans secret de signature serveur, aucune autorisation de téléchargement temporaire ne peut être émise.",
-    });
-  }
+  if (!input.storageConfigured) add("BLOB_READ_WRITE_TOKEN_REQUIRED");
+  if (!input.downloadSecretConfigured) add("DOCUMENT_DOWNLOAD_SIGNING_SECRET_REQUIRED");
 
   return blockers;
 }

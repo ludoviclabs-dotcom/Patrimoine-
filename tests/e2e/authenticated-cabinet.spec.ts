@@ -55,6 +55,33 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
     await expect(consoleState(page)).toHaveAttribute("data-report-role", "conseiller");
     await expect(consoleState(page)).toHaveAttribute("data-report-dossier", "DOS-CLAIRE-MARC-2026");
 
+    // The journey states where the file stands, from server facts.
+    const journey = page.locator("[data-cabinet-journey]");
+    await expect(journey).toBeVisible();
+    // The reference appears in the heading and again in the qualification
+    // stage detail; the heading is the one that names the current dossier.
+    await expect(journey.getByRole("heading", { name: /DOS-CLAIRE-MARC-2026/ })).toBeVisible();
+    for (const stage of ["qualification", "hypotheses", "simulation", "preuves", "revue", "rapport"]) {
+      await expect(page.locator(`[data-journey-step="${stage}"]`)).toBeVisible();
+    }
+    // Each stage reports a real state, never a placeholder. The exact stage
+    // reached depends on what the dossier already holds, so the invariant is
+    // asserted rather than one particular position: whenever the journey names
+    // an open stage, it also names what to do about it.
+    const states = await page.locator("[data-journey-step]").evaluateAll((nodes) =>
+      nodes.map((node) => (node as HTMLElement).dataset.journeyState ?? ""));
+    expect(states).toHaveLength(6);
+    for (const state of states) {
+      expect(["done", "active", "blocked", "review", "todo"]).toContain(state);
+    }
+
+    const activeStage = await journey.getAttribute("data-journey-active");
+    if (activeStage) {
+      await expect(page.locator("[data-journey-next-action]")).toBeVisible();
+      await expect(page.locator(`[data-journey-step="${activeStage}"]`))
+        .not.toHaveAttribute("data-journey-state", "done");
+    }
+
     await page.getByLabel(/Date de gel juridique/).fill("2026-08-18");
     await page.getByRole("checkbox").first().check();
     await page.getByRole("button", { name: /Générer le brouillon serveur|Régénérer un brouillon/ })
@@ -66,6 +93,17 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
     // A draft is watermarked and is explicitly not remittable.
     await expect(page.getByText(/BROUILLON — NON VALIDÉ/)).toBeVisible();
     await expect(page.getByText(/Empreinte snapshot/)).toBeVisible();
+
+    // With a run retained, the stages that depend on it resolve from the
+    // seeded facts, and the draft leaves the report stage in progress.
+    await expect(page.locator('[data-journey-step="simulation"]'))
+      .toHaveAttribute("data-journey-state", "done");
+    await expect(page.locator('[data-journey-step="preuves"]'))
+      .toHaveAttribute("data-journey-state", "done");
+    await expect(page.locator('[data-journey-step="revue"]'))
+      .toHaveAttribute("data-journey-state", "done");
+    await expect(page.locator('[data-journey-step="rapport"]'))
+      .toHaveAttribute("data-journey-state", "active");
 
     // A conseiller holds report.download, so the private download is offered.
     await expect(page.getByRole("button", { name: /Télécharger le PDF privé/ })).toBeVisible();
@@ -93,6 +131,11 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
     // A validated version carries no watermark; that is what distinguishes it.
     await expect(page.getByText(/BROUILLON — NON VALIDÉ/)).toHaveCount(0);
     await expect(page.getByText(/Version validée, sans filigrane/)).toBeVisible();
+    // Every stage is now finished, so no stop is advertised.
+    await expect(page.locator('[data-journey-step="rapport"]'))
+      .toHaveAttribute("data-journey-state", "done");
+    await expect(page.locator("[data-cabinet-journey]"))
+      .toHaveAttribute("data-journey-active", "");
 
     validatedVersionId = await reportVersionId(page);
 

@@ -261,6 +261,12 @@ export function ServerReportConsole({ state }: { state: ReportConsoleState }) {
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{blocker.title}</p>
                   <p className="text-sm text-muted">{blocker.detail}</p>
+                  {/* Naming the cause is not enough: a professional needs to
+                      know what to do next, and the code stays visible for
+                      diagnosis. */}
+                  <p className="mt-1 text-sm font-medium text-foreground">
+                    Prochaine action : {blocker.nextAction}
+                  </p>
                   <code className="text-xs text-muted">{blocker.code}</code>
                 </div>
               </li>
