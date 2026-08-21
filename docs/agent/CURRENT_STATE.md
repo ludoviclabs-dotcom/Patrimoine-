@@ -4,7 +4,9 @@ Last updated: 2026-08-21
 
 ## Git state
 
-Branch: claude/private-document-storage-evidence-c569fd
+Branch: claude/pf-07-cabinet-ux-auth-e2e
+HEAD before PF-07: a7fab0b1d914dbbd28af153cc0d6d77ee4c73308 (merge of PR #13)
+Previous branch: claude/private-document-storage-evidence-c569fd
 HEAD before PF-06C4: 110e3c63c62525e0d09e646e200f833ac5397876
 HEAD before PF-06C3: 7d0e4e6adcfb8c2612db62abdb0ce9d744964381
 HEAD before PF-06C2: 029cc2bc90a6630bffb14aa15bb417bc3277a8fa
@@ -34,20 +36,31 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-05-06-PUBLISH — **DONE**. The branch is pushed and Draft PR
-[#13](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/13) is open
-against `main` with 44 changed files, carrying the PF-05, PF-06, PF-06B and
-PF-06C* work plus its documentation records. GitHub CI (`quality`) and
-both Vercel checks PASS. PF-05 and PF-06 are **VERIFIED_STAGING**: the full
-private-document and server-report chain was exercised against the real Vercel
-Private Blob store, the real Neon database and real Clerk identity resolution,
-19 gates PASS and 0 FAIL. The PR is **not merged** and auto-merge is off.
+PF-07 — **COMPLETE / VERIFIED_STAGING**, not pushed and no PR opened.
 
-Two non-blocking follow-ups remain: an authenticated Playwright fixture and the
-Clerk webhook persistence leg (`CLERK_WEBHOOK_DATABASE_URL`).
+The two follow-ups PF-06C4 left open are closed:
+
+- **Clerk webhook persistence: PASS.** A dedicated `patrimoine_webhook` login
+  is provisioned on the real Neon staging database and
+  `CLERK_WEBHOOK_DATABASE_URL` is set on Vercel Preview. 9 gates PASS, 0 FAIL
+  against real Neon through the real route handler.
+- **Authenticated Playwright: PASS.** 8 journeys on 2 browser projects, with
+  real Clerk sessions, FORCE RLS and the real capability matrix.
+  `E2E_CLERK_FIXTURE=1 npm run e2e` gives **52 passed, 24 skipped, 0 failed** —
+  previously 12 passed with the authenticated journeys skipped.
+
+Full report: `docs/agent/PF07_CABINET_UX_E2E.md`
+
+Vercel Preview `dpl_8uh8YNwZmPBYBpD298wmCy6a4fR7` (target `preview`, never
+`--prod`) is Ready; `/api/health` answers `{"status":"ok"}` from the deployed
+runtime against real Neon, and `/report` shows the new error model live.
+Deployment Protection was left enabled.
 
 ## Completed
 
+- **PF-07 COMPLETE / VERIFIED_STAGING — Clerk webhook persistence, authenticated
+  Clerk E2E fixture and journeys, fact-derived cabinet journey, shared error
+  catalog, responsive and accessibility regression suites.**
 - Agent context layer installed.
 - 2026-08 reference baseline installed.
 - Source routing configured.
@@ -84,6 +97,136 @@ Clerk webhook persistence leg (`CLERK_WEBHOOK_DATABASE_URL`).
   storage, audited downloads, and the cabinet report screen wired onto the
   server pipeline with staleness detection and explicit error states. Proven
   against real providers in PF-06C4.**
+
+## PF-07 — Cabinet UX, authenticated E2E and workflow hardening (COMPLETE / VERIFIED_STAGING)
+
+Branch: `claude/pf-07-cabinet-ux-auth-e2e`
+
+HEAD before PF-07: `a7fab0b1d914dbbd28af153cc0d6d77ee4c73308`
+
+Full report: `docs/agent/PF07_CABINET_UX_E2E.md`
+
+PF-07 adds no fiscal engine, and changes no fiscal rule, rate, threshold,
+effective date, calculation step or golden expected result. **No migration was
+written**: the roles and functions PF-07 needed already existed from PF-04A.
+
+**Inventory finding that shaped the work.** The routes named in the objective
+are two products, not one. `/cabinet`, `/dossiers`, `/simulations`,
+`/simulations/lab`, `/evidence` and `/review` are unauthenticated fixture
+surfaces holding no tenant data; `/report` is the only cabinet screen wired to
+PostgreSQL, RLS and RBAC. `proxy.ts` protects `/workspace(.*)` only, which is
+correct: `/report` resolves its own context and degrades to a named unavailable
+state, and the demo routes have nothing to guard.
+
+**Clerk webhook persistence — PASS.** `patrimoine_webhook_service` already had
+exactly the right minimal grants, so nothing was widened and no migration was
+added. What was missing was a login able to assume it, a check that the login
+is narrow, and evidence. `assertSafeClerkWebhookRole` now refuses superuser,
+BYPASSRLS, table ownership, direct table privileges, the ability to assume
+`patrimoine_app`, and the service role connecting directly.
+`npm run db:verify:webhook` verifies a provisioned URL read-only. A dedicated
+`patrimoine_webhook` login was created on real Neon and
+`CLERK_WEBHOOK_DATABASE_URL` added to Vercel Preview as a sensitive variable;
+no value was read or printed. 9 gates PASS / 0 FAIL against real Neon: valid
+signature persisted, observations recorded as non-authoritative, replay
+idempotent, tampered and unsigned denied with nothing written, no internal
+membership created, synthetic rows cleaned up.
+
+**Authenticated Clerk fixture — PASS, no password anywhere.** Sign-in uses the
+official Clerk `ticket` strategy via `@clerk/testing`: the helper mints a
+short-lived Backend-API sign-in token. Five synthetic `+clerk_test` identities
+were provisioned on the development instance (the script refuses anything
+else). `lib/auth/e2e-fixture-plan.ts` is the single declaration read by the
+provisioning script, the seed and the specs. With `E2E_CLERK_FIXTURE=1` the
+runner provisions a disposable PostgreSQL cluster, migrates it through the
+journalled path, creates a PF-03C-shaped runtime login and seeds the Clerk
+mapping; without the flag the public suite runs unchanged with no credential.
+
+**Authenticated journeys — 8 journeys on 2 projects, all PASS.** Adviser
+generates a watermarked DRAFT on the real Blob; expert validates into version
+n+1 without mutating the draft and downloads the private PDF; client reads the
+granted dossier, is offered no cabinet action, **loads no report version at
+all**, and is refused `TENANT_AUTHORIZATION_DENIED` on a direct
+`report.validate` call; cabinet B gets an empty listing rather than a
+disclosing 404 and is refused on every cabinet A resource by id; a Clerk
+organization member with no internal row is denied `CLERK_TENANT_CONTEXT_DENIED`
+by both the page and the API; a revoked membership denies access while the
+browser still holds a valid Clerk session cookie. No security control was
+relaxed to make any of them pass.
+
+**Cabinet journey — decoration replaced by fact.** The previous stepper was
+rendered with a hardcoded `current={1}`, identical for every dossier.
+`lib/cabinet/journey.ts` derives the six stages from the facts the report
+console already loads, keeps `review` distinct from `blocked` so a vigilance
+point is never presented as a stop, and advertises the first genuine stop as
+the next action. It is a server component computed in the same tenant
+transaction as the console.
+
+**Error model — one catalog.** Three partial private copy tables were replaced
+by `lib/errors/error-catalog.ts`, covering every code in the API status map
+with a title, explanation, next action and severity. A test reads that map
+directly, so a new server code without user-facing wording fails the suite.
+Every string is a constant, so no message can carry data from another cabinet,
+and cross-tenant refusals never confirm existence.
+
+**Responsive — no defect found.** 7 routes at 6 widths (375/390/430/768/1024/
+1440) plus tap targets: all PASS with no layout change. The audit is now a
+regression test.
+
+**Accessibility — one defect found and fixed.** `/report` carried two `h1`
+elements because the browser preview titled itself as the page; it is one
+section of that page, so its title became an `h2` and its 18 sub-headings were
+demoted to `h3`. Headings only. The other 15 checks passed already.
+
+**Server boundaries — nothing to fix.** No client component imports the
+database, the Blob SDK or the storage adapter; none reads a server secret; the
+console fetches only to mutate, so there is no client-side read waterfall.
+
+Deliberately left open, documented rather than papered over: PF-06 exposes no
+route to **sign a professional review**, so the *revue* stage has no server
+action. The PostgreSQL suite signs it with SQL and the E2E fixture seeds it as
+`approved` so the browser journey can reach validation. That is the one real
+hole in the Qualification-to-Rapport chain and the natural first PF-08 item.
+The fixture cabinet surfaces and the hardcoded AppShell dossier context are
+also unchanged, on purpose.
+
+Files changed for PF-07:
+
+- `lib/db/managed-readiness.ts`, `lib/auth/clerk-webhook-repository.ts`,
+  `scripts/managed-postgres-readiness.ts`, `scripts/run-postgres-tests.mjs`,
+  `package.json`, `package-lock.json`, `vitest.config.ts`;
+- `lib/auth/e2e-fixture-plan.ts`, `lib/db/seed-e2e-fixture.ts`,
+  `scripts/e2e-clerk-fixture.ts`, `scripts/seed-e2e-fixture.ts`,
+  `scripts/run-e2e.mjs`, `playwright.config.ts`, `tests/e2e/global-setup.ts`,
+  `tests/e2e/support/clerk-fixture.ts`;
+- `lib/cabinet/journey.ts`, `components/cabinet/cabinet-journey-bar.tsx`,
+  `lib/errors/error-catalog.ts`, `lib/report/report-console.ts`,
+  `components/report/server-report-console.tsx`, `components/report-document.tsx`,
+  `app/report/page.tsx`;
+- `tests/unit/pf07-clerk-webhook.test.ts`, `tests/unit/pf07-error-model.test.ts`,
+  `tests/unit/pf07-cabinet-journey.test.ts`,
+  `tests/postgres/pf07-clerk-webhook-persistence.test.ts`,
+  `tests/e2e/authenticated-cabinet.spec.ts`,
+  `tests/e2e/responsive-cabinet.spec.ts`,
+  `tests/e2e/accessibility-cabinet.spec.ts`,
+  `tests/e2e/report-server-pipeline.spec.ts`;
+- `docs/agent/PF07_CABINET_UX_E2E.md` (new), `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (35 files, 434 tests); `npm run
+test:postgres` PASS (5 files, 50 tests); `npm run e2e` PASS (36 passed, 40
+skipped); `E2E_CLERK_FIXTURE=1 npm run e2e` **PASS (52 passed, 24 skipped, 0
+failed)**; `npx tsc --noEmit` PASS; `npm run lint` PASS; `npm run build` PASS
+after `rm -rf .next`; `git diff --check` PASS.
+
+Vercel Preview `dpl_8uh8YNwZmPBYBpD298wmCy6a4fR7`, target `preview`, Ready.
+Deployment Protection left enabled; routes reached through the Vercel share
+mechanism rather than by changing a setting. `/api/health` returns
+`{"status":"ok"}` from the deployed runtime against real Neon; `/cabinet`,
+`/dossiers`, `/simulations`, `/evidence`, `/review` and `/report` all answer
+200, and `/report` shows the new error model live (`CLERK_SESSION_REQUIRED`,
+title « Authentification requise », plus a « Prochaine action » line).
+
+Not pushed. No PR opened.
 
 ## PF-06C4 — Runtime verification on real providers (COMPLETE / VERIFIED_STAGING)
 
@@ -1171,62 +1314,69 @@ None.
 
 ## Tests
 
-Unit: PASS — `npm test` after PF-06C: 32 files, 398 tests, 0 failures.
-PostgreSQL/RLS: PASS — 4 files, 39 tests, 0 failing on a fresh native ephemeral
-PostgreSQL 18.4 cluster after migrations `0000` through `0009`.
-E2E: PASS — `npm run e2e` runs again after the PF-06C harness fix: 12 passed,
-4 skipped (the authenticated journeys, gated on `E2E_CLERK_FIXTURE=1`). This
-was BLOCKED from PF-03B through PF-06B.
-Staging gates: PASS — 16 gates executed against real Neon PostgreSQL and the
-real Clerk development instance in PF-06C2, 16 PASS and 0 FAIL (organization
-mapping, Clerk session negatives, cross-tenant isolation, audit scoping,
-revocation).
-TypeScript: PASS — `npx tsc --noEmit` exit 0
-Lint: PASS — `npm run lint` exit 0
-Build: PASS — `npm run build` exit 0
-PostgreSQL fresh migration + synthetic seed: PASS — `npm run test:postgres`
-executed migrations `0000` through `0005`, then passed 12 tests; no shared or
-user database was touched.
+Unit: PASS — `npm test` after PF-07: 35 files, 434 tests, 0 failures.
+PostgreSQL/RLS: PASS — 5 files, 50 tests on a fresh native ephemeral cluster
+after migrations `0000` through `0009`.
+E2E public: PASS — `npm run e2e`: 36 passed, 40 skipped (the authenticated
+journeys plus the viewport-driven audits, which run once on `chromium`).
+**E2E authenticated: PASS — `E2E_CLERK_FIXTURE=1 npm run e2e`: 52 passed, 24
+skipped, 0 failed.** The 8 authenticated journeys run on `chromium` and on
+Pixel 7 against real Clerk sessions, a disposable PostgreSQL with FORCE RLS
+and a `NOBYPASSRLS` runtime login, and the real private Blob store. They were
+BLOCKED from PF-03B through PF-06C4.
+Responsive: PASS — 7 cabinet routes at 375, 390, 430, 768, 1024 and 1440 px,
+no page-level horizontal overflow, primary tap targets ≥ 44 px.
+Accessibility: PASS — 16 checks (accessible names on 6 routes, one `h1` per
+route, skip link, focus visibility, dialog focus trap and Escape, reduced
+motion). One defect was found and fixed: `/report` had two `h1` elements.
+Webhook gates: PASS — 9 gates against real Neon through the real route
+handler; 11 PostgreSQL tests on the ephemeral cluster.
+Staging gates: PASS — 16 gates in PF-06C2 and 19 in PF-06C4 against real Neon
+and the real Clerk development instance.
+TypeScript: PASS — `npx tsc --noEmit` exit 0.
+Lint: PASS — `npm run lint` exit 0.
+Build: PASS — `npm run build` exit 0 after `rm -rf .next`.
 git diff --check: PASS — exit 0, no whitespace/conflict-marker errors.
-E2E: NOT RUN — Playwright harness starts a server, not reliably runnable in this
-non-interactive environment. PF-03B changes repository/database boundaries, not
-an authenticated browser flow; E2E remains required before production release.
 
 ## Open blockers
 
+**Both residual items from PF-06C4 are CLOSED by PF-07.**
+
+- **Authenticated Playwright — RESOLVED.** Sign-in uses the official Clerk
+  `ticket` strategy through `@clerk/testing`: a short-lived Backend-API sign-in
+  token, so no password is set, stored, requested or typed anywhere. Five
+  synthetic `+clerk_test` identities exist for automation only, on the
+  development instance. `E2E_CLERK_FIXTURE=1 npm run e2e` gives 52 passed, 24
+  skipped, 0 failed.
+- **Clerk webhook persistence — RESOLVED on Preview.** A dedicated
+  `patrimoine_webhook` login is provisioned on real Neon and
+  `CLERK_WEBHOOK_DATABASE_URL` is set on Vercel Preview. 9 gates PASS, 0 FAIL
+  against real Neon through the real route handler.
+  **Production still needs the same variable and login.**
+
+No PF-07 implementation blocker. One product gap is documented rather than
+worked around: **PF-06 exposes no route to sign a professional review**, so the
+*revue* stage of the cabinet journey has no server action. The gate refusing an
+unsigned review is proven at the database level
+(`tests/postgres/pf06b-report-console.test.ts`); the E2E fixture seeds the
+review as `approved` so the browser journey can reach validation. This is the
+first PF-08 item.
+
+Also deliberately unchanged by PF-07: `/cabinet`, `/dossiers`, `/simulations`,
+`/simulations/lab`, `/evidence` and `/review` remain unauthenticated fixture
+surfaces holding no tenant data, and the AppShell dossier selector is still
+hardcoded. `/report` is the only authenticated cabinet screen. Retrofitting the
+others would be a product rebuild, not the smallest coherent change.
+
 No PF-06B implementation blocker. The DRAFT to REVIEW to VALIDATED to DOWNLOAD
 workflow, staleness detection, cross-tenant refusal and the explicit error
-surface pass against real PostgreSQL RLS with an in-memory storage adapter.
-
-The Playwright harness blocker is RESOLVED in PF-06C: Next 16 proxies each
-request to its render worker through `localhost`, and the runner pinned the
-server to IPv4-only `127.0.0.1`, so the internal hop never connected. Removing
-that pin (plus fixing a busy-wait in the readiness probe) restores the suite:
-12 passed, 4 skipped. The 4 skipped are the authenticated journeys, still gated
-on `E2E_CLERK_FIXTURE=1`: the Clerk development instance exists and is mapped,
-but an interactive browser sign-in fixture does not.
-
-Real provider evidence is DELIVERED as of PF-06C4. The owner reconnected the
-Blob store, both previously empty secrets now carry real values, and the whole
-chain was exercised against the real Vercel Private Blob, the real Neon
-database and real Clerk identity resolution: **19 gates PASS, 0 FAIL**.
-
-Two residual items remain, neither blocking PF-05/PF-06 publication:
-
-- **Authenticated Playwright** — the journeys need interactive Clerk sign-in
-  for EXPERT_A / CLIENT_A / EXPERT_B. Those are human account passwords that
-  this session must not request or handle. The harness itself is healthy
-  (12 passed, 4 skipped).
-- **Clerk webhook persistence leg** — the signature layer PASSES (valid
-  accepted, tampered and unsigned rejected, idempotency key stable), but
-  `recordSignedClerkWebhook` needs `CLERK_WEBHOOK_DATABASE_URL`, the separate
-  `patrimoine_webhook_service` login, which is not provisioned. This is a
-  PF-04A concern.
+surface pass against real PostgreSQL RLS, and now against a real Clerk session
+in the browser.
 
 No PF-06 implementation blocker. Snapshot determinism, reproducible PDF
 rendering, the readiness gate, expert-only validation, version immutability and
 audited downloads are proven, and the report round-trip on the real private
-Blob store PASSED in PF-06C4.
+Blob store PASSED in PF-06C4 and again through the browser in PF-07.
 
 No PF-05 implementation blocker. The private document chain — upload,
 versioning, quarantine, soft deletion, download grants, cross-tenant and
@@ -1235,11 +1385,11 @@ private Blob store PASSED in PF-06C4.
 
 No PF-03C implementation blocker. Managed-provider credentials and migrations
 `0000` to `0009` are delivered on the real Neon staging database, with FORCE
-RLS and a `NOBYPASSRLS` runtime login verified. Still NOT_RUN on the managed
-database, and unrelated to the PF-05/PF-06 merge: the provider-native
-backup/restore procedure and the `db:smoke` staging write. The P1/P2 fiscal
-backlog, regulatory-review items and recalculation candidates below remain
-open.
+RLS and a `NOBYPASSRLS` runtime login verified; the deployed Vercel Preview
+runtime confirms it by answering `{"status":"ok"}` on `/api/health`. Still
+NOT_RUN on the managed database: the provider-native backup/restore procedure
+and the `db:smoke` staging write. The P1/P2 fiscal backlog, regulatory-review
+items and recalculation candidates below remain open.
 
 ## Regulatory verification required
 
@@ -1316,18 +1466,29 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-Review the PF-05/PF-06 Draft PR
-([#13](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/13)), verify
-GitHub CI and the final diff, then merge before starting PF-07 in a fresh
-session.
+Review the PF-07 branch `claude/pf-07-cabinet-ux-auth-e2e` (4 commits on top of
+the PR #13 merge), then push and open a PR. **PF-07 has not been pushed and no
+PR was opened**, per the task instruction.
 
-Optionally, before production: provide a Clerk sign-in fixture so the
-authenticated Playwright journeys can run, and provision
-`CLERK_WEBHOOK_DATABASE_URL` to exercise the webhook persistence leg. Do not
-admit live-user data or real client documents until those two are settled.
+PF-08 should start with the one real hole PF-07 documented rather than
+papered over: **there is no server route to sign a professional review**, so
+the *revue* stage of the cabinet journey has no action. The readiness gate
+refusing an unsigned review is proven at the database level, and the E2E
+fixture seeds the review as `approved` so the browser journey can reach
+validation — but a professional cannot sign one through the product.
 
-PF-07 — Cabinet UX, responsive workflow and full authenticated E2E — must not
-start before the PR is merged.
+Also open, in rough priority order:
+
+1. Provision `CLERK_WEBHOOK_DATABASE_URL` and a `patrimoine_webhook` login for
+   **Production**; PF-07 set them up on Preview only.
+2. Decide whether the fixture cabinet surfaces (`/cabinet`, `/dossiers`,
+   `/simulations`, `/evidence`, `/review`) become authenticated product
+   screens or are retired. They hold no tenant data today, and the AppShell
+   still names a hardcoded dossier.
+3. Prune accumulated E2E report artifacts from the private Blob store under
+   the CABINET_A tenant prefix.
+
+Do not admit live-user data or real client documents before item 1 is settled.
 
 ## Handoff notes
 
