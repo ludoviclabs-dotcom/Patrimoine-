@@ -446,7 +446,8 @@ const reviewFlags: Readonly<Record<string, Entry>> = {
   "review.professional_not_signed": {
     title: "Revue professionnelle non signée",
     explanation: "Le dossier exige une revue professionnelle qui n'est pas signée.",
-    nextAction: "Faites signer la revue par un professionnel habilité, puis régénérez.",
+    nextAction:
+      "Ouvrez l'écran Revue et faites signer la revue par un expert ou un administrateur, puis régénérez.",
     severity: "blocking",
   },
   "simulation.professional_validation_required": {
@@ -463,6 +464,30 @@ const reviewFlags: Readonly<Record<string, Entry>> = {
   },
 };
 
+/** PF-07B — signing a professional review. */
+const professionalReview: Readonly<Record<string, Entry>> = {
+  PROFESSIONAL_REVIEW_COMMENT_REQUIRED: {
+    title: "Commentaire de revue obligatoire",
+    explanation:
+      "Une décision professionnelle est toujours motivée et tracée : la revue n'a pas été enregistrée.",
+    nextAction: "Saisissez le motif de votre décision, puis signez la revue.",
+    severity: "blocking",
+  },
+  PROFESSIONAL_REVIEW_DECISION_INVALID: {
+    title: "Décision de revue inconnue",
+    explanation:
+      "Seules deux décisions existent : approuver la revue, ou demander des corrections.",
+    nextAction: "Choisissez « Approuver » ou « Demander des corrections ».",
+    severity: "blocking",
+  },
+  PROFESSIONAL_REVIEW_REQUEST_INVALID: {
+    title: "Requête de revue invalide",
+    explanation: "La demande ne comporte pas les éléments attendus.",
+    nextAction: "Reprenez la signature depuis l'écran de revue du dossier.",
+    severity: "blocking",
+  },
+};
+
 export const errorCatalog: Readonly<Record<string, Entry>> = {
   ...authentication,
   ...configuration,
@@ -470,6 +495,7 @@ export const errorCatalog: Readonly<Record<string, Entry>> = {
   ...documents,
   ...grants,
   ...reports,
+  ...professionalReview,
   ...reviewFlags,
 };
 

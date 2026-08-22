@@ -3,6 +3,10 @@ import { can, withAuthorizedTenantTransaction } from "../auth/authorization";
 import { getDatabase } from "../db/client";
 import { clientCases, simulationRuns } from "../db/schema";
 import { describeError } from "../errors/error-catalog";
+import {
+  createProfessionalReviewService,
+  type ProfessionalReviewRecord,
+} from "../review/review-service";
 import { resolvePersistenceRuntime } from "../persistence/mode";
 import type { TenantContext } from "../tenancy/tenant-context";
 import { resolveDownloadSigningSecret } from "../documents/access-grant";
@@ -51,7 +55,12 @@ export type ReportConsoleBlocker = Readonly<{
 
 export type ReportConsoleState = Readonly<{
   role: TenantContext["role"];
-  capabilities: Readonly<{ generate: boolean; validate: boolean; download: boolean }>;
+  capabilities: Readonly<{
+    generate: boolean;
+    validate: boolean;
+    download: boolean;
+    signReview: boolean;
+  }>;
   dossiers: readonly ReportConsoleDossier[];
   selectedDossier: ReportConsoleDossier | null;
   runs: readonly ReportConsoleRun[];
@@ -63,6 +72,8 @@ export type ReportConsoleState = Readonly<{
   readiness: ReportReadiness | null;
   blockers: readonly ReportConsoleBlocker[];
   storageConfigured: boolean;
+  /** PF-07B — the dossier's signed review history, newest first. */
+  reviews: readonly ProfessionalReviewRecord[];
 }>;
 
 export type ReportConsoleUnavailable = Readonly<{
@@ -209,6 +220,9 @@ export async function loadReportConsole(
     generate: can(context, "report.generate", { tenantId: context.tenantId, type: "report" }),
     validate: can(context, "report.validate", { tenantId: context.tenantId, type: "report" }),
     download: can(context, "report.download", { tenantId: context.tenantId, type: "report" }),
+    // PF-07B: simulation.review is held by admin and expert only, so the
+    // signing surface is rendered for exactly the roles the server accepts.
+    signReview: can(context, "simulation.review", { tenantId: context.tenantId, type: "dossier" }),
   } as const;
 
   const dossiers = await withAuthorizedTenantTransaction(
@@ -244,6 +258,7 @@ export async function loadReportConsole(
       available: true,
       role: context.role,
       capabilities,
+      reviews: [],
       dossiers,
       selectedDossier: null,
       runs: [],
@@ -341,10 +356,17 @@ export async function loadReportConsole(
     }
   }
 
+  // One read model for the cabinet: the review screen and the report screen
+  // both read this state, so a role or a blocker cannot disagree between them.
+  const reviews = await createProfessionalReviewService({ database })
+    .list(context, selectedDossier.id)
+    .catch(() => [] as ProfessionalReviewRecord[]);
+
   return {
     available: true,
     role: context.role,
     capabilities,
+    reviews,
     dossiers,
     selectedDossier,
     runs,

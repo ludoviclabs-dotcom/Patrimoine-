@@ -8,6 +8,10 @@ effective date, calculation step or golden expected result. It turns the
 secured PF-03 → PF-06 backend into a cabinet journey that is authenticated,
 tested, responsive and explicit about refusals.
 
+**PF-07B (§12) closes the one product gap PF-07 documented rather than fixed:
+a professional can now sign a review through the product**, so the
+authenticated journey no longer needs a pre-seeded approval.
+
 ---
 
 ## 1. Inventory of the existing surface
@@ -67,7 +71,7 @@ dossier is not hidden by CSS, it is not fetched.
 | Horizontal overflow on cabinet routes | **no defect found** — §6 |
 | Accessibility of the cabinet routes | **one defect found and fixed** — §7 |
 | Client/server boundary leaks | **none found** — §8 |
-| No route to sign a professional review | **open, documented** — §10 |
+| No route to sign a professional review | **closed by PF-07B** — §12 |
 
 ---
 
@@ -364,14 +368,9 @@ the new error model works end to end on deployed infrastructure.
 
 ## 10. Remaining blockers and deliberate limits
 
-1. **No route signs a professional review.** PF-06 exposes generation,
-   validation and download, but the *revue* stage has no server action: the
-   PostgreSQL suite signs it with SQL, and the E2E fixture seeds it as
-   `approved` so the browser journey can reach validation. This is the one
-   genuine hole in the Qualification → … → Rapport chain and the natural first
-   item for PF-08. It is recorded here rather than papered over: the readiness
-   gate refusing an unsigned review is proven at the database level
-   (`tests/postgres/pf06b-report-console.test.ts`), not in the browser.
+1. ~~**No route signs a professional review.**~~ **CLOSED by PF-07B — see §12.**
+   The *revue* stage now has a real server action, the E2E pre-seed is gone,
+   and the browser journey signs the review before validating.
 2. **The cabinet demo surfaces remain fixture-only.** `/cabinet`, `/dossiers`,
    `/simulations`, `/evidence` and `/review` still render constants and hold no
    tenant data. PF-07 did not retrofit authentication onto them, because that
@@ -395,10 +394,10 @@ the new error model works end to end on deployed infrastructure.
 
 | Command | Result |
 |---|---|
-| `npm test` | PASS — 35 files, 434 tests |
-| `npm run test:postgres` | PASS — 5 files, 50 tests, migrations `0000` → `0009` |
-| `npm run e2e` (public) | PASS — 36 passed, 40 skipped |
-| `E2E_CLERK_FIXTURE=1 npm run e2e` | **PASS — 52 passed, 24 skipped, 0 failed** |
+| `npm test` | PASS — 36 files, 445 tests |
+| `npm run test:postgres` | PASS — 6 files, 66 tests, migrations `0000` → `0010` |
+| `npm run e2e` (public) | PASS — 36 passed, 46 skipped |
+| `E2E_CLERK_FIXTURE=1 npm run e2e` | **PASS — 58 passed, 24 skipped, 0 failed** |
 | `npx tsc --noEmit` | PASS |
 | `npm run lint` | PASS |
 | `npm run build` | PASS after `rm -rf .next` |
@@ -415,3 +414,203 @@ the objective's stated exit condition.
 `next-env.d.ts` is a generated file Next rewrites between `dev` and `build`
 runs (the churn PF-06C3 documented). It was restored to its committed state and
 `npx tsc --noEmit` verified to pass with it.
+
+---
+
+# PF-07B — Signing a professional review
+
+PF-07 shipped a cabinet journey whose *revue* stage had no action: the
+PostgreSQL suite signed the review with raw SQL and the E2E fixture seeded it
+as `approved` so the browser could reach validation. PF-07B closes exactly that
+gap and nothing else. It adds no fiscal engine and changes no fiscal rule,
+rate, threshold, effective date, calculation step or golden expected result.
+
+## 12.1 Why a migration was genuinely required
+
+The review model already existed and was almost sufficient:
+`professional_reviews` carries the decision enum, the motive, the required
+actions, the timestamp, composite tenant foreign keys and FORCE RLS;
+`patrimoine_app` already held INSERT; the audit enum already had
+`review.decided`; and PF-06 reads the **newest** review per dossier, so a
+decision is an append, never an update.
+
+One column blocked it:
+
+```
+reviewer_user_id uuid NOT NULL REFERENCES users(id)
+```
+
+`users` is the v1 per-tenant table. Every actor column added since PF-03A
+points at `user_identities` instead — `audit_logs.actor_identity_id`,
+`documents.uploaded_by_identity_id`,
+`report_versions.generated_by_identity_id` / `validated_by_identity_id` — and
+a Clerk session resolves to an identity. **There is no linkage between the two
+tables**: no foreign key, and no join anywhere in `lib/`.
+
+The existing PF-06 tests only insert a review because the demo fixture gives
+`users[2]` and `user_identities[2]` the *same UUID* (`seed-v2-1.ts:27` and
+`:42`). That is a fixture coincidence. A real authenticated expert has no such
+row, so `report.validate` could never have been opened through the product.
+
+Migration `0010_pf07b_professional_review_signature.sql` mirrors, line for
+line, what PF-03A already did to `audit_logs` (`drizzle/0003`, lines 265-266):
+
+```sql
+ALTER COLUMN "reviewer_user_id" DROP NOT NULL,
+ADD COLUMN "reviewer_identity_id" uuid REFERENCES "user_identities"("id"),
+ADD COLUMN "signed_by_role" varchar(32);
+```
+
+plus two CHECK constraints — a review always names a reviewer on one model or
+the other, and a decided review always carries its timestamp — and an index on
+`(tenant_id, case_id, created_at DESC)`, which is the read PF-06 performs.
+Additive: no row is rewritten and legacy rows keep their `reviewer_user_id`.
+
+## 12.2 The server action
+
+`lib/review/review-service.ts` + `POST /api/v1/cases/{caseId}/reviews`.
+
+Clerk session → internal tenant context → central capability matrix → RLS
+transaction → append-only audit. It computes nothing: it records a human
+decision about work the deterministic engine already produced.
+
+- **Two decisions only**: `approved` and `changes_requested`. `pending` is an
+  initial state, not a signature, and `rejected` would be a third workflow with
+  its own consequences — neither was invented.
+- **The motive is mandatory** and is refused before any authorization work, so
+  an empty comment writes nothing.
+- **A decision appends a row**, so the dossier keeps its full review history
+  and PF-06 keeps reading the newest one.
+- The audit event carries the decision, the signing role and the review id —
+  **not** the motive, which lives on the review row rather than being
+  duplicated.
+
+## 12.3 RBAC, from the existing matrix
+
+`simulation.review` was already defined; PF-07B invented no capability.
+
+| Role | Sign a review | Why |
+|---|---|---|
+| admin | **ALLOW** | holds every action |
+| expert | **ALLOW** | the professional reviewer role |
+| conseiller | **DENY** | `simulation.review` is not in that row |
+| client | **DENY** | idem, and the form is never rendered |
+| auditeur | **DENY** | read-only role |
+| cabinet B on a cabinet A dossier | **DENY** | `DOSSIER_NOT_FOUND` — invisible under RLS, never confirmed to exist |
+| revoked member | **DENY** | `TENANT_MEMBERSHIP_REQUIRED` |
+| unknown identity | **DENY** | `CLERK_TENANT_CONTEXT_DENIED` |
+
+A conseiller being denied is the existing model, not a new restriction: the
+role that generates a report is deliberately not the role that reviews it.
+
+## 12.4 A defect found while closing the gap
+
+`validateVersion` computed its blocking flags from the **stored** snapshot
+only. A version generated while the review was signed could therefore still be
+approved after a later review asked for changes — the delivered document would
+have stated a reality that no longer held.
+
+PF-06B's own documentation claimed the approval button was "disabled while the
+readiness gate is closed or the report is stale, mirroring exactly what the
+server enforces". The UI did disable it; the server did not enforce it.
+
+PF-07B makes the server enforce it: approving a version whose freshness verdict
+is `outdated` is refused with `REPORT_REGENERATION_REQUIRED`.
+`changes_requested` and `rejected` stay allowed while stale — asking for
+changes on an outdated draft is precisely the point.
+
+## 12.5 The review screen
+
+`/review` now resolves its own tenant context exactly as `/report` does and
+**reuses the same server read model** (`loadReportConsole`), extended with the
+review history and a `signReview` capability. There is no parallel model: a
+role, a blocker or a decision cannot disagree between the two cabinet screens.
+The fixture queue below it is untouched demonstration content.
+
+The professional opens the dossier, reads the blocking points, chooses
+*Approuver* or *Demander des corrections*, types a mandatory motive, signs, and
+sees the new state plus what to do next. A client sees no signing surface at
+all.
+
+## 12.6 The E2E pre-seed is gone
+
+`lib/db/seed-e2e-fixture.ts` no longer inserts an `approved` review. The
+authenticated journey is now genuinely:
+
+```
+EXPERT_A login → CABINET_A → Claire/Marc → /review
+  → sign CHANGES_REQUESTED  → gate stays closed, delivered draft untouched
+  → sign APPROVE            → revue stage turns done
+  → /report regenerate      → the draft was stale; the server refuses to
+                              approve a stale version
+  → validate                → VALIDATED, no watermark, new version
+  → download                → private PDF
+```
+
+| Journey | Result |
+|---|---|
+| ADVISER_A generates a draft; is offered no signing surface (`data-review-can-sign="no"`) | PASS |
+| EXPERT_A signs `changes_requested`; gate stays closed, `review.professional_not_signed` shown, delivered version unchanged | PASS |
+| EXPERT_A signs `approved`; the *revue* stage turns `done` | PASS |
+| EXPERT_A regenerates, validates into a new version, downloads the private PDF | PASS |
+| CLIENT_A sees no signing surface; direct `POST …/reviews` → **403 `TENANT_AUTHORIZATION_DENIED`** | PASS |
+| EXPERT_B signing on cabinet A → **`DOSSIER_NOT_FOUND`** | PASS |
+| unknown identity, revoked membership | PASS (unchanged) |
+
+## 12.7 Tests added
+
+- `tests/postgres/pf07b-professional-review.test.ts` — 16 cases on a real
+  cluster: authorized signature, mandatory comment, conseiller denied, client
+  denied and audited, `changes_requested` not opening the gate, approval
+  opening it, history appended not rewritten, the audited `review.decided`
+  event, admin signing, both CHECK constraints, cross-tenant denial, review
+  history hidden from cabinet B, revoked membership denial, and a signature
+  turning a delivered draft stale **while its `pdf_sha256` and
+  `snapshot_sha256` stay byte-identical**.
+- `tests/unit/pf07b-professional-review.test.ts` — 11 cases pinning who may
+  sign, the two-decision contract, request parsing, and that every review
+  refusal stays explainable.
+
+Two pre-existing assertions were drift-proofed rather than re-pinned to `0010`:
+the PF-06 readiness attestation now reads `managedPostgresMigrationMarker`, and
+the unit marker test now asserts the marker names the newest migration file —
+so neither will need editing on the next migration.
+
+## 12.8 Validation
+
+| Command | Result |
+|---|---|
+| `npm test` | PASS — 36 files, 445 tests |
+| `npm run test:postgres` | PASS — 6 files, 66 tests, migrations `0000` → `0010` |
+| `npm run e2e` (public) | PASS — 36 passed, 46 skipped |
+| `E2E_CLERK_FIXTURE=1 npm run e2e` | **PASS — 58 passed, 24 skipped, 0 failed** |
+| `npx tsc --noEmit` | PASS |
+| `npm run lint` | PASS |
+| `npm run build` | PASS after `rm -rf .next` |
+| `git diff --check` | PASS |
+
+Migration `0010` was applied to the **real Neon staging database**
+(`npm run db:migrate` → `{"status":"migrated","migration":"0010_pf07b_professional_review_signature"}`).
+
+**Vercel Preview** `dpl_7YCxxiENt2VLaM3mWatbbPphkvUP`, target `preview`
+(never `--prod`), state **Ready**. Deployment Protection left enabled; routes
+reached through Vercel's own share mechanism.
+
+| Route | Result |
+|---|---|
+| `/api/health` | **200 `{"status":"ok"}`** — the deployed runtime verified marker `0010` and FORCE RLS against real Neon with the `NOBYPASSRLS` login. A failed migration would have answered `not_ready`. |
+| `/review` | 200, one `h1`, and the error model live: `CLERK_SESSION_REQUIRED`, « Authentification requise », « Prochaine action » |
+| `/report`, `/cabinet`, `/dossiers` | 200 |
+
+## 12.9 Still open after PF-07B
+
+1. **Production** still needs `CLERK_WEBHOOK_DATABASE_URL`, a production
+   `patrimoine_webhook` login, and migration `0010`.
+2. The fixture cabinet surfaces (`/cabinet`, `/dossiers`, `/simulations`,
+   `/evidence`) remain demonstration content, and the AppShell dossier selector
+   is still hardcoded. `/report` and `/review` are the authenticated screens.
+3. E2E report artifacts accumulate in the private Blob under the CABINET_A
+   tenant prefix.
+4. `rejected` as a third review decision, and a review *request* workflow
+   (`review.requested` exists in the audit enum but nothing emits it), are
+   deliberately not implemented.

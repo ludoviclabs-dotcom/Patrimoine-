@@ -33,6 +33,30 @@ async function reportVersionId(page: Page) {
   return consoleState(page).getAttribute("data-report-version-id");
 }
 
+/** PF-07B — the review screen exposes its state the same machine-readable way. */
+function reviewState(page: Page) {
+  return page.locator("[data-review-console]");
+}
+
+async function signReview(
+  page: Page,
+  decision: "approved" | "changes_requested",
+  comment: string,
+) {
+  await page.goto("/review");
+  await expect(reviewState(page)).toBeVisible();
+
+  await page.getByRole("radio", {
+    name: decision === "approved" ? /Approuver la revue/ : /Demander des corrections/,
+  }).check();
+  await page.getByLabel(/Motif de la décision/).fill(comment);
+  await page.getByRole("button", { name: /Signer la revue/ }).click();
+
+  await expect(reviewState(page)).toHaveAttribute("data-review-decision", decision, {
+    timeout: 60_000,
+  });
+}
+
 test.describe("PF-07 — parcours cabinet authentifié", () => {
   test.skip(
     !clerkFixtureEnabled,
@@ -95,15 +119,21 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
     await expect(page.getByText(/Empreinte snapshot/)).toBeVisible();
 
     // With a run retained, the stages that depend on it resolve from the
-    // seeded facts, and the draft leaves the report stage in progress.
+    // seeded facts. The review is no longer pre-signed in the database, so its
+    // state depends on what the expert journeys below have already decided.
     await expect(page.locator('[data-journey-step="simulation"]'))
       .toHaveAttribute("data-journey-state", "done");
     await expect(page.locator('[data-journey-step="preuves"]'))
       .toHaveAttribute("data-journey-state", "done");
-    await expect(page.locator('[data-journey-step="revue"]'))
-      .toHaveAttribute("data-journey-state", "done");
     await expect(page.locator('[data-journey-step="rapport"]'))
-      .toHaveAttribute("data-journey-state", "active");
+      .not.toHaveAttribute("data-journey-state", "todo");
+
+    // A conseiller cannot sign a review either: simulation.review is not in
+    // that role, so the signing surface is not rendered for them.
+    await page.goto("/review");
+    await expect(reviewState(page)).toHaveAttribute("data-review-can-sign", "no");
+    await expect(page.getByRole("button", { name: /Signer la revue/ })).toHaveCount(0);
+    await page.goto("/report");
 
     // A conseiller holds report.download, so the private download is offered.
     await expect(page.getByRole("button", { name: /Télécharger le PDF privé/ })).toBeVisible();
@@ -111,15 +141,61 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
     await expect(page.getByRole("button", { name: /Valider le rapport final/ })).toHaveCount(0);
   });
 
-  test("EXPERT_A : validation professionnelle puis téléchargement privé", async ({ page }) => {
+  test("EXPERT_A : demander des corrections laisse la porte fermée", async ({ page }) => {
+    await signInAs(page, "E2E_EXPERT_A");
+
+    // The delivered draft must survive a review decision untouched.
+    await page.goto("/report");
+    const draftPdfBefore = await page.locator("[data-report-console]")
+      .getAttribute("data-report-version-id");
+
+    await signReview(page, "changes_requested", "Compléter les justificatifs de dettes.");
+
+    await expect(reviewState(page)).toHaveAttribute("data-review-role", "expert");
+    await expect(page.getByText(/Revue non signée/)).toBeVisible();
+
+    // The report side agrees: the gate stays closed and says why.
+    await page.goto("/report");
+    await expect(page.locator('[data-journey-step="revue"]'))
+      .toHaveAttribute("data-journey-state", "blocked");
+    await expect(page.getByText("review.professional_not_signed").first()).toBeVisible();
+
+    // Asking for changes never rewrites an already delivered version.
+    expect(await page.locator("[data-report-console]").getAttribute("data-report-version-id"))
+      .toBe(draftPdfBefore);
+  });
+
+  test("EXPERT_A : signer la revue ouvre la validation du rapport", async ({ page }) => {
+    await signInAs(page, "E2E_EXPERT_A");
+
+    await signReview(page, "approved", "Conclusions vérifiées par l'expert E2E.");
+    await expect(page.getByText(/Revue signée/)).toBeVisible();
+
+    await page.goto("/report");
+    await expect(page.locator('[data-journey-step="revue"]'))
+      .toHaveAttribute("data-journey-state", "done");
+  });
+
+  test("EXPERT_A : régénérer puis valider et télécharger le PDF privé", async ({ page }) => {
     await signInAs(page, "E2E_EXPERT_A");
     await page.goto("/report");
 
     await expect(consoleState(page)).toHaveAttribute("data-report-role", "expert");
-    await expect(consoleState(page)).toHaveAttribute("data-report-status", "draft");
+
+    // Signing the review moved the facts, so the existing draft is stale. The
+    // server refuses to approve a stale version, which is the point: a
+    // delivered document must state the signed reality, not an earlier one.
+    await page.getByLabel(/Date de gel juridique/).fill("2026-08-18");
+    await page.getByRole("checkbox").first().check();
+    await page.getByRole("button", { name: /Générer le brouillon serveur|Régénérer un brouillon/ })
+      .click();
+    await expect(consoleState(page)).toHaveAttribute("data-report-status", "draft", {
+      timeout: 90_000,
+    });
+
     const draftVersionId = await reportVersionId(page);
 
-    await page.getByLabel(/Commentaire/).fill("Conclusions vérifiées par l'expert E2E.");
+    await page.getByLabel(/Commentaire/).fill("Rapport conforme à la revue signée.");
     await page.getByRole("button", { name: /Valider le rapport final/ }).click();
 
     await expect(consoleState(page)).toHaveAttribute("data-report-status", "validated", {
@@ -128,10 +204,8 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
 
     // Validation appends a new version; the reviewed draft is never mutated.
     expect(await reportVersionId(page)).not.toBe(draftVersionId);
-    // A validated version carries no watermark; that is what distinguishes it.
     await expect(page.getByText(/BROUILLON — NON VALIDÉ/)).toHaveCount(0);
     await expect(page.getByText(/Version validée, sans filigrane/)).toBeVisible();
-    // Every stage is now finished, so no stop is advertised.
     await expect(page.locator('[data-journey-step="rapport"]'))
       .toHaveAttribute("data-journey-state", "done");
     await expect(page.locator("[data-cabinet-journey]"))
@@ -164,6 +238,24 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
     // the same dossier is not merely hidden, it is not loaded for this role.
     await expect(consoleState(page)).toHaveAttribute("data-report-version-id", "");
     await expect(consoleState(page)).toHaveAttribute("data-report-status", "none");
+
+    // PF-07B: the review screen offers a client no signing action either.
+    await page.goto("/review");
+    await expect(reviewState(page)).toHaveAttribute("data-review-can-sign", "no");
+    await expect(page.getByRole("button", { name: /Signer la revue/ })).toHaveCount(0);
+  });
+
+  test("CLIENT_A : signer une revue par appel direct est refusé", async ({ page }) => {
+    await signInAs(page, "E2E_CLIENT_A");
+    await page.goto("/review");
+
+    // Hiding the form is UX; simulation.review is what actually refuses.
+    const response = await page.request.post(`/api/v1/cases/${dossierA}/reviews`, {
+      data: { decision: "approved", comment: "Tentative client." },
+    });
+
+    expect(response.status()).toBe(403);
+    expect((await response.json()).error).toBe("TENANT_AUTHORIZATION_DENIED");
   });
 
   test("CLIENT_A : report.validate appelé directement est refusé par le serveur", async ({ page }) => {
@@ -225,6 +317,15 @@ test.describe("PF-07 — parcours cabinet authentifié", () => {
       data: { simulationRunIds: ["e2e1a000-0000-4000-8000-0000000000a1"], legalFreezeDate: "2026-08-18" },
     });
     expect(generate.status()).not.toBe(201);
+
+    // PF-07B: nor can cabinet B sign a review on cabinet A's dossier. The
+    // dossier is invisible under RLS, so it resolves to nothing rather than
+    // confirming it exists.
+    const review = await page.request.post(`/api/v1/cases/${dossierA}/reviews`, {
+      data: { decision: "approved", comment: "Tentative cross-tenant." },
+    });
+    expect(review.status()).not.toBe(201);
+    expect((await review.json()).error).toBe("DOSSIER_NOT_FOUND");
   });
 
   test("Identité inconnue : appartenir à l'organisation Clerk n'autorise rien", async ({ page }) => {

@@ -37,7 +37,8 @@ function readiness(overrides: Partial<ReportReadiness> = {}): ReportReadiness {
 function consoleState(overrides: Partial<ReportConsoleState> = {}): ReportConsoleState {
   const base: ReportConsoleState = {
     role: "conseiller",
-    capabilities: { generate: true, validate: false, download: true },
+    capabilities: { generate: true, validate: false, download: true, signReview: false },
+    reviews: [],
     dossiers: [dossier],
     selectedDossier: dossier,
     runs: [],

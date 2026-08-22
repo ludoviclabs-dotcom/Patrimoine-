@@ -1,5 +1,5 @@
 export const managedPostgresMigrationMarker =
-  "0009_pf06_server_report_snapshot";
+  "0010_pf07b_professional_review_signature";
 
 export const managedPostgresRlsTables = [
   "tenants",

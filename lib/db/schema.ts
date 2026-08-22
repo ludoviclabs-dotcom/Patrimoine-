@@ -766,9 +766,13 @@ export const professionalReviews = pgTable(
     caseId: uuid("case_id")
       .notNull()
       .references(() => clientCases.id),
-    reviewerUserId: uuid("reviewer_user_id")
-      .notNull()
-      .references(() => users.id),
+    // PF-07B: legacy v1 actor, nullable since an authenticated professional
+    // resolves to an identity, not to a `users` row.
+    reviewerUserId: uuid("reviewer_user_id").references(() => users.id),
+    reviewerIdentityId: uuid("reviewer_identity_id")
+      .references(() => userIdentities.id, { onDelete: "restrict" }),
+    /** Internal role held when the review was signed, kept for the audit trail. */
+    signedByRole: varchar("signed_by_role", { length: 32 }),
     decision: reviewDecisionEnum("decision").notNull().default("pending"),
     summary: text("summary").notNull(),
     requiredActions: jsonb("required_actions").$type<string[]>().notNull(),

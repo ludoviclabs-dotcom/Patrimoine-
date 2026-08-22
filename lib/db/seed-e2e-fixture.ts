@@ -196,11 +196,9 @@ export async function seedE2EClerkFixture(
  * sourced rule version, one evidence document version, and a signed
  * professional review.
  *
- * The review is seeded as `approved` because PF-06 exposes no route to sign
- * one — the readiness gate is proven closed at the PostgreSQL level instead
- * (tests/postgres/pf06b-report-console.test.ts). Without this the browser
- * journey could never reach validation, and the E2E run would prove nothing
- * about the report chain.
+ * PF-07B removed the pre-seeded `approved` review that used to sit here. The
+ * expert now signs it through the real server action during the journey, so
+ * the E2E proves the gate opening rather than assuming it.
  */
 async function seedReportableDossierState(
   transaction: Parameters<Parameters<Database["transaction"]>[0]>[0],
@@ -209,13 +207,11 @@ async function seedReportableDossierState(
   const dossierId = v21PilotSeedPlan.case.id;
   const householdId = v21PilotSeedPlan.household.id;
   const conseillerIdentityId = v21PilotSeedPlan.identities[1].id;
-  const expertUserId = v21PilotSeedPlan.users[2].id;
   const evidenceSourceId = "pf07-e2e-official-source";
   const ruleVersionId = "pf07-e2e-ifi-rule-v1";
   const runId = "e2e1a000-0000-4000-8000-0000000000a1";
   const documentId = "77777777-7777-4777-8777-777777777771";
   const documentVersionId = "e2e1a000-0000-4000-8000-0000000000a2";
-  const reviewId = "e2e1a000-0000-4000-8000-0000000000a3";
 
   await transaction.execute(sql`
     insert into evidence_sources
@@ -281,14 +277,6 @@ async function seedReportableDossierState(
       (tenant_id, simulation_run_id, document_version_id, purpose)
     values (${tenantId}, ${runId}, ${documentVersionId}, 'supporting-evidence')
     on conflict do nothing
-  `);
-
-  await transaction.execute(sql`
-    insert into professional_reviews
-      (id, tenant_id, case_id, reviewer_user_id, decision, summary, required_actions)
-    values (${reviewId}, ${tenantId}, ${dossierId}, ${expertUserId}, 'approved',
-      'Revue professionnelle signée pour le parcours E2E.', ${JSON.stringify([])}::jsonb)
-    on conflict (id) do nothing
   `);
 
   await transaction.execute(sql`

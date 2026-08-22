@@ -686,6 +686,20 @@ export function createServerReportService(dependencies: ServerReportServiceDepen
         throw new Error("REPORT_READINESS_BLOCKED");
       }
 
+      // PF-07B: the gate above reads the STORED snapshot, so a version
+      // generated while the review was signed could still be approved after a
+      // later review asked for changes. Approving a stale version would ship a
+      // document stating a reality that no longer holds, so the freshness
+      // verdict is now enforced server-side and not merely disabled in the UI.
+      // `changes_requested` and `rejected` stay allowed while stale — asking
+      // for changes on an outdated draft is exactly the point.
+      if (input.decision === "approved") {
+        const freshness = await this.evaluateFreshness(context, input.reportVersionId);
+        if (freshness.status === "outdated") {
+          throw new Error(freshness.reasonCode ?? "REPORT_REGENERATION_REQUIRED");
+        }
+      }
+
       const validatedAt = now().toISOString();
 
       return appendVersion(context, "report.validate", {

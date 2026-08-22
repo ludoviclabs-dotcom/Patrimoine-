@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { can, listCapabilities } from "../../lib/auth/authorization";
 import {
@@ -302,8 +304,17 @@ describe("PF-06 report object keys and authorization", () => {
     expect(listCapabilities("auditeur")).toContain("report.download");
   });
 
-  it("declares the PF-06 migration marker and the reports table", () => {
-    expect(managedPostgresMigrationMarker).toBe("0009_pf06_server_report_snapshot");
+  it("declares the newest migration as the marker, and the reports table", () => {
+    // Drift-proof: the marker must name the newest migration, whichever that
+    // is. Pinning one filename made this fail on every later migration and
+    // taught nothing about the invariant that actually matters.
+    const newest = readdirSync(join(process.cwd(), "drizzle"))
+      .filter((file) => /^\d{4}_.+\.sql$/.test(file))
+      .sort()
+      .at(-1)
+      ?.replace(/\.sql$/, "");
+
+    expect(managedPostgresMigrationMarker).toBe(newest);
     expect(managedPostgresRlsTables).toEqual(expect.arrayContaining([
       "reports",
       "report_versions",
