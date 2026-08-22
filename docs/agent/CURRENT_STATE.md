@@ -41,10 +41,9 @@ PF-07 + PF-07B — **COMPLETE / VERIFIED_STAGING**, pushed, Draft PR
 [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) open against
 `main`.
 
-**READY FOR REVIEW: YES. READY TO MERGE: NO** — one operational Production gate
-is open (see « Production readiness » below). The distinction is deliberate:
-the code is reviewable and its checks are green, but Production is not
-configured to receive it.
+**READY FOR REVIEW: YES. READY TO MERGE: YES** — the Production gate is closed.
+Production is now configured for the PF-03+ data layer against the shared pilot
+database (see « Pilot deployment decision » below).
 
 **PF-07B closes the last product gap PF-07 documented**: a professional can now
 sign a review through the product. The authenticated journey signs the review
@@ -107,41 +106,74 @@ Roles on that database: `patrimoine_runtime` and `patrimoine_webhook` are both
 group roles. `DATABASE_ADMIN_URL` is absent from every application environment,
 as PF-03C requires.
 
-### Production webhook — BLOCKED
+### Production webhook — PASS
 
-`CLERK_WEBHOOK_DATABASE_URL` is **absent from the Production environment**. The
-dedicated login itself is fine — `patrimoine_webhook` exists on the shared
-database, owns no table, holds no direct table grant, is a member of
-`patrimoine_webhook_service` and **not** of `patrimoine_app`, and
-`npm run db:verify:webhook` reports `{"status":"verified"}`. What is missing is
-the Production variable, so the webhook route would fail closed there with
-`CLERK_WEBHOOK_DATABASE_URL_REQUIRED`.
+`CLERK_WEBHOOK_DATABASE_URL` is now configured on Production with the dedicated
+`patrimoine_webhook` login. Re-verified immediately before configuring it:
+`LOGIN`, `NOSUPERUSER`, `NOBYPASSRLS`, `NOINHERIT`, owns **0** tables, holds
+**0** direct table grants, is a member of `patrimoine_webhook_service` and
+**not** of `patrimoine_app` or `patrimoine_fixture_service`.
+`npm run db:verify:webhook` reports `{"status":"verified"}`.
 
-It was **deliberately not provisioned in this run**, for a reason larger than
-the variable itself.
+### PILOT DEPLOYMENT DECISION
 
-### Production is not configured for the PF-03+ data layer at all
+**Production and Preview temporarily share the same Neon database.** This is
+accepted for the current demo/pilot environment, on the owner's explicit
+decision. **A dedicated Production database remains a pre-live requirement
+before real client data is admitted.**
 
-A broader finding from the same audit, previously unrecorded. The Production
-environment holds **none** of:
+This is recorded here, in `docs/agent/PF07_CABINET_UX_E2E.md` and in the
+next-task list so it cannot become silent debt. Two consequences follow while
+it stands, and both are real:
 
-- `PERSISTENCE_MODE`
-- `DATABASE_URL`
-- `DOCUMENT_DOWNLOAD_SIGNING_SECRET`
-- `CLERK_WEBHOOK_DATABASE_URL`
+1. A write made from Preview is visible in Production and vice versa. The
+   authenticated E2E suite writes to this database — synthetic tenants only,
+   but into the same rows Production reads.
+2. Revoking Preview access means revoking Production access, because both use
+   the same `patrimoine_runtime` login.
 
-Only the `POSTGRES_*` variables the Neon integration publishes, plus the Blob
-and Clerk keys, are present. Because `resolvePersistenceRuntime` refuses an
-undeclared mode in production, Production currently raises
-`PERSISTENCE_MODE_REQUIRED_IN_PRODUCTION` rather than reaching the database.
-This is pre-existing — PF-06C4 scoped its variables to Preview on purpose — and
-is not something PF-07 changed.
+### Production environment, now configured
 
-The consequence for this PR: adding only `CLERK_WEBHOOK_DATABASE_URL` would
-produce a partially configured Production, where the webhook writes to the real
-database while every other route still refuses to open it. Whether Production
-becomes a real data environment is an owner decision, not a side effect of
-merging a branch.
+| Variable | Production | Note |
+|---|---|---|
+| `DATABASE_URL` | CONFIGURED | `patrimoine_runtime`, sensitive, Production-scoped |
+| `PERSISTENCE_MODE` | CONFIGURED | `DATABASE` |
+| `DOCUMENT_DOWNLOAD_SIGNING_SECRET` | CONFIGURED | fresh 48 random bytes, **not** the Preview value, sensitive |
+| `CLERK_WEBHOOK_DATABASE_URL` | CONFIGURED | `patrimoine_webhook`, sensitive |
+| `BLOB_READ_WRITE_TOKEN` | CONFIGURED | pre-existing |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | CONFIGURED | pre-existing |
+| `CLERK_SECRET_KEY` | CONFIGURED | pre-existing |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | CONFIGURED | pre-existing |
+| `DATABASE_ADMIN_URL` | **ABSENT** | deployment-only, as PF-03C requires |
+
+The four new variables are scoped to **Production only**; they do not leak into
+Preview or Development. No value was read or printed.
+
+**The `patrimoine_runtime` password was rotated** to obtain a usable connection
+string, because the Preview `DATABASE_URL` is stored as a sensitive variable
+and is therefore write-only. The rotation set the password only — Neon's owner
+is not a superuser and may not restate `SUPERUSER`/`BYPASSRLS`, which is itself
+the guarantee that the rotation could not widen the role. The attributes and
+group membership were asserted unchanged afterwards, and the Preview variable
+was updated to the same new credential so neither environment is left holding a
+dead one. Any previously exported copy of the old value no longer works.
+
+`PERSISTENCE_MODE=DATABASE` becomes effective on the next Production
+deployment, which should be the one produced by merging PF-07. The old `main`
+was **not** redeployed to apply it early.
+
+### Pre-merge database gate — PASS
+
+Run against the shared database with the rotated runtime credential:
+
+- `npm run db:verify` → `{"status":"verified","migration":"0010_pf07b_professional_review_signature"}`.
+  That single command covers the migration count matching the file count, the
+  controlled group roles being `NOLOGIN`/non-super/non-bypass, FORCE RLS on
+  every declared table, and `assertSafeDatabaseRuntimeRole` on the runtime
+  login.
+- `npm run db:verify:webhook` → `{"status":"verified","role":"patrimoine_webhook_service"}`.
+
+Migration `0010` was **not** re-applied: it was already present.
 
 ## Completed
 
@@ -1662,39 +1694,35 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-**Review Draft PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14)**
-(base `main`, head `claude/pf-07-cabinet-ux-auth-e2e`). All checks are green and
-the merge state is `CLEAN`. **Do not merge until the Production gate below is
-settled** — the code is ready for review, the environment is not ready to
-receive it.
+**Merge Draft PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14)**
+once reviewed. It is marked ready for review, all checks are green, the merge
+state is `CLEAN`, and the Production environment is configured to receive it.
+The merge deployment is what makes `PERSISTENCE_MODE=DATABASE` effective in
+Production.
 
-Before merging, decide and execute one of:
+After merge:
 
-1. **Make Production a real data environment**: set `PERSISTENCE_MODE`,
-   `DATABASE_URL` (the `patrimoine_runtime` login), `DOCUMENT_DOWNLOAD_SIGNING_SECRET`
-   and `CLERK_WEBHOOK_DATABASE_URL` (the `patrimoine_webhook` login) on
-   Production. Migration `0010` is already present, because Production and
-   Preview share one Neon database. Note that Production would then read and
-   write the same database as Preview, which is acceptable for a pilot but not
-   for live client data.
-2. **Provision a separate Production database**, apply migrations `0000` to
-   `0010` to it through `npm run db:migrate`, create its own
-   `patrimoine_runtime` and `patrimoine_webhook` logins, then set the four
-   variables above against it.
-
-Either way, `DATABASE_ADMIN_URL` must stay deployment-only and never reach the
-application runtime.
-
-Then, after merge:
-
+1. Verify Production `/api/health` answers `{"status":"ok"}` from the merge
+   deployment. It exercises the rotated `patrimoine_runtime` credential, the
+   `0010` marker and FORCE RLS against the real database.
+2. Perform a signed Clerk webhook persistence smoke against Production, now
+   that `CLERK_WEBHOOK_DATABASE_URL` is configured there.
 3. Prune accumulated E2E report artifacts from the private Blob store under the
    CABINET_A tenant prefix, and give them a TTL.
-4. PF-08 — regulatory watcher / next roadmap milestone. A review *request*
-   workflow is a candidate: `review.requested` exists in the audit enum but
-   nothing emits it, so a reviewer is never notified that a dossier awaits them.
 
-Do not admit live-user data or real client documents before item 1 or 2 is
-settled.
+**Before real client data is admitted** — this is the standing pre-live
+requirement created by the pilot decision above:
+
+4. Provision a **dedicated Production database**, apply migrations `0000` to
+   `0010` to it, create its own `patrimoine_runtime` and `patrimoine_webhook`
+   logins, and repoint the Production variables. Until then Production and
+   Preview share one database and one runtime credential.
+
+Then PF-08 — regulatory watcher / next roadmap milestone. A review *request*
+workflow is a candidate: `review.requested` exists in the audit enum but
+nothing emits it, so a reviewer is never notified that a dossier awaits them.
+
+Do not admit live-user data or real client documents before item 4 is settled.
 
 ## Handoff notes
 

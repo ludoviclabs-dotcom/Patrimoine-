@@ -630,7 +630,33 @@ reached through Vercel's own share mechanism.
 | `/review` | 200, one `h1`, and the error model live: `CLERK_SESSION_REQUIRED`, « Authentification requise », « Prochaine action » |
 | `/report`, `/cabinet`, `/dossiers` | 200 |
 
-## 12.9 Still open after PF-07B
+## 12.9 Pilot deployment decision
+
+**PILOT DEPLOYMENT DECISION: Production and Preview temporarily share the same
+Neon database. This is accepted for the current demo/pilot environment. A
+dedicated Production database remains a pre-live requirement before real client
+data is admitted.**
+
+Taken by the owner when closing the PF-07 Production gate, after the audit
+established that Production and Preview already pointed at the same Neon
+project. Production was then configured for the PF-03+ data layer:
+`DATABASE_URL` on the `patrimoine_runtime` login, `PERSISTENCE_MODE=DATABASE`,
+a **fresh** `DOCUMENT_DOWNLOAD_SIGNING_SECRET` (48 random bytes, not the
+Preview value), and `CLERK_WEBHOOK_DATABASE_URL` on the dedicated
+`patrimoine_webhook` login. All four are Production-scoped and sensitive.
+`DATABASE_ADMIN_URL` remains absent from every Vercel environment.
+
+Two consequences hold while this stands, and neither should be forgotten:
+
+1. A write from Preview is visible in Production and vice versa — including the
+   synthetic tenants the authenticated E2E suite creates.
+2. Revoking Preview access revokes Production access, because both use the same
+   runtime login.
+
+`npm run db:verify` and `npm run db:verify:webhook` both report `verified`
+against that database with the configured credentials.
+
+## 12.10 Still open after PF-07B
 
 1. **Production** still needs `CLERK_WEBHOOK_DATABASE_URL`, a production
    `patrimoine_webhook` login, and migration `0010`.
