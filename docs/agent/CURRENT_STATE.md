@@ -1,10 +1,13 @@
 # PATRIMOINE FISCAL — CURRENT STATE
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 ## Git state
 
-Branch: claude/pf-07-cabinet-ux-auth-e2e
+Branch: claude/pf-07-production-smoke-be7ac7
+HEAD: cc61cdfe3a0282a7ca13491cd64081f6e68becd9 (merge of PR #14 into `main`)
+origin/main: cc61cdfe3a0282a7ca13491cd64081f6e68becd9 — verified identical
+Previous branch: claude/pf-07-cabinet-ux-auth-e2e
 HEAD before PF-07B: 08b689c3782e15f8c145e80a79c93771d0f5ea5f
 HEAD before PF-07: a7fab0b1d914dbbd28af153cc0d6d77ee4c73308 (merge of PR #13)
 Previous branch: claude/private-document-storage-evidence-c569fd
@@ -37,13 +40,74 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-07 + PF-07B — **COMPLETE / VERIFIED_STAGING**, pushed, Draft PR
-[#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) open against
-`main`.
+PF-07 + PF-07B — **COMPLETE / VERIFIED_PRODUCTION_PARTIAL**. PR
+[#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) is **MERGED**
+into `main` (merge commit `cc61cdf`), and the merge deployment is live on
+Production.
 
-**READY FOR REVIEW: YES. READY TO MERGE: YES** — the Production gate is closed.
-Production is now configured for the PF-03+ data layer against the shared pilot
-database (see « Pilot deployment decision » below).
+### PF-07-POST-MERGE production smoke — 2026-08-22
+
+Full detail: `docs/agent/PF07_CABINET_UX_E2E.md` section 13.
+
+| Deployment | Value |
+|---|---|
+| id | `dpl_En9ppFF2jor5cAagnhR1jgmwENa5` |
+| commit | `cc61cdfe3a0282a7ca13491cd64081f6e68becd9` (GitHub `verified`) |
+| target / state | `production` / **READY** |
+| alias | `patrimoine-fiscal-demo.vercel.app` |
+
+**PASS on the Production runtime:**
+
+- **Health.** `/api/health` returns `{"status":"ok"}`, which the route emits
+  only when `PERSISTENCE_MODE=DATABASE`, `DATABASE_URL` connects, the runtime
+  login is NOSUPERUSER/NOBYPASSRLS with no direct table grant, the readiness
+  marker is `0010_pf07b_professional_review_signature` and `rlsReady` is true.
+  Migration `0010` and FORCE RLS are therefore confirmed through Production's
+  own credential.
+- **Denial surface.** Sessionless calls to the PF-07B review route, report
+  generation, report validation and both private download routes all return
+  **401 `CLERK_SESSION_REQUIRED`**. The review route answering at all is what
+  proves the merge reached Production.
+- **Webhook signature layer.** Unsigned and tampered deliveries both return
+  **400 `invalid_webhook`**.
+- **Cabinet screens.** `/report` and `/review` render the PF-07 shared error
+  catalog live, with the machine-readable code; `/review` offers an
+  unauthenticated visitor no signing surface.
+- **Runtime logs CLEAN.** No 500, fatal, database, RLS, Blob or Clerk signature
+  error on the deployment; `get_runtime_errors` finds no cluster over 24 h.
+
+**BLOCKED, not failed — the authenticated journeys did not run on Production.**
+EXPERT_A signing, CLIENT_A denial, EXPERT_B cross-tenant and revocation were
+**not** executed, and nothing was faked to make them appear green. Two
+independent blockers, the second deliberate:
+
+1. The `+clerk_test` fixture identities hold **no password** by design and
+   sign in through a Backend-API *ticket*; Production's Clerk card offers only
+   Google OAuth and email+password. Minting a ticket needs a script, and this
+   session's environment denied every ad-hoc script invocation. Setting a
+   password on a fixture identity or using a human Google account were refused,
+   not attempted.
+2. Running them against Production would require seeding the E2E fixture into
+   the **Production database**, which `scripts/seed-e2e-fixture.ts` refuses
+   (`E2E_FIXTURE_SEED_FORBIDDEN_IN_PRODUCTION`), and handing the harness the
+   Neon **owner** connection as `E2E_ADMIN_DATABASE_URL`, which PF-03C forbids
+   in application environments. **Reported rather than done.**
+
+Consequently the webhook **persistence** leg, the private PDF round-trip with a
+verified `pdfSha256`, and the E2E artifact cleanup are all unproven on
+Production. Artifact cleanup is **NOT_RUN and nothing was deleted**: identifying
+the objects needs the store token and a script, and the rule is to remove
+nothing when identification is uncertain.
+
+A real `POST /api/webhooks/clerk` returned **503** at 16:10:26 UTC on the
+**previous** deployment `dpl_6ayMjXao…`, five minutes before this one, i.e. on
+the build that predates the Production webhook and persistence configuration.
+It needs a signed replay against the merged build to close.
+
+Production is configured for the PF-03+ data layer against the shared pilot
+database (see « Pilot deployment decision » below), and is wired to a Clerk
+**development** instance — a second pre-live item alongside database
+separation.
 
 **PF-07B closes the last product gap PF-07 documented**: a professional can now
 sign a review through the product. The authenticated journey signs the review
@@ -69,7 +133,9 @@ runtime against real Neon — which also confirms migration `0010` landed — an
 
 ## Publication and Production readiness (PF-07-PUBLISH)
 
-**Draft PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14)** —
+**PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) — MERGED**
+on 2026-08-22, merge commit `cc61cdfe3a0282a7ca13491cd64081f6e68becd9`. The
+record below describes the PR as it stood immediately before the merge —
 base `main`, head `claude/pf-07-cabinet-ux-auth-e2e`, draft, `MERGEABLE`,
 merge state `CLEAN`, 46 changed files, no review thread open. The branch was
 pushed normally; nothing was forced, rebased or squashed.
@@ -1540,6 +1606,16 @@ None.
 
 ## Tests
 
+Production smoke (2026-08-22, deployment `dpl_En9ppFF2jor5cAagnhR1jgmwENa5`):
+health **PASS**; sessionless denial on the PF-07B review route, report
+generation, report validation and both private download routes **PASS** (401
+`CLERK_SESSION_REQUIRED`); webhook unsigned and tampered **PASS** (400
+`invalid_webhook`); cabinet error model live **PASS**; runtime logs **CLEAN**.
+Authenticated Production journeys, webhook persistence, private PDF round-trip
+and Blob artifact cleanup **BLOCKED / NOT_RUN** — see « Current priority » and
+`PF07_CABINET_UX_E2E.md` section 13. No test below was re-run in this task; the
+figures are those recorded after PF-07B on commit `cc61cdf`.
+
 Unit: PASS — `npm test` after PF-07B: 36 files, 445 tests, 0 failures.
 PostgreSQL/RLS: PASS — 6 files, 66 tests on a fresh native ephemeral cluster
 after migrations `0000` through `0010`.
@@ -1569,7 +1645,31 @@ git diff --check: PASS — exit 0, no whitespace/conflict-marker errors.
 
 ## Open blockers
 
-**Every residual item from PF-06C4 and PF-07 is now CLOSED.**
+**Opened by the post-merge production smoke (2026-08-22).** These are the only
+new blockers; everything below them is the pre-merge record, still accurate.
+
+- **P1 — Authenticated cabinet journeys are unproven on Production.** Not a
+  failure: they were never run there. Closing this needs either a
+  non-production target carrying the E2E fixture, or an operator-run
+  ticket-minting path. It must **not** be closed by seeding the fixture into
+  the Production database — `scripts/seed-e2e-fixture.ts` forbids it and
+  PF-03C forbids giving the harness the Neon owner connection.
+- **P1 — Clerk webhook persistence is unproven on Production.** The signature
+  layer is PASS there (unsigned and tampered both refused); only the persisted
+  receipt through `CLERK_WEBHOOK_DATABASE_URL` is unverified on Production. A
+  real delivery returned **503** at 16:10:26 UTC on the *previous* deployment,
+  before the configuration took effect — replay a signed delivery against the
+  merged build to close.
+- **P2 — Private report PDF round-trip unproven on Production**: no
+  authenticated generation, so no `pdfSha256` was verified there.
+- **P2 — E2E Blob artifacts NOT_RUN, nothing deleted.** Identifying them needs
+  the store token and a script; the rule is to remove nothing when
+  identification is uncertain.
+- **P2 — Production is wired to a Clerk *development* instance** (`pk_test_…`,
+  "Development mode" badge on the sign-in card). Acceptable for the pilot;
+  a pre-live item alongside database separation.
+
+**Every residual item from PF-06C4 and PF-07 was CLOSED before the merge.**
 
 - **Authenticated Playwright — RESOLVED (PF-07).** Sign-in uses the official
   Clerk `ticket` strategy through `@clerk/testing`: a short-lived Backend-API
@@ -1584,8 +1684,11 @@ git diff --check: PASS — exit 0, no whitespace/conflict-marker errors.
 
 No PF-07B implementation blocker. What remains is operational or deliberate:
 
-1. **Production** needs `CLERK_WEBHOOK_DATABASE_URL`, a production
-   `patrimoine_webhook` login, and migration `0010`. Staging has all three.
+1. ~~**Production** needs `CLERK_WEBHOOK_DATABASE_URL`, a production
+   `patrimoine_webhook` login, and migration `0010`.~~ **CLOSED** — all three
+   are in place, and the post-merge health check confirms marker `0010` and
+   FORCE RLS through Production's own runtime credential. Only the webhook
+   *persistence* leg remains unproven on Production (see above).
 2. `/cabinet`, `/dossiers`, `/simulations`, `/simulations/lab` and `/evidence`
    remain unauthenticated fixture surfaces holding no tenant data, and the
    AppShell dossier selector is still hardcoded. `/report` and `/review` are
@@ -1694,26 +1797,36 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-**Merge Draft PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14)**
-once reviewed. It is marked ready for review, all checks are green, the merge
-state is `CLEAN`, and the Production environment is configured to receive it.
-The merge deployment is what makes `PERSISTENCE_MODE=DATABASE` effective in
-Production.
+PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) is
+**MERGED** and the merge deployment is live, so
+`PERSISTENCE_MODE=DATABASE` is effective in Production.
 
-After merge:
-
-1. Verify Production `/api/health` answers `{"status":"ok"}` from the merge
-   deployment. It exercises the rotated `patrimoine_runtime` credential, the
-   `0010` marker and FORCE RLS against the real database.
-2. Perform a signed Clerk webhook persistence smoke against Production, now
-   that `CLERK_WEBHOOK_DATABASE_URL` is configured there.
-3. Prune accumulated E2E report artifacts from the private Blob store under the
-   CABINET_A tenant prefix, and give them a TTL.
+1. ~~Verify Production `/api/health`.~~ **DONE — PASS.** `{"status":"ok"}` from
+   `dpl_En9ppFF2jor5cAagnhR1jgmwENa5`, exercising the rotated
+   `patrimoine_runtime` credential, marker `0010` and FORCE RLS.
+2. **Perform a signed Clerk webhook persistence smoke against Production.**
+   Still open. The signature layer is already proven there (unsigned and
+   tampered both refused with 400); what is missing is one valid Svix-signed
+   delivery whose receipt is then read back through
+   `CLERK_WEBHOOK_DATABASE_URL`. Requires an environment that permits running
+   the signing script. Also re-checks the **503** seen on the previous
+   deployment at 16:10:26 UTC.
+3. **Prove the authenticated cabinet journeys against a deployed runtime.**
+   Still open. Do **not** seed the E2E fixture into the Production database —
+   `scripts/seed-e2e-fixture.ts` refuses it and PF-03C forbids handing the
+   harness the Neon owner connection. Either run them against a Preview
+   deployment backed by a non-production database, or add an operator-run
+   ticket-minting path. Closing item 4 below makes this straightforward.
+4. Prune accumulated E2E report artifacts from the private Blob store under the
+   CABINET_A tenant prefix, and give them a TTL. **NOT_RUN — nothing was
+   deleted**; identification needs the store token and a script.
+5. Decide whether Production should keep pointing at the Clerk **development**
+   instance. It works and is fine for the pilot, but it is a pre-live item.
 
 **Before real client data is admitted** — this is the standing pre-live
 requirement created by the pilot decision above:
 
-4. Provision a **dedicated Production database**, apply migrations `0000` to
+6. Provision a **dedicated Production database**, apply migrations `0000` to
    `0010` to it, create its own `patrimoine_runtime` and `patrimoine_webhook`
    logins, and repoint the Production variables. Until then Production and
    Preview share one database and one runtime credential.
@@ -1722,7 +1835,7 @@ Then PF-08 — regulatory watcher / next roadmap milestone. A review *request*
 workflow is a candidate: `review.requested` exists in the audit enum but
 nothing emits it, so a reviewer is never notified that a dossier awaits them.
 
-Do not admit live-user data or real client documents before item 4 is settled.
+Do not admit live-user data or real client documents before item 6 is settled.
 
 ## Handoff notes
 
