@@ -1862,7 +1862,8 @@ health, migration `0010`, FORCE RLS, environment configuration, the
 unauthenticated security surface, webhook persistence with idempotency and
 tamper refusal, and clean runtime logs.
 
-**Next: PF-08 — regulatory watcher / next roadmap milestone.** A review
+**PF-08 — READY TO START, NOT STARTED.** Regulatory watcher / next roadmap
+milestone. A review
 *request* workflow is a candidate: `review.requested` exists in the audit enum
 but nothing emits it, so a reviewer is never notified that a dossier awaits
 them. PF-08 is **not blocked**.
