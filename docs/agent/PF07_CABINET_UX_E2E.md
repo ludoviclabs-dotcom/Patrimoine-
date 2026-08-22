@@ -466,6 +466,34 @@ the other, and a decided review always carries its timestamp — and an index on
 `(tenant_id, case_id, created_at DESC)`, which is the read PF-06 performs.
 Additive: no row is rewritten and legacy rows keep their `reviewer_user_id`.
 
+**Grants and RLS are untouched.** The only privilege statement in `0010` is the
+`EXECUTE` on the refreshed readiness function to `patrimoine_app`, identical to
+`0009`. No role is created, no `SUPERUSER` or `BYPASSRLS` is granted, and RLS is
+not altered: `professional_reviews` keeps the `ENABLE` + `FORCE ROW LEVEL
+SECURITY` it has had since PF-03B, and the readiness attestation still asserts
+31 of 31 declared tables.
+
+**`signed_by_role` is deliberately not a database enum.** It records the
+internal role held at signing time for the audit trail. It is written from the
+server-resolved `context.role` — a closed union validated when the Clerk
+context is built — and is read back only for display. **It is never an
+authorization input**: every decision goes through
+`withAuthorizedTenantTransaction` against the live context, never against this
+stored string. Typing it as the `user_role` enum would be tighter, but the
+column authorizes nothing, so it was not worth a second migration.
+
+**Rollback and operational implications.** The migration is forward-only, as
+PF-03C requires, and reversing it is not a data-loss operation: dropping
+`reviewer_identity_id`, `signed_by_role` and the two CHECK constraints would
+restore the previous shape, except that `reviewer_user_id` could not be made
+`NOT NULL` again while any review signed through the new path exists — those
+rows carry an identity, not a legacy user. In practice a rollback means
+deploying the previous application build and leaving the columns in place;
+they are additive and the older code simply ignores them. Because the marker
+moved to `0010`, **`/api/health` answers `not_ready` until the migration is
+applied**, so a deployment that reaches a database still at `0009` fails its
+readiness gate loudly rather than serving a half-migrated schema.
+
 ## 12.2 The server action
 
 `lib/review/review-service.ts` + `POST /api/v1/cases/{caseId}/reviews`.
