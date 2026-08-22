@@ -40,10 +40,61 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-07 + PF-07B — **COMPLETE / VERIFIED_PRODUCTION_PARTIAL**. PR
+PF-07 + PF-07B — **COMPLETE / VERIFIED_PRODUCTION**. PR
 [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) is **MERGED**
-into `main` (merge commit `cc61cdf`), and the merge deployment is live on
-Production.
+into `main` (merge commit `cc61cdf`), the merge deployment is live on
+Production, and every non-destructive Production gate is closed.
+
+### PF-07 final state — 2026-08-22
+
+Detail: `docs/agent/PF07_CABINET_UX_E2E.md` sections 13 and 14.
+
+| Evidence | Status |
+|---|---|
+| Production deployment `dpl_En9ppFF2jor5cAagnhR1jgmwENa5` READY | **PASS** |
+| `/api/health` | **PASS** |
+| migration `0010` marker | **PASS** |
+| runtime FORCE RLS + safe runtime role | **PASS** |
+| Production environment configuration | **PASS** |
+| authenticated E2E, **staging** — 58 passed / 24 skipped / 0 failed | **PASS** |
+| Production unauthenticated security | **PASS** |
+| Production webhook persistence, idempotency, tamper refusal | **PASS** |
+| Production runtime logs | **PASS** |
+| Production destructive fixture journeys | `NOT_APPLICABLE_IN_PRODUCTION_BY_POLICY` |
+
+**Reclassification.** The authenticated cabinet journeys are **not** a blocked
+or failing gate. The application path is proven in staging against real Clerk
+sessions, FORCE RLS, a `NOBYPASSRLS` login and the real Blob store. Replaying
+them on Production is excluded **by policy**, because it would require seeding
+the E2E fixture into the Production database
+(`E2E_FIXTURE_SEED_FORBIDDEN_IN_PRODUCTION`), handing the harness the Neon
+**owner** connection (PF-03C forbids it), driving synthetic membership
+revocation on Production, or giving a fixture identity a password. The
+safeguards that exclude it are themselves part of what PF-07 delivers. Nothing
+was bypassed or weakened.
+
+**Production webhook persistence — PASS, gate closed.**
+`npm run db:verify:webhook` against the Production credential returns
+`{"status":"verified","role":"patrimoine_webhook_service"}`. A synthetic
+Svix-signed `organization.updated` delivery to the real Production endpoint
+returned **200 `{"received":true,"processed":true}`**; a byte-identical replay
+returned **200 `{"received":true,"processed":false}`** (idempotent — the
+receipt insert hit `ON CONFLICT DO NOTHING` and the function returned before
+rewriting any observation); a tampered body with the same signature returned
+**400 `invalid_webhook`**, refused before any persistence code runs. `processed:
+true` can only come from the transaction committing on
+`CLERK_WEBHOOK_DATABASE_URL` through `patrimoine_webhook_service`, since the
+route answers 503 when it throws. No secret value was read or printed. The
+event named a **fresh synthetic organization**, so the delivery was
+insert-only and mutated nothing existing; it is unmapped, so it authorizes
+nothing. `record_clerk_webhook_event` never writes `memberships`,
+`tenant_memberships` or `tenants`, so **no internal authoritative membership
+was created**.
+
+The **503** of 16:10:26 UTC is **historical**: it belongs to the previous
+deployment `dpl_6ayMjXao…`, five minutes before the PF-07 deployment existed,
+on the build predating the webhook configuration. The current deployment shows
+**zero 5xx over a 6-hour window** and zero error/fatal/warning entries.
 
 ### PF-07-POST-MERGE production smoke — 2026-08-22
 
@@ -76,33 +127,33 @@ Full detail: `docs/agent/PF07_CABINET_UX_E2E.md` section 13.
 - **Runtime logs CLEAN.** No 500, fatal, database, RLS, Blob or Clerk signature
   error on the deployment; `get_runtime_errors` finds no cluster over 24 h.
 
-**BLOCKED, not failed — the authenticated journeys did not run on Production.**
-EXPERT_A signing, CLIENT_A denial, EXPERT_B cross-tenant and revocation were
-**not** executed, and nothing was faked to make them appear green. Two
-independent blockers, the second deliberate:
+**The authenticated fixture journeys did not run on Production, and must not.**
+EXPERT_A signing, CLIENT_A denial, EXPERT_B cross-tenant and revocation are
+classified `NOT_APPLICABLE_IN_PRODUCTION_BY_POLICY` — see the reclassification
+above. Their application path is proven in staging (58 passed, 24 skipped, 0
+failed). Nothing was faked to make them appear green, and nothing was bypassed
+to run them.
 
-1. The `+clerk_test` fixture identities hold **no password** by design and
-   sign in through a Backend-API *ticket*; Production's Clerk card offers only
-   Google OAuth and email+password. Minting a ticket needs a script, and this
-   session's environment denied every ad-hoc script invocation. Setting a
-   password on a fixture identity or using a human Google account were refused,
-   not attempted.
-2. Running them against Production would require seeding the E2E fixture into
-   the **Production database**, which `scripts/seed-e2e-fixture.ts` refuses
-   (`E2E_FIXTURE_SEED_FORBIDDEN_IN_PRODUCTION`), and handing the harness the
-   Neon **owner** connection as `E2E_ADMIN_DATABASE_URL`, which PF-03C forbids
-   in application environments. **Reported rather than done.**
+**Closed after this section was first written** (PF-07-FINAL-CLOSE, section 14
+of the PF-07 report):
 
-Consequently the webhook **persistence** leg, the private PDF round-trip with a
-verified `pdfSha256`, and the E2E artifact cleanup are all unproven on
-Production. Artifact cleanup is **NOT_RUN and nothing was deleted**: identifying
-the objects needs the store token and a script, and the rule is to remove
-nothing when identification is uncertain.
+- **Production webhook persistence — PASS.** Signed delivery accepted and
+  persisted, replay idempotent, tampered and unsigned refused.
 
-A real `POST /api/webhooks/clerk` returned **503** at 16:10:26 UTC on the
-**previous** deployment `dpl_6ayMjXao…`, five minutes before this one, i.e. on
-the build that predates the Production webhook and persistence configuration.
-It needs a signed replay against the merged build to close.
+**Still open, and deliberately not blocking:**
+
+- the private PDF round-trip with a verified `pdfSha256` on Production, which
+  needs an authenticated generation and therefore falls under the same policy
+  exclusion as the journeys above;
+- **E2E Blob artifact cleanup — `FOLLOW_UP`, NOT_RUN, nothing deleted**:
+  identification is not certain from outside the store, and the rule is to
+  remove nothing when uncertain.
+
+The **503** of 16:10:26 UTC is **historical** — previous deployment
+`dpl_6ayMjXao…`, five minutes before this one, on the build predating the
+Production webhook configuration. The signed replay in section 14 returns
+**200** on the current deployment, and that deployment shows **zero 5xx over a
+6-hour window**.
 
 Production is configured for the PF-03+ data layer against the shared pilot
 database (see « Pilot deployment decision » below), and is wired to a Clerk
@@ -1608,13 +1659,21 @@ None.
 
 Production smoke (2026-08-22, deployment `dpl_En9ppFF2jor5cAagnhR1jgmwENa5`):
 health **PASS**; sessionless denial on the PF-07B review route, report
-generation, report validation and both private download routes **PASS** (401
-`CLERK_SESSION_REQUIRED`); webhook unsigned and tampered **PASS** (400
-`invalid_webhook`); cabinet error model live **PASS**; runtime logs **CLEAN**.
-Authenticated Production journeys, webhook persistence, private PDF round-trip
-and Blob artifact cleanup **BLOCKED / NOT_RUN** — see « Current priority » and
-`PF07_CABINET_UX_E2E.md` section 13. No test below was re-run in this task; the
-figures are those recorded after PF-07B on commit `cc61cdf`.
+generation, report validation, document download and both private report
+download routes **PASS** (401 `CLERK_SESSION_REQUIRED`); cabinet error model
+live **PASS**; **webhook persistence PASS** — signed delivery
+`processed:true`, byte-identical replay `processed:false` (idempotent),
+tampered and unsigned both 400 `invalid_webhook`; `npm run db:verify:webhook`
+against the Production credential returns
+`{"status":"verified","role":"patrimoine_webhook_service"}`; runtime logs
+**PASS** — zero 5xx over 6 h, zero error/fatal/warning entries. Production
+destructive fixture journeys are `NOT_APPLICABLE_IN_PRODUCTION_BY_POLICY`;
+Blob artifact cleanup is `FOLLOW_UP`, nothing deleted. Detail in
+`PF07_CABINET_UX_E2E.md` sections 13 and 14.
+
+Re-run on the merged commit `cc61cdf` during the post-merge task: `npm test`
+PASS (36 files, 445 tests, 0 failures) and `npm run lint` PASS (exit 0). The
+remaining figures below are those recorded after PF-07B.
 
 Unit: PASS — `npm test` after PF-07B: 36 files, 445 tests, 0 failures.
 PostgreSQL/RLS: PASS — 6 files, 66 tests on a fresh native ephemeral cluster
@@ -1645,29 +1704,26 @@ git diff --check: PASS — exit 0, no whitespace/conflict-marker errors.
 
 ## Open blockers
 
-**Opened by the post-merge production smoke (2026-08-22).** These are the only
-new blockers; everything below them is the pre-merge record, still accurate.
+**No blocker stands against PF-08.** Every non-destructive Production gate is
+closed (see « Current priority »). What remains is either excluded by policy or
+a pre-live item.
 
-- **P1 — Authenticated cabinet journeys are unproven on Production.** Not a
-  failure: they were never run there. Closing this needs either a
-  non-production target carrying the E2E fixture, or an operator-run
-  ticket-minting path. It must **not** be closed by seeding the fixture into
-  the Production database — `scripts/seed-e2e-fixture.ts` forbids it and
-  PF-03C forbids giving the harness the Neon owner connection.
-- **P1 — Clerk webhook persistence is unproven on Production.** The signature
-  layer is PASS there (unsigned and tampered both refused); only the persisted
-  receipt through `CLERK_WEBHOOK_DATABASE_URL` is unverified on Production. A
-  real delivery returned **503** at 16:10:26 UTC on the *previous* deployment,
-  before the configuration took effect — replay a signed delivery against the
-  merged build to close.
-- **P2 — Private report PDF round-trip unproven on Production**: no
-  authenticated generation, so no `pdfSha256` was verified there.
-- **P2 — E2E Blob artifacts NOT_RUN, nothing deleted.** Identifying them needs
-  the store token and a script; the rule is to remove nothing when
-  identification is uncertain.
-- **P2 — Production is wired to a Clerk *development* instance** (`pk_test_…`,
-  "Development mode" badge on the sign-in card). Acceptable for the pilot;
-  a pre-live item alongside database separation.
+- **Excluded by policy, not a blocker — Production destructive fixture E2E.**
+  `NOT_APPLICABLE_IN_PRODUCTION_BY_POLICY`. Proven in staging; replaying it on
+  Production would require seeding the fixture there
+  (`E2E_FIXTURE_SEED_FORBIDDEN_IN_PRODUCTION`), the Neon owner connection
+  (PF-03C forbids it), synthetic membership revocation on Production, or giving
+  a fixture identity a password. The private PDF round-trip with a verified
+  `pdfSha256` on Production falls under the same exclusion.
+- **Follow-up, not a blocker — `E2E_BLOB_CLEANUP = FOLLOW_UP`.** Nothing
+  deleted. Needs an identifiable E2E object prefix, a cleanup command with a
+  TTL policy, and a guarantee that real evidence is never in scope.
+- **Follow-up, not a blocker — one synthetic observation row**
+  (`org_pf07prodsmoke20260822` in `auth_provider_organizations`, plus its
+  `auth_webhook_events` receipt) left by the webhook smoke. Unmapped,
+  non-authoritative, authorizes nothing. Remove at the next operator session.
+- **Pre-live, not a blocker for the pilot/demo:** dedicated Production
+  database; Production Clerk instance instead of the current Development one.
 
 **Every residual item from PF-06C4 and PF-07 was CLOSED before the merge.**
 
@@ -1677,7 +1733,8 @@ new blockers; everything below them is the pre-merge record, still accurate.
 - **Clerk webhook persistence — RESOLVED on Preview (PF-07).** A dedicated
   `patrimoine_webhook` login is provisioned on real Neon and
   `CLERK_WEBHOOK_DATABASE_URL` is set on Vercel Preview. 9 gates PASS, 0 FAIL.
-  **Production still needs the same variable and login.**
+  **Production is now closed too** — see the webhook smoke in « Current
+  priority » and section 14 of the PF-07 report.
 - **Professional review signing — RESOLVED (PF-07B).** The *revue* stage has a
   real server action, `/review` carries it, and the authenticated journey signs
   the review before validating. The E2E pre-seeded approval is gone.
@@ -1797,45 +1854,47 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) is
-**MERGED** and the merge deployment is live, so
-`PERSISTENCE_MODE=DATABASE` is effective in Production.
+**PF-07 is closed.** PR
+[#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) is **MERGED**,
+the merge deployment is live, `PERSISTENCE_MODE=DATABASE` is effective in
+Production, and every non-destructive Production gate has been verified:
+health, migration `0010`, FORCE RLS, environment configuration, the
+unauthenticated security surface, webhook persistence with idempotency and
+tamper refusal, and clean runtime logs.
 
-1. ~~Verify Production `/api/health`.~~ **DONE — PASS.** `{"status":"ok"}` from
-   `dpl_En9ppFF2jor5cAagnhR1jgmwENa5`, exercising the rotated
-   `patrimoine_runtime` credential, marker `0010` and FORCE RLS.
-2. **Perform a signed Clerk webhook persistence smoke against Production.**
-   Still open. The signature layer is already proven there (unsigned and
-   tampered both refused with 400); what is missing is one valid Svix-signed
-   delivery whose receipt is then read back through
-   `CLERK_WEBHOOK_DATABASE_URL`. Requires an environment that permits running
-   the signing script. Also re-checks the **503** seen on the previous
-   deployment at 16:10:26 UTC.
-3. **Prove the authenticated cabinet journeys against a deployed runtime.**
-   Still open. Do **not** seed the E2E fixture into the Production database —
-   `scripts/seed-e2e-fixture.ts` refuses it and PF-03C forbids handing the
-   harness the Neon owner connection. Either run them against a Preview
-   deployment backed by a non-production database, or add an operator-run
-   ticket-minting path. Closing item 4 below makes this straightforward.
-4. Prune accumulated E2E report artifacts from the private Blob store under the
-   CABINET_A tenant prefix, and give them a TTL. **NOT_RUN — nothing was
-   deleted**; identification needs the store token and a script.
-5. Decide whether Production should keep pointing at the Clerk **development**
-   instance. It works and is fine for the pilot, but it is a pre-live item.
+**Next: PF-08 — regulatory watcher / next roadmap milestone.** A review
+*request* workflow is a candidate: `review.requested` exists in the audit enum
+but nothing emits it, so a reviewer is never notified that a dossier awaits
+them. PF-08 is **not blocked**.
 
-**Before real client data is admitted** — this is the standing pre-live
-requirement created by the pilot decision above:
+Carried forward, none of them blocking PF-08 for the pilot/demo:
 
-6. Provision a **dedicated Production database**, apply migrations `0000` to
+1. **`E2E_BLOB_CLEANUP` — `FOLLOW_UP`.** Prune accumulated E2E report artifacts
+   from the private Blob store under the CABINET_A tenant prefix and give them
+   a TTL. **Nothing was deleted.** Needs an identifiable E2E object prefix
+   distinct from real evidence, a cleanup command with a TTL policy, and a
+   guarantee that real evidence is never in scope.
+2. **Remove the synthetic webhook-smoke rows** at the next operator session:
+   `org_pf07prodsmoke20260822` in `auth_provider_organizations` and its
+   `auth_webhook_events` receipt. Unmapped and non-authoritative — they
+   authorize nothing.
+3. If the authenticated journeys are ever wanted against a *deployed* runtime,
+   point them at a **Preview backed by a non-production database**. Do **not**
+   seed the fixture into Production: `scripts/seed-e2e-fixture.ts` refuses it,
+   and PF-03C forbids handing the harness the Neon owner connection.
+
+**Standing PRE-LIVE requirements — before real client data is admitted:**
+
+4. Provision a **dedicated Production database**, apply migrations `0000` to
    `0010` to it, create its own `patrimoine_runtime` and `patrimoine_webhook`
    logins, and repoint the Production variables. Until then Production and
    Preview share one database and one runtime credential.
+5. Move Production to a **Production Clerk instance** instead of the current
+   Development one (`pk_test_…`, "Development mode" badge on the sign-in card).
+6. Settle item 1 — the Blob cleanup / TTL policy.
 
-Then PF-08 — regulatory watcher / next roadmap milestone. A review *request*
-workflow is a candidate: `review.requested` exists in the audit enum but
-nothing emits it, so a reviewer is never notified that a dossier awaits them.
-
-Do not admit live-user data or real client documents before item 6 is settled.
+Do not admit live-user data or real client documents before items 4, 5 and 6
+are settled. They do not block PF-08 for the pilot/demo.
 
 ## Handoff notes
 

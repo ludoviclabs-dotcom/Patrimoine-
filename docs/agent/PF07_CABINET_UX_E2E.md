@@ -838,3 +838,172 @@ The clean way to close 13.6 is item 4 of the next-task list: give Production its
 **own** database, then provision the fixture on a non-production target and
 drive the journeys there, or expose a ticket-minting path an operator can run
 interactively.
+
+## 14. PF-07-FINAL-CLOSE — Production verification closed
+
+Run date: 2026-08-22, after section 13. Branch
+`claude/pf-07-production-smoke-be7ac7`, on merge commit `cc61cdf`.
+No application code changed.
+
+Section 13 left one genuinely useful Production gate open and one set of gates
+mis-classified. This section closes the first and corrects the second.
+
+### 14.1 Reclassification — Production fixture journeys are out of scope by policy
+
+Section 13 recorded the authenticated cabinet journeys as **BLOCKED**. That was
+the wrong label and it is corrected here.
+
+**AUTHENTICATED E2E, STAGING — PASS.** `E2E_CLERK_FIXTURE=1 npm run e2e`:
+**58 passed, 24 skipped, 0 failed**, on 2 browser projects, against real Clerk
+sessions, real PostgreSQL with FORCE RLS, a `NOBYPASSRLS` runtime login, the
+real capability matrix and the real private Blob store (section 3, and
+section 12.8 for the PF-07B additions). The application path is proven.
+
+**PRODUCTION DESTRUCTIVE FIXTURE E2E —
+`NOT_APPLICABLE_IN_PRODUCTION_BY_POLICY`.**
+
+Replaying those journeys against Production is not a missing test. It is an
+action the repository deliberately forbids, for four independent reasons:
+
+1. `scripts/seed-e2e-fixture.ts` refuses it outright —
+   `E2E_FIXTURE_SEED_FORBIDDEN_IN_PRODUCTION`.
+2. The revocation journey needs the Neon **owner** connection as
+   `E2E_ADMIN_DATABASE_URL`; PF-03C requires `DATABASE_ADMIN_URL` to stay
+   deployment-only and absent from every application environment.
+3. The journeys mutate and revoke authoritative memberships. That is a
+   synthetic state machine and must not be driven on Production.
+4. Reaching the `+clerk_test` identities without a Backend-API ticket would
+   mean giving a fixture identity a password.
+
+This is **not** a FAIL and **not** a BLOCKED item. The behaviour is verified in
+staging; production replay is excluded by policy, and the safeguards that
+exclude it are themselves part of what PF-07 delivers. Nothing was bypassed,
+weakened or worked around to reach this conclusion.
+
+### 14.2 Production webhook persistence — PASS
+
+This was the last Production gate worth closing, and it is now closed against
+the real Production endpoint, the real signing secret, the real
+`CLERK_WEBHOOK_DATABASE_URL` and the dedicated `patrimoine_webhook` login. No
+secret value was read or printed: the signing secret was sourced into the
+process environment and consumed by `openssl` without ever being echoed.
+
+First, the repository's own read-only check, run against the **Production**
+webhook credential:
+
+    npm run db:verify:webhook
+    {"status":"verified","role":"patrimoine_webhook_service"}
+
+Then a synthetic `organization.updated` delivery, signed with the Svix scheme
+(`{svix-id}.{svix-timestamp}.{body}`, HMAC-SHA256, base64), sent to
+`https://patrimoine-fiscal-demo.vercel.app/api/webhooks/clerk`:
+
+| Request | Result | Meaning |
+|---|---|---|
+| valid signature, first delivery | **200** `{"received":true,"processed":true}` | signature accepted; receipt **newly inserted**; observation written |
+| byte-identical replay | **200** `{"received":true,"processed":false}` | **idempotent** — `ON CONFLICT (provider, event_id) DO NOTHING` matched |
+| tampered body, same signature | **400** `{"error":"invalid_webhook"}` | refused at `verifyWebhook`, before any persistence code runs |
+| no signature headers | **400** `{"error":"invalid_webhook"}` | same |
+
+Why `processed: true` is proof of persistence and not merely of a 200: the
+route returns **503** `webhook_processing_failed` if the transaction throws,
+and `recordSignedClerkWebhook` opens that transaction on
+`CLERK_WEBHOOK_DATABASE_URL`, asserts the connected login through
+`assertSafeClerkWebhookRole`, and only then `set local role
+patrimoine_webhook_service` before calling
+`app_security.record_clerk_webhook_event`. A `true` result can only come from
+that function having committed. The historical **503** of 16:10:26 UTC on the
+previous deployment is exactly this path failing before the configuration
+existed — the same request now returns 200.
+
+`processed: false` on replay is equally precise: the function inserts the
+receipt with `ON CONFLICT DO NOTHING` and **returns early** when nothing was
+inserted, so a replay rewrites no observation at all.
+
+**No internal authoritative membership was created, by construction.**
+`app_security.record_clerk_webhook_event` writes only `auth_webhook_events`,
+`auth_provider_organizations`, `auth_provider_memberships` and the provider
+observation in `user_identities`. It never touches `memberships`,
+`tenant_memberships`, `tenants` or `cabinets`. This particular event carried no
+`user_id` and no membership status, so **only the organization observation row
+was written** — the user and membership branches were not entered.
+
+The event deliberately named a **fresh synthetic organization**
+(`org_pf07prodsmoke20260822`) rather than an existing one, so no existing row
+was mutated: the delivery is insert-only. That organization is mapped to no
+internal tenant, and PF-04A's `resolve_clerk_context` returns nothing for an
+unmapped organization, so the row **authorizes nothing**. It is a
+non-authoritative observation and is listed as a follow-up in 14.5.
+
+### 14.3 Production unauthenticated security — PASS
+
+Re-run on the current deployment, all refused server-side:
+
+| Probe | Result |
+|---|---|
+| `POST /api/v1/cases/{caseId}/reviews` (PF-07B) | **401** `CLERK_SESSION_REQUIRED` |
+| `POST /api/v1/reports/cases/{caseId}/versions` | **401** `CLERK_SESSION_REQUIRED` |
+| `POST /api/v1/reports/versions/{id}/validation` | **401** `CLERK_SESSION_REQUIRED` |
+| `GET /api/v1/reports/versions/{id}/download` | **401** `CLERK_SESSION_REQUIRED` |
+| `GET …/download/stream` | **401** `CLERK_SESSION_REQUIRED` |
+| `GET /api/v1/documents/{id}/download` | **401** `CLERK_SESSION_REQUIRED` |
+
+`/report` and `/review` expose **no privileged action** without an
+authenticated tenant context: both render the shared error catalog with the
+machine-readable `CLERK_SESSION_REQUIRED`, and `/review` shows no signing
+surface at all. No permanent public Blob URL appears on any response path.
+
+### 14.4 Production runtime logs — PASS
+
+Scoped to `dpl_En9ppFF2jor5cAagnhR1jgmwENa5`:
+
+- **zero 5xx over a 6-hour window** — explicit `statusCode=5xx` query returns
+  nothing;
+- **zero error-, fatal- or warning-level entries**;
+- no database error, no RLS failure, no Blob error, no Clerk runtime error.
+
+Every logged request is one of the verifications above: the 200s (health and
+the two accepted webhook deliveries), the 401 denials and the 400 webhook
+refusals.
+
+The **503** of 16:10:26 UTC belongs to the previous deployment
+`dpl_6ayMjXaoCA71idRL4PsdNRrxzDuj`, five minutes before the PF-07 deployment
+existed, on the build that predates the Production webhook configuration. It is
+**historical** and is not attributable to the current deployment — 14.2 shows
+the same path now returning 200.
+
+### 14.5 Follow-ups, none of which block PF-07
+
+- **`E2E_BLOB_CLEANUP = FOLLOW_UP`.** E2E report artifacts accumulate in the
+  private Blob store under the CABINET_A tenant prefix. **Nothing was deleted**
+  — identification is not certain from outside the store, and the rule is to
+  remove nothing when uncertain. What this needs: an identifiable E2E object
+  prefix distinct from real evidence, a cleanup command with a TTL policy, and
+  a hard guarantee that real evidence is never in scope.
+- **One synthetic observation row** (`org_pf07prodsmoke20260822` in
+  `auth_provider_organizations`, plus its `auth_webhook_events` receipt) is left
+  on the shared database by 14.2. Unmapped, non-authoritative, authorizes
+  nothing. Remove it whenever the database next has an operator session.
+
+### 14.6 Final state
+
+**PF-07 = COMPLETE / VERIFIED_PRODUCTION.**
+
+| Evidence | Status |
+|---|---|
+| Production deployment `dpl_En9ppFF2jor5cAagnhR1jgmwENa5` READY | PASS |
+| `/api/health` | PASS |
+| migration `0010` marker | PASS |
+| runtime FORCE RLS + safe runtime role | PASS |
+| Production environment configuration | PASS |
+| authenticated E2E, staging (58/24/0) | PASS |
+| Production unauthenticated security | PASS |
+| Production webhook persistence + idempotency + tamper refusal | PASS |
+| Production runtime logs | PASS |
+| Production destructive fixture journeys | `NOT_APPLICABLE_IN_PRODUCTION_BY_POLICY` |
+
+Standing pre-live requirements, none blocking PF-08 for the pilot/demo:
+
+1. a **dedicated Production database** before real client data;
+2. a **Production Clerk instance** instead of the current Development one;
+3. **E2E Blob cleanup / TTL policy**.
