@@ -37,7 +37,14 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-07 + PF-07B — **COMPLETE / VERIFIED_STAGING**, not pushed and no PR opened.
+PF-07 + PF-07B — **COMPLETE / VERIFIED_STAGING**, pushed, Draft PR
+[#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) open against
+`main`.
+
+**READY FOR REVIEW: YES. READY TO MERGE: NO** — one operational Production gate
+is open (see « Production readiness » below). The distinction is deliberate:
+the code is reviewable and its checks are green, but Production is not
+configured to receive it.
 
 **PF-07B closes the last product gap PF-07 documented**: a professional can now
 sign a review through the product. The authenticated journey signs the review
@@ -60,6 +67,81 @@ Vercel Preview `dpl_7YCxxiENt2VLaM3mWatbbPphkvUP` (target `preview`, never
 `--prod`) is Ready; `/api/health` answers `{"status":"ok"}` from the deployed
 runtime against real Neon — which also confirms migration `0010` landed — and
 `/review` shows the error model live. Deployment Protection was left enabled.
+
+## Publication and Production readiness (PF-07-PUBLISH)
+
+**Draft PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14)** —
+base `main`, head `claude/pf-07-cabinet-ux-auth-e2e`, draft, `MERGEABLE`,
+merge state `CLEAN`, 46 changed files, no review thread open. The branch was
+pushed normally; nothing was forced, rebased or squashed.
+
+CI: `quality` **pass**, `Vercel` **pass**, `Vercel Preview Comments` **pass**.
+The PR's own Vercel Preview answers `{"status":"ok"}` on `/api/health`, and
+`/review`, `/report`, `/cabinet` and `/dossiers` all return 200.
+
+### Production database — migration 0010 PASS
+
+Verified without reading or printing any credential, by comparing SHA-256
+digests of the identifying fields between the Production and Preview
+environments:
+
+| Field | Production vs Preview |
+|---|---|
+| `POSTGRES_NEON_PROJECT_ID` | **SAME** |
+| `POSTGRES_PGHOST` | **SAME** |
+| `POSTGRES_PGHOST_UNPOOLED` | **SAME** |
+| `POSTGRES_PGDATABASE` | **SAME** |
+| `POSTGRES_DATABASE_URL_UNPOOLED` | **SAME** |
+
+**Production and Preview target the same Neon database**, so migration `0010`
+— applied during PF-07B — is already present for Production's target. Verified
+directly on it: readiness attestation
+`{"rlsReady":true,"migration":"0010_pf07b_professional_review_signature"}`,
+11 applied migrations for 11 migration files, FORCE RLS on every sampled
+tenant table, both new CHECK constraints present, and `reviewer_user_id` now
+nullable alongside `reviewer_identity_id` and `signed_by_role`.
+
+Roles on that database: `patrimoine_runtime` and `patrimoine_webhook` are both
+`LOGIN`, `NOSUPERUSER`, `NOBYPASSRLS`; `patrimoine_app`,
+`patrimoine_fixture_service` and `patrimoine_webhook_service` are `NOLOGIN`
+group roles. `DATABASE_ADMIN_URL` is absent from every application environment,
+as PF-03C requires.
+
+### Production webhook — BLOCKED
+
+`CLERK_WEBHOOK_DATABASE_URL` is **absent from the Production environment**. The
+dedicated login itself is fine — `patrimoine_webhook` exists on the shared
+database, owns no table, holds no direct table grant, is a member of
+`patrimoine_webhook_service` and **not** of `patrimoine_app`, and
+`npm run db:verify:webhook` reports `{"status":"verified"}`. What is missing is
+the Production variable, so the webhook route would fail closed there with
+`CLERK_WEBHOOK_DATABASE_URL_REQUIRED`.
+
+It was **deliberately not provisioned in this run**, for a reason larger than
+the variable itself.
+
+### Production is not configured for the PF-03+ data layer at all
+
+A broader finding from the same audit, previously unrecorded. The Production
+environment holds **none** of:
+
+- `PERSISTENCE_MODE`
+- `DATABASE_URL`
+- `DOCUMENT_DOWNLOAD_SIGNING_SECRET`
+- `CLERK_WEBHOOK_DATABASE_URL`
+
+Only the `POSTGRES_*` variables the Neon integration publishes, plus the Blob
+and Clerk keys, are present. Because `resolvePersistenceRuntime` refuses an
+undeclared mode in production, Production currently raises
+`PERSISTENCE_MODE_REQUIRED_IN_PRODUCTION` rather than reaching the database.
+This is pre-existing — PF-06C4 scoped its variables to Preview on purpose — and
+is not something PF-07 changed.
+
+The consequence for this PR: adding only `CLERK_WEBHOOK_DATABASE_URL` would
+produce a partially configured Production, where the webhook writes to the real
+database while every other route still refuses to open it. Whether Production
+becomes a real data environment is an owner decision, not a side effect of
+merging a branch.
 
 ## Completed
 
@@ -1580,29 +1662,39 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-Review the branch `claude/pf-07-cabinet-ux-auth-e2e` (6 commits on top of the
-PR #13 merge), then push and open a PR. **Nothing has been pushed and no PR was
-opened**, per the task instruction.
+**Review Draft PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14)**
+(base `main`, head `claude/pf-07-cabinet-ux-auth-e2e`). All checks are green and
+the merge state is `CLEAN`. **Do not merge until the Production gate below is
+settled** — the code is ready for review, the environment is not ready to
+receive it.
 
-The Qualification → Hypothèses → Simulation → Preuves → Revue → Rapport chain
-is now complete and exercised end to end by an authenticated browser journey,
-so PF-08 is no longer forced to start with the review gap.
+Before merging, decide and execute one of:
 
-Open, in rough priority order:
+1. **Make Production a real data environment**: set `PERSISTENCE_MODE`,
+   `DATABASE_URL` (the `patrimoine_runtime` login), `DOCUMENT_DOWNLOAD_SIGNING_SECRET`
+   and `CLERK_WEBHOOK_DATABASE_URL` (the `patrimoine_webhook` login) on
+   Production. Migration `0010` is already present, because Production and
+   Preview share one Neon database. Note that Production would then read and
+   write the same database as Preview, which is acceptable for a pilot but not
+   for live client data.
+2. **Provision a separate Production database**, apply migrations `0000` to
+   `0010` to it through `npm run db:migrate`, create its own
+   `patrimoine_runtime` and `patrimoine_webhook` logins, then set the four
+   variables above against it.
 
-1. Provision `CLERK_WEBHOOK_DATABASE_URL`, a `patrimoine_webhook` login and
-   migration `0010` for **Production**; PF-07/PF-07B set them up on staging and
-   Preview only.
-2. Decide whether the fixture cabinet surfaces (`/cabinet`, `/dossiers`,
-   `/simulations`, `/evidence`) become authenticated product screens or are
-   retired, and give the AppShell a real dossier selector.
-3. Prune accumulated E2E report artifacts from the private Blob store under
-   the CABINET_A tenant prefix.
-4. Consider a review *request* workflow: `review.requested` exists in the audit
-   enum but nothing emits it, so a reviewer is never notified that a dossier
-   awaits them.
+Either way, `DATABASE_ADMIN_URL` must stay deployment-only and never reach the
+application runtime.
 
-Do not admit live-user data or real client documents before item 1 is settled.
+Then, after merge:
+
+3. Prune accumulated E2E report artifacts from the private Blob store under the
+   CABINET_A tenant prefix, and give them a TTL.
+4. PF-08 — regulatory watcher / next roadmap milestone. A review *request*
+   workflow is a candidate: `review.requested` exists in the audit enum but
+   nothing emits it, so a reviewer is never notified that a dossier awaits them.
+
+Do not admit live-user data or real client documents before item 1 or 2 is
+settled.
 
 ## Handoff notes
 
