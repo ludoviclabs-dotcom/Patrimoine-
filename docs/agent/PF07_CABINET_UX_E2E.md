@@ -766,7 +766,14 @@ because they matter:
    is consistent with the shared-database pilot decision, but it is a second
    pre-live item alongside database separation.
 
-### 13.6 Authenticated cabinet journeys — BLOCKED, not failed
+### 13.6 Authenticated cabinet journeys — not run on Production
+
+> **Reclassified in section 14.1.** This section originally labelled these
+> journeys BLOCKED. The correct classification is
+> `NOT_APPLICABLE_IN_PRODUCTION_BY_POLICY`: the application path is proven in
+> staging, and production replay is excluded by repository safeguards rather
+> than by a missing capability. The analysis below stands; only the label
+> changed. The webhook persistence leg it lists as unproven was closed in 14.2.
 
 The EXPERT_A signing journey, the CLIENT_A denial, the EXPERT_B cross-tenant
 denial and the revocation journey **were not executed against Production**.
@@ -820,7 +827,13 @@ Consequently these also did not run:
 
 ### 13.7 Status after this run
 
-PF-07 is **COMPLETE / VERIFIED_PRODUCTION_PARTIAL**.
+> **Superseded by section 14.** The status below was accurate when section 13
+> was written. Section 14 then closed the Production webhook gate and
+> reclassified the fixture journeys, so the final state is
+> **COMPLETE / VERIFIED_PRODUCTION**. The reasoning here is kept as the record
+> of what was known at this point.
+
+PF-07 was, at the end of this run, **COMPLETE / VERIFIED_PRODUCTION_PARTIAL**.
 
 The Production runtime is proven live, correctly configured and enforcing:
 health with the `0010` marker and FORCE RLS, the PF-07B review route deployed,
