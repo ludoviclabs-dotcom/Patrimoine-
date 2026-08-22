@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { managedPostgresMigrationMarker } from "../../lib/db/managed-readiness";
 import * as schema from "../../lib/db/schema";
 import { seedClaireMarcDemo } from "../../lib/db/seed-demo";
 import { v21PilotSeedPlan } from "../../lib/db/seed-v2-1";
@@ -292,8 +293,11 @@ describe("PF-06 server report and immutable snapshot", () => {
     `;
 
     expect(row).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
+    // Read from the shared marker rather than pinned to one migration name:
+    // the intent is that the attestation matches the current migration, and
+    // PF-06 already drift-proofed its other two assertions the same way.
     expect(readiness.readiness).toEqual({
-      migration: "0009_pf06_server_report_snapshot",
+      migration: managedPostgresMigrationMarker,
       rlsReady: true,
     });
   });

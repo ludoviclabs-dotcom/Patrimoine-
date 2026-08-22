@@ -4,9 +4,11 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { PageHero } from "@/components/ui/page-hero";
 import { ReportDocument } from "@/components/report-document";
 import { ReportPrintButton } from "@/components/report-print-button";
+import { CabinetJourneyBar } from "@/components/cabinet/cabinet-journey-bar";
 import { ServerReportConsole } from "@/components/report/server-report-console";
 import { ReportConclusionGrid, RiskPanel } from "@/components/v2-6/cabinet-refonte";
 import { requireClerkTenantContext } from "@/lib/auth/clerk-tenant-context";
+import { buildCabinetJourney } from "@/lib/cabinet/journey";
 import { reportConclusionCards } from "@/lib/cabinet-refonte/v2-6";
 import { demoHousehold } from "@/lib/demo-data/household";
 import { describeUnavailable, loadReportConsole, type ReportConsoleResult } from "@/lib/report/report-console";
@@ -64,7 +66,10 @@ export default async function ReportPage({
 
         <section className="no-print space-y-4">
           {reportConsole.available ? (
-            <ServerReportConsole state={reportConsole} />
+            <>
+              <CabinetJourneyBar journey={buildCabinetJourney(reportConsole)} />
+              <ServerReportConsole state={reportConsole} />
+            </>
           ) : (
             <Card className="border-[var(--warning)]">
               <CardHeader>
@@ -72,6 +77,9 @@ export default async function ReportPage({
                 <Badge tone="warning" dot>pipeline serveur indisponible</Badge>
               </CardHeader>
               <p className="text-sm">{reportConsole.detail}</p>
+              <p className="mt-2 text-sm font-medium">
+                Prochaine action : {reportConsole.nextAction}
+              </p>
               <code className="mt-2 block text-xs text-muted">{reportConsole.code}</code>
               <p className="mt-3 text-sm text-muted">
                 Aucun document final n&apos;est produit tant que le pipeline serveur n&apos;est pas

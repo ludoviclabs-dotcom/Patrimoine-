@@ -4,7 +4,10 @@ Last updated: 2026-08-21
 
 ## Git state
 
-Branch: claude/private-document-storage-evidence-c569fd
+Branch: claude/pf-07-cabinet-ux-auth-e2e
+HEAD before PF-07B: 08b689c3782e15f8c145e80a79c93771d0f5ea5f
+HEAD before PF-07: a7fab0b1d914dbbd28af153cc0d6d77ee4c73308 (merge of PR #13)
+Previous branch: claude/private-document-storage-evidence-c569fd
 HEAD before PF-06C4: 110e3c63c62525e0d09e646e200f833ac5397876
 HEAD before PF-06C3: 7d0e4e6adcfb8c2612db62abdb0ce9d744964381
 HEAD before PF-06C2: 029cc2bc90a6630bffb14aa15bb417bc3277a8fa
@@ -34,20 +37,152 @@ MVP cabinet-ready — Q1 2027
 
 ## Current priority
 
-PF-05-06-PUBLISH — **DONE**. The branch is pushed and Draft PR
-[#13](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/13) is open
-against `main` with 44 changed files, carrying the PF-05, PF-06, PF-06B and
-PF-06C* work plus its documentation records. GitHub CI (`quality`) and
-both Vercel checks PASS. PF-05 and PF-06 are **VERIFIED_STAGING**: the full
-private-document and server-report chain was exercised against the real Vercel
-Private Blob store, the real Neon database and real Clerk identity resolution,
-19 gates PASS and 0 FAIL. The PR is **not merged** and auto-merge is off.
+PF-07 + PF-07B — **COMPLETE / VERIFIED_STAGING**, pushed, Draft PR
+[#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14) open against
+`main`.
 
-Two non-blocking follow-ups remain: an authenticated Playwright fixture and the
-Clerk webhook persistence leg (`CLERK_WEBHOOK_DATABASE_URL`).
+**READY FOR REVIEW: YES. READY TO MERGE: YES** — the Production gate is closed.
+Production is now configured for the PF-03+ data layer against the shared pilot
+database (see « Pilot deployment decision » below).
+
+**PF-07B closes the last product gap PF-07 documented**: a professional can now
+sign a review through the product. The authenticated journey signs the review
+before validating, so the E2E pre-seeded `approved` review is gone.
+
+The two follow-ups PF-06C4 left open are closed:
+
+- **Clerk webhook persistence: PASS.** A dedicated `patrimoine_webhook` login
+  is provisioned on the real Neon staging database and
+  `CLERK_WEBHOOK_DATABASE_URL` is set on Vercel Preview. 9 gates PASS, 0 FAIL
+  against real Neon through the real route handler.
+- **Authenticated Playwright: PASS.** 8 journeys on 2 browser projects, with
+  real Clerk sessions, FORCE RLS and the real capability matrix.
+  `E2E_CLERK_FIXTURE=1 npm run e2e` gives **58 passed, 24 skipped, 0 failed** —
+  previously 12 passed with the authenticated journeys skipped.
+
+Full report: `docs/agent/PF07_CABINET_UX_E2E.md`
+
+Vercel Preview `dpl_7YCxxiENt2VLaM3mWatbbPphkvUP` (target `preview`, never
+`--prod`) is Ready; `/api/health` answers `{"status":"ok"}` from the deployed
+runtime against real Neon — which also confirms migration `0010` landed — and
+`/review` shows the error model live. Deployment Protection was left enabled.
+
+## Publication and Production readiness (PF-07-PUBLISH)
+
+**Draft PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14)** —
+base `main`, head `claude/pf-07-cabinet-ux-auth-e2e`, draft, `MERGEABLE`,
+merge state `CLEAN`, 46 changed files, no review thread open. The branch was
+pushed normally; nothing was forced, rebased or squashed.
+
+CI: `quality` **pass**, `Vercel` **pass**, `Vercel Preview Comments` **pass**.
+The PR's own Vercel Preview answers `{"status":"ok"}` on `/api/health`, and
+`/review`, `/report`, `/cabinet` and `/dossiers` all return 200.
+
+### Production database — migration 0010 PASS
+
+Verified without reading or printing any credential, by comparing SHA-256
+digests of the identifying fields between the Production and Preview
+environments:
+
+| Field | Production vs Preview |
+|---|---|
+| `POSTGRES_NEON_PROJECT_ID` | **SAME** |
+| `POSTGRES_PGHOST` | **SAME** |
+| `POSTGRES_PGHOST_UNPOOLED` | **SAME** |
+| `POSTGRES_PGDATABASE` | **SAME** |
+| `POSTGRES_DATABASE_URL_UNPOOLED` | **SAME** |
+
+**Production and Preview target the same Neon database**, so migration `0010`
+— applied during PF-07B — is already present for Production's target. Verified
+directly on it: readiness attestation
+`{"rlsReady":true,"migration":"0010_pf07b_professional_review_signature"}`,
+11 applied migrations for 11 migration files, FORCE RLS on every sampled
+tenant table, both new CHECK constraints present, and `reviewer_user_id` now
+nullable alongside `reviewer_identity_id` and `signed_by_role`.
+
+Roles on that database: `patrimoine_runtime` and `patrimoine_webhook` are both
+`LOGIN`, `NOSUPERUSER`, `NOBYPASSRLS`; `patrimoine_app`,
+`patrimoine_fixture_service` and `patrimoine_webhook_service` are `NOLOGIN`
+group roles. `DATABASE_ADMIN_URL` is absent from every application environment,
+as PF-03C requires.
+
+### Production webhook — PASS
+
+`CLERK_WEBHOOK_DATABASE_URL` is now configured on Production with the dedicated
+`patrimoine_webhook` login. Re-verified immediately before configuring it:
+`LOGIN`, `NOSUPERUSER`, `NOBYPASSRLS`, `NOINHERIT`, owns **0** tables, holds
+**0** direct table grants, is a member of `patrimoine_webhook_service` and
+**not** of `patrimoine_app` or `patrimoine_fixture_service`.
+`npm run db:verify:webhook` reports `{"status":"verified"}`.
+
+### PILOT DEPLOYMENT DECISION
+
+**Production and Preview temporarily share the same Neon database.** This is
+accepted for the current demo/pilot environment, on the owner's explicit
+decision. **A dedicated Production database remains a pre-live requirement
+before real client data is admitted.**
+
+This is recorded here, in `docs/agent/PF07_CABINET_UX_E2E.md` and in the
+next-task list so it cannot become silent debt. Two consequences follow while
+it stands, and both are real:
+
+1. A write made from Preview is visible in Production and vice versa. The
+   authenticated E2E suite writes to this database — synthetic tenants only,
+   but into the same rows Production reads.
+2. Revoking Preview access means revoking Production access, because both use
+   the same `patrimoine_runtime` login.
+
+### Production environment, now configured
+
+| Variable | Production | Note |
+|---|---|---|
+| `DATABASE_URL` | CONFIGURED | `patrimoine_runtime`, sensitive, Production-scoped |
+| `PERSISTENCE_MODE` | CONFIGURED | `DATABASE` |
+| `DOCUMENT_DOWNLOAD_SIGNING_SECRET` | CONFIGURED | fresh 48 random bytes, **not** the Preview value, sensitive |
+| `CLERK_WEBHOOK_DATABASE_URL` | CONFIGURED | `patrimoine_webhook`, sensitive |
+| `BLOB_READ_WRITE_TOKEN` | CONFIGURED | pre-existing |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | CONFIGURED | pre-existing |
+| `CLERK_SECRET_KEY` | CONFIGURED | pre-existing |
+| `CLERK_WEBHOOK_SIGNING_SECRET` | CONFIGURED | pre-existing |
+| `DATABASE_ADMIN_URL` | **ABSENT** | deployment-only, as PF-03C requires |
+
+The four new variables are scoped to **Production only**; they do not leak into
+Preview or Development. No value was read or printed.
+
+**The `patrimoine_runtime` password was rotated** to obtain a usable connection
+string, because the Preview `DATABASE_URL` is stored as a sensitive variable
+and is therefore write-only. The rotation set the password only — Neon's owner
+is not a superuser and may not restate `SUPERUSER`/`BYPASSRLS`, which is itself
+the guarantee that the rotation could not widen the role. The attributes and
+group membership were asserted unchanged afterwards, and the Preview variable
+was updated to the same new credential so neither environment is left holding a
+dead one. Any previously exported copy of the old value no longer works.
+
+`PERSISTENCE_MODE=DATABASE` becomes effective on the next Production
+deployment, which should be the one produced by merging PF-07. The old `main`
+was **not** redeployed to apply it early.
+
+### Pre-merge database gate — PASS
+
+Run against the shared database with the rotated runtime credential:
+
+- `npm run db:verify` → `{"status":"verified","migration":"0010_pf07b_professional_review_signature"}`.
+  That single command covers the migration count matching the file count, the
+  controlled group roles being `NOLOGIN`/non-super/non-bypass, FORCE RLS on
+  every declared table, and `assertSafeDatabaseRuntimeRole` on the runtime
+  login.
+- `npm run db:verify:webhook` → `{"status":"verified","role":"patrimoine_webhook_service"}`.
+
+Migration `0010` was **not** re-applied: it was already present.
 
 ## Completed
 
+- **PF-07B COMPLETE / VERIFIED_STAGING — professional review signing: server
+  action, `/review` screen, migration `0010`, and the authenticated
+  review-to-validation journey with no pre-seeded approval.**
+- **PF-07 COMPLETE / VERIFIED_STAGING — Clerk webhook persistence, authenticated
+  Clerk E2E fixture and journeys, fact-derived cabinet journey, shared error
+  catalog, responsive and accessibility regression suites.**
 - Agent context layer installed.
 - 2026-08 reference baseline installed.
 - Source routing configured.
@@ -84,6 +219,240 @@ Clerk webhook persistence leg (`CLERK_WEBHOOK_DATABASE_URL`).
   storage, audited downloads, and the cabinet report screen wired onto the
   server pipeline with staleness detection and explicit error states. Proven
   against real providers in PF-06C4.**
+
+## PF-07B — Professional review signing (COMPLETE / VERIFIED_STAGING)
+
+Branch: `claude/pf-07-cabinet-ux-auth-e2e`
+
+HEAD before PF-07B: `08b689c3782e15f8c145e80a79c93771d0f5ea5f`
+
+Full report: `docs/agent/PF07_CABINET_UX_E2E.md` section 12
+
+PF-07B adds no fiscal engine, and changes no fiscal rule, rate, threshold,
+effective date, calculation step or golden expected result. It closes the one
+gap PF-07 documented rather than fixed, and nothing else.
+
+**Why a migration was required, and why it is safe.** The review model already
+existed and was almost sufficient: `professional_reviews` carries the decision
+enum, the motive, required actions, timestamp, composite tenant FKs and FORCE
+RLS; `patrimoine_app` already held INSERT; `review.decided` already existed in
+the audit enum; PF-06 reads the newest review, so a decision is an append.
+One column blocked it — `reviewer_user_id uuid NOT NULL REFERENCES users(id)`,
+pointing at the v1 per-tenant table. Every actor column added since PF-03A
+points at `user_identities`, a Clerk session resolves to an identity, and
+**there is no linkage between the two tables**. The existing PF-06 tests only
+insert a review because the demo fixture gives `users[2]` and
+`user_identities[2]` the same UUID — a fixture coincidence a real authenticated
+expert cannot rely on. Migration
+`0010_pf07b_professional_review_signature.sql` mirrors line for line what
+PF-03A already did to `audit_logs`: `DROP NOT NULL` on the legacy column, add
+`reviewer_identity_id`, add `signed_by_role`, plus two CHECK constraints (a
+review always names a reviewer; a decided review always carries its timestamp)
+and the index matching PF-06's read. Additive: no row rewritten, legacy rows
+keep their `reviewer_user_id`. **The migration was approved before it was
+written**, per the task's STOP instruction.
+
+**The server action.** `lib/review/review-service.ts` and
+`POST /api/v1/cases/{caseId}/reviews`: Clerk session → tenant context →
+central capability matrix → RLS transaction → append-only audit. Two decisions
+only (`approved`, `changes_requested`); `pending` is a state, not a signature,
+and `rejected` would be a third workflow — neither was invented. The motive is
+mandatory and refused before any authorization work. A decision appends a row,
+so the review history is preserved. The audit event carries the decision, the
+signing role and the review id, never the motive.
+
+**RBAC, from the existing matrix, nothing invented.** `simulation.review` is
+held by admin and expert. Conseiller, client and auditeur are denied — the role
+that generates a report is deliberately not the role that reviews it. Cabinet B
+on a cabinet A dossier gets `DOSSIER_NOT_FOUND` (invisible under RLS, never
+confirmed to exist); a revoked member gets `TENANT_MEMBERSHIP_REQUIRED`; an
+unknown identity gets `CLERK_TENANT_CONTEXT_DENIED`.
+
+**A defect found while closing the gap.** `validateVersion` computed its
+blocking flags from the *stored* snapshot only, so a version generated while
+the review was signed could still be approved after a later review asked for
+changes. PF-06B's documentation claimed the server enforced staleness; the UI
+disabled the button but the server did not. Approving an `outdated` version is
+now refused with `REPORT_REGENERATION_REQUIRED`; `changes_requested` and
+`rejected` stay allowed while stale, which is the point of asking for changes.
+
+**The review screen.** `/review` resolves its own tenant context exactly as
+`/report` does and **reuses the same server read model**, extended with the
+review history and a `signReview` capability — no parallel model, so a role, a
+blocker or a decision cannot disagree between the two cabinet screens. The
+fixture queue below is untouched. A client sees no signing surface.
+
+**The E2E pre-seed is gone.** `lib/db/seed-e2e-fixture.ts` no longer inserts an
+`approved` review. The journey is now: sign `changes_requested` → gate stays
+closed and the delivered draft is untouched → sign `approved` → the *revue*
+stage turns done → regenerate (the draft went stale) → validate → download.
+
+Files changed for PF-07B:
+
+- `drizzle/0010_pf07b_professional_review_signature.sql`, migration journal;
+- `lib/db/schema.ts`, `lib/db/managed-readiness.ts`, `lib/db/seed-e2e-fixture.ts`;
+- `lib/review/review-service.ts` (new),
+  `app/api/v1/cases/[caseId]/reviews/route.ts` (new);
+- `lib/report/report-service.ts` (staleness guard),
+  `lib/report/report-console.ts` (review history + `signReview` capability),
+  `lib/documents/runtime.ts`, `lib/errors/error-catalog.ts`;
+- `components/review/server-review-console.tsx` (new), `app/review/page.tsx`;
+- `tests/postgres/pf07b-professional-review.test.ts` (new),
+  `tests/unit/pf07b-professional-review.test.ts` (new),
+  `tests/e2e/authenticated-cabinet.spec.ts`,
+  `tests/postgres/pf06-server-report.test.ts`,
+  `tests/postgres/pf06b-report-console.test.ts`,
+  `tests/unit/pf06-server-report.test.ts`,
+  `tests/unit/pf07-cabinet-journey.test.ts`;
+- `docs/agent/PF07_CABINET_UX_E2E.md`, `docs/agent/CURRENT_STATE.md`.
+
+Two pre-existing assertions were drift-proofed rather than re-pinned to `0010`:
+the PF-06 readiness attestation now reads `managedPostgresMigrationMarker`, and
+the unit marker test asserts the marker names the newest migration file.
+
+Validation executed: `npm test` PASS (36 files, 445 tests); `npm run
+test:postgres` PASS (6 files, 66 tests, migrations `0000` to `0010`); `npm run
+e2e` PASS (36 passed, 46 skipped); `E2E_CLERK_FIXTURE=1 npm run e2e` **PASS (58
+passed, 24 skipped, 0 failed)**; `npx tsc --noEmit` PASS; `npm run lint` PASS;
+`npm run build` PASS after `rm -rf .next`; `git diff --check` PASS.
+
+Migration `0010` applied to the real Neon staging database. Vercel Preview
+`dpl_7YCxxiENt2VLaM3mWatbbPphkvUP`, target `preview`, Ready; `/api/health`
+returns `{"status":"ok"}`, which is what proves the migration landed on the
+runtime login's view of the database. `/review`, `/report`, `/cabinet` and
+`/dossiers` all answer 200.
+
+Not pushed. No PR opened.
+
+## PF-07 — Cabinet UX, authenticated E2E and workflow hardening (COMPLETE / VERIFIED_STAGING)
+
+Branch: `claude/pf-07-cabinet-ux-auth-e2e`
+
+HEAD before PF-07: `a7fab0b1d914dbbd28af153cc0d6d77ee4c73308`
+
+Full report: `docs/agent/PF07_CABINET_UX_E2E.md`
+
+PF-07 adds no fiscal engine, and changes no fiscal rule, rate, threshold,
+effective date, calculation step or golden expected result. **No migration was
+written**: the roles and functions PF-07 needed already existed from PF-04A.
+
+**Inventory finding that shaped the work.** The routes named in the objective
+are two products, not one. `/cabinet`, `/dossiers`, `/simulations`,
+`/simulations/lab`, `/evidence` and `/review` are unauthenticated fixture
+surfaces holding no tenant data; `/report` is the only cabinet screen wired to
+PostgreSQL, RLS and RBAC. `proxy.ts` protects `/workspace(.*)` only, which is
+correct: `/report` resolves its own context and degrades to a named unavailable
+state, and the demo routes have nothing to guard.
+
+**Clerk webhook persistence — PASS.** `patrimoine_webhook_service` already had
+exactly the right minimal grants, so nothing was widened and no migration was
+added. What was missing was a login able to assume it, a check that the login
+is narrow, and evidence. `assertSafeClerkWebhookRole` now refuses superuser,
+BYPASSRLS, table ownership, direct table privileges, the ability to assume
+`patrimoine_app`, and the service role connecting directly.
+`npm run db:verify:webhook` verifies a provisioned URL read-only. A dedicated
+`patrimoine_webhook` login was created on real Neon and
+`CLERK_WEBHOOK_DATABASE_URL` added to Vercel Preview as a sensitive variable;
+no value was read or printed. 9 gates PASS / 0 FAIL against real Neon: valid
+signature persisted, observations recorded as non-authoritative, replay
+idempotent, tampered and unsigned denied with nothing written, no internal
+membership created, synthetic rows cleaned up.
+
+**Authenticated Clerk fixture — PASS, no password anywhere.** Sign-in uses the
+official Clerk `ticket` strategy via `@clerk/testing`: the helper mints a
+short-lived Backend-API sign-in token. Five synthetic `+clerk_test` identities
+were provisioned on the development instance (the script refuses anything
+else). `lib/auth/e2e-fixture-plan.ts` is the single declaration read by the
+provisioning script, the seed and the specs. With `E2E_CLERK_FIXTURE=1` the
+runner provisions a disposable PostgreSQL cluster, migrates it through the
+journalled path, creates a PF-03C-shaped runtime login and seeds the Clerk
+mapping; without the flag the public suite runs unchanged with no credential.
+
+**Authenticated journeys — 8 journeys on 2 projects, all PASS.** Adviser
+generates a watermarked DRAFT on the real Blob; expert validates into version
+n+1 without mutating the draft and downloads the private PDF; client reads the
+granted dossier, is offered no cabinet action, **loads no report version at
+all**, and is refused `TENANT_AUTHORIZATION_DENIED` on a direct
+`report.validate` call; cabinet B gets an empty listing rather than a
+disclosing 404 and is refused on every cabinet A resource by id; a Clerk
+organization member with no internal row is denied `CLERK_TENANT_CONTEXT_DENIED`
+by both the page and the API; a revoked membership denies access while the
+browser still holds a valid Clerk session cookie. No security control was
+relaxed to make any of them pass.
+
+**Cabinet journey — decoration replaced by fact.** The previous stepper was
+rendered with a hardcoded `current={1}`, identical for every dossier.
+`lib/cabinet/journey.ts` derives the six stages from the facts the report
+console already loads, keeps `review` distinct from `blocked` so a vigilance
+point is never presented as a stop, and advertises the first genuine stop as
+the next action. It is a server component computed in the same tenant
+transaction as the console.
+
+**Error model — one catalog.** Three partial private copy tables were replaced
+by `lib/errors/error-catalog.ts`, covering every code in the API status map
+with a title, explanation, next action and severity. A test reads that map
+directly, so a new server code without user-facing wording fails the suite.
+Every string is a constant, so no message can carry data from another cabinet,
+and cross-tenant refusals never confirm existence.
+
+**Responsive — no defect found.** 7 routes at 6 widths (375/390/430/768/1024/
+1440) plus tap targets: all PASS with no layout change. The audit is now a
+regression test.
+
+**Accessibility — one defect found and fixed.** `/report` carried two `h1`
+elements because the browser preview titled itself as the page; it is one
+section of that page, so its title became an `h2` and its 18 sub-headings were
+demoted to `h3`. Headings only. The other 15 checks passed already.
+
+**Server boundaries — nothing to fix.** No client component imports the
+database, the Blob SDK or the storage adapter; none reads a server secret; the
+console fetches only to mutate, so there is no client-side read waterfall.
+
+Deliberately left open, documented rather than papered over: PF-06 exposes no
+route to **sign a professional review**, so the *revue* stage has no server
+action. The PostgreSQL suite signs it with SQL and the E2E fixture seeds it as
+`approved` so the browser journey can reach validation. That is the one real
+hole in the Qualification-to-Rapport chain and the natural first PF-08 item.
+The fixture cabinet surfaces and the hardcoded AppShell dossier context are
+also unchanged, on purpose.
+
+Files changed for PF-07:
+
+- `lib/db/managed-readiness.ts`, `lib/auth/clerk-webhook-repository.ts`,
+  `scripts/managed-postgres-readiness.ts`, `scripts/run-postgres-tests.mjs`,
+  `package.json`, `package-lock.json`, `vitest.config.ts`;
+- `lib/auth/e2e-fixture-plan.ts`, `lib/db/seed-e2e-fixture.ts`,
+  `scripts/e2e-clerk-fixture.ts`, `scripts/seed-e2e-fixture.ts`,
+  `scripts/run-e2e.mjs`, `playwright.config.ts`, `tests/e2e/global-setup.ts`,
+  `tests/e2e/support/clerk-fixture.ts`;
+- `lib/cabinet/journey.ts`, `components/cabinet/cabinet-journey-bar.tsx`,
+  `lib/errors/error-catalog.ts`, `lib/report/report-console.ts`,
+  `components/report/server-report-console.tsx`, `components/report-document.tsx`,
+  `app/report/page.tsx`;
+- `tests/unit/pf07-clerk-webhook.test.ts`, `tests/unit/pf07-error-model.test.ts`,
+  `tests/unit/pf07-cabinet-journey.test.ts`,
+  `tests/postgres/pf07-clerk-webhook-persistence.test.ts`,
+  `tests/e2e/authenticated-cabinet.spec.ts`,
+  `tests/e2e/responsive-cabinet.spec.ts`,
+  `tests/e2e/accessibility-cabinet.spec.ts`,
+  `tests/e2e/report-server-pipeline.spec.ts`;
+- `docs/agent/PF07_CABINET_UX_E2E.md` (new), `docs/agent/CURRENT_STATE.md`.
+
+Validation executed: `npm test` PASS (35 files, 434 tests); `npm run
+test:postgres` PASS (5 files, 50 tests); `npm run e2e` PASS (36 passed, 40
+skipped); `E2E_CLERK_FIXTURE=1 npm run e2e` **PASS (52 passed, 24 skipped, 0
+failed)**; `npx tsc --noEmit` PASS; `npm run lint` PASS; `npm run build` PASS
+after `rm -rf .next`; `git diff --check` PASS.
+
+Vercel Preview `dpl_8uh8YNwZmPBYBpD298wmCy6a4fR7`, target `preview`, Ready.
+Deployment Protection left enabled; routes reached through the Vercel share
+mechanism rather than by changing a setting. `/api/health` returns
+`{"status":"ok"}` from the deployed runtime against real Neon; `/cabinet`,
+`/dossiers`, `/simulations`, `/evidence`, `/review` and `/report` all answer
+200, and `/report` shows the new error model live (`CLERK_SESSION_REQUIRED`,
+title « Authentification requise », plus a « Prochaine action » line).
+
+Not pushed. No PR opened.
 
 ## PF-06C4 — Runtime verification on real providers (COMPLETE / VERIFIED_STAGING)
 
@@ -1171,62 +1540,71 @@ None.
 
 ## Tests
 
-Unit: PASS — `npm test` after PF-06C: 32 files, 398 tests, 0 failures.
-PostgreSQL/RLS: PASS — 4 files, 39 tests, 0 failing on a fresh native ephemeral
-PostgreSQL 18.4 cluster after migrations `0000` through `0009`.
-E2E: PASS — `npm run e2e` runs again after the PF-06C harness fix: 12 passed,
-4 skipped (the authenticated journeys, gated on `E2E_CLERK_FIXTURE=1`). This
-was BLOCKED from PF-03B through PF-06B.
-Staging gates: PASS — 16 gates executed against real Neon PostgreSQL and the
-real Clerk development instance in PF-06C2, 16 PASS and 0 FAIL (organization
-mapping, Clerk session negatives, cross-tenant isolation, audit scoping,
-revocation).
-TypeScript: PASS — `npx tsc --noEmit` exit 0
-Lint: PASS — `npm run lint` exit 0
-Build: PASS — `npm run build` exit 0
-PostgreSQL fresh migration + synthetic seed: PASS — `npm run test:postgres`
-executed migrations `0000` through `0005`, then passed 12 tests; no shared or
-user database was touched.
+Unit: PASS — `npm test` after PF-07B: 36 files, 445 tests, 0 failures.
+PostgreSQL/RLS: PASS — 6 files, 66 tests on a fresh native ephemeral cluster
+after migrations `0000` through `0010`.
+E2E public: PASS — `npm run e2e`: 36 passed, 46 skipped (the authenticated
+journeys plus the viewport-driven audits, which run once on `chromium`).
+**E2E authenticated: PASS — `E2E_CLERK_FIXTURE=1 npm run e2e`: 58 passed, 24
+skipped, 0 failed.** The 11 authenticated journeys run on `chromium` and on
+Pixel 7 against real Clerk sessions, a disposable PostgreSQL with FORCE RLS
+and a `NOBYPASSRLS` runtime login, and the real private Blob store. They were
+BLOCKED from PF-03B through PF-06C4.
+**Review signing: PASS — the expert signs the review through the product; the
+E2E no longer pre-seeds an approved review.** `changes_requested` keeps the
+gate closed and leaves the delivered draft byte-identical; `approved` opens it;
+a client and cabinet B are refused by the server, not by the interface.
+Responsive: PASS — 7 cabinet routes at 375, 390, 430, 768, 1024 and 1440 px,
+no page-level horizontal overflow, primary tap targets ≥ 44 px.
+Accessibility: PASS — 16 checks. One defect was found and fixed in PF-07:
+`/report` had two `h1` elements.
+Webhook gates: PASS — 9 gates against real Neon through the real route
+handler; 11 PostgreSQL tests on the ephemeral cluster.
+Staging gates: PASS — 16 gates in PF-06C2 and 19 in PF-06C4 against real Neon
+and the real Clerk development instance.
+TypeScript: PASS — `npx tsc --noEmit` exit 0.
+Lint: PASS — `npm run lint` exit 0.
+Build: PASS — `npm run build` exit 0 after `rm -rf .next`.
 git diff --check: PASS — exit 0, no whitespace/conflict-marker errors.
-E2E: NOT RUN — Playwright harness starts a server, not reliably runnable in this
-non-interactive environment. PF-03B changes repository/database boundaries, not
-an authenticated browser flow; E2E remains required before production release.
 
 ## Open blockers
 
+**Every residual item from PF-06C4 and PF-07 is now CLOSED.**
+
+- **Authenticated Playwright — RESOLVED (PF-07).** Sign-in uses the official
+  Clerk `ticket` strategy through `@clerk/testing`: a short-lived Backend-API
+  sign-in token, so no password is set, stored, requested or typed anywhere.
+- **Clerk webhook persistence — RESOLVED on Preview (PF-07).** A dedicated
+  `patrimoine_webhook` login is provisioned on real Neon and
+  `CLERK_WEBHOOK_DATABASE_URL` is set on Vercel Preview. 9 gates PASS, 0 FAIL.
+  **Production still needs the same variable and login.**
+- **Professional review signing — RESOLVED (PF-07B).** The *revue* stage has a
+  real server action, `/review` carries it, and the authenticated journey signs
+  the review before validating. The E2E pre-seeded approval is gone.
+
+No PF-07B implementation blocker. What remains is operational or deliberate:
+
+1. **Production** needs `CLERK_WEBHOOK_DATABASE_URL`, a production
+   `patrimoine_webhook` login, and migration `0010`. Staging has all three.
+2. `/cabinet`, `/dossiers`, `/simulations`, `/simulations/lab` and `/evidence`
+   remain unauthenticated fixture surfaces holding no tenant data, and the
+   AppShell dossier selector is still hardcoded. `/report` and `/review` are
+   the authenticated cabinet screens.
+3. E2E report artifacts accumulate in the private Blob store under the
+   CABINET_A tenant prefix; harmless and identifiable, worth pruning.
+4. `rejected` as a third review decision, and a review *request* workflow
+   (`review.requested` exists in the audit enum but nothing emits it), are
+   deliberately not implemented — neither was invented without a need.
+
 No PF-06B implementation blocker. The DRAFT to REVIEW to VALIDATED to DOWNLOAD
 workflow, staleness detection, cross-tenant refusal and the explicit error
-surface pass against real PostgreSQL RLS with an in-memory storage adapter.
-
-The Playwright harness blocker is RESOLVED in PF-06C: Next 16 proxies each
-request to its render worker through `localhost`, and the runner pinned the
-server to IPv4-only `127.0.0.1`, so the internal hop never connected. Removing
-that pin (plus fixing a busy-wait in the readiness probe) restores the suite:
-12 passed, 4 skipped. The 4 skipped are the authenticated journeys, still gated
-on `E2E_CLERK_FIXTURE=1`: the Clerk development instance exists and is mapped,
-but an interactive browser sign-in fixture does not.
-
-Real provider evidence is DELIVERED as of PF-06C4. The owner reconnected the
-Blob store, both previously empty secrets now carry real values, and the whole
-chain was exercised against the real Vercel Private Blob, the real Neon
-database and real Clerk identity resolution: **19 gates PASS, 0 FAIL**.
-
-Two residual items remain, neither blocking PF-05/PF-06 publication:
-
-- **Authenticated Playwright** — the journeys need interactive Clerk sign-in
-  for EXPERT_A / CLIENT_A / EXPERT_B. Those are human account passwords that
-  this session must not request or handle. The harness itself is healthy
-  (12 passed, 4 skipped).
-- **Clerk webhook persistence leg** — the signature layer PASSES (valid
-  accepted, tampered and unsigned rejected, idempotency key stable), but
-  `recordSignedClerkWebhook` needs `CLERK_WEBHOOK_DATABASE_URL`, the separate
-  `patrimoine_webhook_service` login, which is not provisioned. This is a
-  PF-04A concern.
+surface pass against real PostgreSQL RLS and through a real Clerk session in
+the browser. PF-07B additionally made the server refuse approving a **stale**
+version, which PF-06B's documentation had claimed without the code enforcing it.
 
 No PF-06 implementation blocker. Snapshot determinism, reproducible PDF
 rendering, the readiness gate, expert-only validation, version immutability and
-audited downloads are proven, and the report round-trip on the real private
-Blob store PASSED in PF-06C4.
+audited downloads are proven on real providers.
 
 No PF-05 implementation blocker. The private document chain — upload,
 versioning, quarantine, soft deletion, download grants, cross-tenant and
@@ -1234,12 +1612,12 @@ revocation refusals — is proven, and the document round-trip on the real
 private Blob store PASSED in PF-06C4.
 
 No PF-03C implementation blocker. Managed-provider credentials and migrations
-`0000` to `0009` are delivered on the real Neon staging database, with FORCE
-RLS and a `NOBYPASSRLS` runtime login verified. Still NOT_RUN on the managed
-database, and unrelated to the PF-05/PF-06 merge: the provider-native
-backup/restore procedure and the `db:smoke` staging write. The P1/P2 fiscal
-backlog, regulatory-review items and recalculation candidates below remain
-open.
+`0000` to `0010` are delivered on the real Neon staging database, with FORCE
+RLS and a `NOBYPASSRLS` runtime login verified; the deployed Vercel Preview
+runtime confirms it by answering `{"status":"ok"}` on `/api/health`. Still
+NOT_RUN on the managed database: the provider-native backup/restore procedure
+and the `db:smoke` staging write. The P1/P2 fiscal backlog, regulatory-review
+items and recalculation candidates below remain open.
 
 ## Regulatory verification required
 
@@ -1316,18 +1694,35 @@ P2 (structural, low risk):
 
 ## Next recommended task
 
-Review the PF-05/PF-06 Draft PR
-([#13](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/13)), verify
-GitHub CI and the final diff, then merge before starting PF-07 in a fresh
-session.
+**Merge Draft PR [#14](https://github.com/ludoviclabs-dotcom/Patrimoine-/pull/14)**
+once reviewed. It is marked ready for review, all checks are green, the merge
+state is `CLEAN`, and the Production environment is configured to receive it.
+The merge deployment is what makes `PERSISTENCE_MODE=DATABASE` effective in
+Production.
 
-Optionally, before production: provide a Clerk sign-in fixture so the
-authenticated Playwright journeys can run, and provision
-`CLERK_WEBHOOK_DATABASE_URL` to exercise the webhook persistence leg. Do not
-admit live-user data or real client documents until those two are settled.
+After merge:
 
-PF-07 — Cabinet UX, responsive workflow and full authenticated E2E — must not
-start before the PR is merged.
+1. Verify Production `/api/health` answers `{"status":"ok"}` from the merge
+   deployment. It exercises the rotated `patrimoine_runtime` credential, the
+   `0010` marker and FORCE RLS against the real database.
+2. Perform a signed Clerk webhook persistence smoke against Production, now
+   that `CLERK_WEBHOOK_DATABASE_URL` is configured there.
+3. Prune accumulated E2E report artifacts from the private Blob store under the
+   CABINET_A tenant prefix, and give them a TTL.
+
+**Before real client data is admitted** — this is the standing pre-live
+requirement created by the pilot decision above:
+
+4. Provision a **dedicated Production database**, apply migrations `0000` to
+   `0010` to it, create its own `patrimoine_runtime` and `patrimoine_webhook`
+   logins, and repoint the Production variables. Until then Production and
+   Preview share one database and one runtime credential.
+
+Then PF-08 — regulatory watcher / next roadmap milestone. A review *request*
+workflow is a candidate: `review.requested` exists in the audit enum but
+nothing emits it, so a reviewer is never notified that a dossier awaits them.
+
+Do not admit live-user data or real client documents before item 4 is settled.
 
 ## Handoff notes
 

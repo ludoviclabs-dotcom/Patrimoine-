@@ -1,5 +1,5 @@
 export const managedPostgresMigrationMarker =
-  "0009_pf06_server_report_snapshot";
+  "0010_pf07b_professional_review_signature";
 
 export const managedPostgresRlsTables = [
   "tenants",
@@ -56,5 +56,39 @@ export function assertSafeDatabaseRuntimeRole(role: DatabaseRuntimeRole) {
     || role.roleName === "patrimoine_app"
   ) {
     throw new Error("DATABASE_RUNTIME_ROLE_UNSAFE");
+  }
+}
+
+/**
+ * PF-07 — login identity behind CLERK_WEBHOOK_DATABASE_URL.
+ *
+ * The webhook leg is deliberately narrower than the application runtime: it
+ * may assume patrimoine_webhook_service (whose only privilege is EXECUTE on
+ * app_security.record_clerk_webhook_event) and nothing else. It must not be
+ * the application runtime login, must not own a table, and must hold no direct
+ * table privilege of its own — otherwise a compromised webhook endpoint would
+ * reach tenant data that the SECURITY DEFINER function never exposes.
+ */
+export type DatabaseWebhookRole = Readonly<{
+  roleName: string;
+  isSuperuser: boolean;
+  bypassesRls: boolean;
+  canAssumeWebhookRole: boolean;
+  canAssumeApplicationRole: boolean;
+  hasDirectTablePrivileges: boolean;
+  ownsTables: boolean;
+}>;
+
+export function assertSafeClerkWebhookRole(role: DatabaseWebhookRole) {
+  if (
+    role.isSuperuser
+    || role.bypassesRls
+    || !role.canAssumeWebhookRole
+    || role.canAssumeApplicationRole
+    || role.hasDirectTablePrivileges
+    || role.ownsTables
+    || role.roleName === "patrimoine_webhook_service"
+  ) {
+    throw new Error("CLERK_WEBHOOK_DATABASE_ROLE_UNSAFE");
   }
 }

@@ -161,7 +161,9 @@ export function ReportDocument({
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">
             Rapport cabinet fiscal evidence-first
           </p>
-          <h1 className="mt-2 text-3xl font-bold text-foreground">{household.name}</h1>
+          {/* The page hero owns the h1. This preview is one section of that page,
+              so its title is an h2 and its own sections nest beneath it. */}
+          <h2 className="mt-2 text-3xl font-bold text-foreground">{household.name}</h2>
           <p className="mt-2 text-sm text-muted">
             {household.profile} - {household.fiscalResidence} - {household.children} enfants
           </p>
@@ -177,7 +179,7 @@ export function ReportDocument({
       <LegalNotice compact />
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">Sommaire</h2>
+        <h3 className="text-lg font-semibold text-foreground">Sommaire</h3>
         <div className="mt-3 grid gap-2 text-sm leading-6 text-muted md:grid-cols-2">
           {[
             "Synthèse exécutive",
@@ -200,7 +202,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">1. Synthèse exécutive</h2>
+        <h3 className="text-lg font-semibold text-foreground">1. Synthèse exécutive</h3>
         <p className="mt-3 text-sm leading-6 text-muted">
           Plateforme de préparation de dossier, simulation indicative et validation
           professionnelle. Aucun conseil fiscal ou juridique définitif n&apos;est rendu par ce rapport.
@@ -214,7 +216,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">1 bis. Deux lectures du rapport</h2>
+        <h3 className="text-lg font-semibold text-foreground">1 bis. Deux lectures du rapport</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {clientAdvisorReportSections.map((section) => (
             <div key={section.id} className="rounded-lg border border-border p-4">
@@ -233,7 +235,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">2. Profil foyer</h2>
+        <h3 className="text-lg font-semibold text-foreground">2. Profil foyer</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           <Metric label="Foyer" value={household.name} />
           <Metric label="Contexte" value={household.professionalContext} />
@@ -241,7 +243,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">3. Cartographie patrimoniale</h2>
+        <h3 className="text-lg font-semibold text-foreground">3. Cartographie patrimoniale</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {summary.allocation.map((item) => (
             <Metric
@@ -254,12 +256,12 @@ export function ReportDocument({
       </section>
 
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-        <h2 className="text-base font-semibold text-amber-950">4. Hypothèses et limites</h2>
+        <h3 className="text-base font-semibold text-amber-950">4. Hypothèses et limites</h3>
         <p className="mt-2 text-sm leading-6 text-amber-900">{summary.limits}</p>
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">4 bis. Méthode et limites V2.3</h2>
+        <h3 className="text-lg font-semibold text-foreground">4 bis. Méthode et limites V2.3</h3>
         <p className="mt-3 text-sm leading-6 text-muted">
           Le rapport sépare ce qui est déclaré, ce qui est simulé, ce qui vient d&apos;une règle
           sourcée et ce qui relève d&apos;une action professionnelle. Cette séparation évite de
@@ -277,7 +279,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">5. Hypothèses saisies par le conseiller</h2>
+        <h3 className="text-lg font-semibold text-foreground">5. Hypothèses saisies par le conseiller</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {adviserHypotheses.map((item) => (
             <div key={item.label} className="rounded-lg border border-border p-4">
@@ -299,7 +301,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">6. Résultats fiscaux V2</h2>
+        <h3 className="text-lg font-semibold text-foreground">6. Résultats fiscaux V2</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {taxRuns.map((run) => {
             const firstSource = evidenceSources.find((source) => source.id === run.evidenceSourceIds[0]);
@@ -351,7 +353,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">7. Scénarios comparés</h2>
+        <h3 className="text-lg font-semibold text-foreground">7. Scénarios comparés</h3>
         <div className="mt-4 grid gap-3 lg:grid-cols-5">
           {scenarioComparisons.map((scenario) => (
             <div key={scenario.id} className="rounded-lg border border-border p-4">
@@ -368,7 +370,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">8. Résultats IFI</h2>
+        <h3 className="text-lg font-semibold text-foreground">8. Résultats IFI</h3>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <Metric label="Base IFI" value={formatEuro(ifiRun.result.taxableBase ?? 0)} />
           <Metric label="Seuil d'alerte" value={formatEuro(ifiRun.result.threshold)} />
@@ -380,7 +382,7 @@ export function ReportDocument({
       <CalculationSteps steps={ifiRun.steps} />
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">9. Sources officielles</h2>
+        <h3 className="text-lg font-semibold text-foreground">9. Sources officielles</h3>
         <div className="mt-3 grid gap-3">
           {evidenceSources.map((source) => (
             <a
@@ -403,7 +405,7 @@ export function ReportDocument({
 
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold text-amber-950">Pourquoi le produit ne conclut pas seul</h2>
+          <h3 className="text-base font-semibold text-amber-950">Pourquoi le produit ne conclut pas seul</h3>
           <Badge tone="warning">Garde-fou</Badge>
         </div>
         <p className="mt-2 text-sm leading-6 text-amber-900">
@@ -422,7 +424,7 @@ export function ReportDocument({
 
       <section className="rounded-lg border border-red-200 bg-red-50 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold text-red-950">10. Points de revue professionnelle V2.4</h2>
+          <h3 className="text-base font-semibold text-red-950">10. Points de revue professionnelle V2.4</h3>
           <Badge tone="warning">Revue professionnelle</Badge>
         </div>
         <ul className="mt-3 grid gap-2 text-sm leading-6 text-red-900">
@@ -436,7 +438,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">11. Résumé audit PFU</h2>
+        <h3 className="text-lg font-semibold text-foreground">11. Résumé audit PFU</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {auditEvents.map((event) => (
             <div key={event.id} className="rounded-lg border border-border p-4">
@@ -449,7 +451,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">12. Questions professionnel</h2>
+        <h3 className="text-lg font-semibold text-foreground">12. Questions professionnel</h3>
         <ul className="mt-3 grid gap-2 text-sm leading-6 text-muted">
           {summary.openQuestions.map((question) => (
             <li key={question}>{question}</li>
@@ -460,7 +462,7 @@ export function ReportDocument({
       <MeetingBrief briefs={meetingBriefs.slice(0, 2)} />
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">13. Bloc validation et signature future</h2>
+        <h3 className="text-lg font-semibold text-foreground">13. Bloc validation et signature future</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <Metric label="Validation" value="Non signée" />
           <Metric label="Relecteur attendu" value="Avocat / notaire / CGP" />
@@ -469,7 +471,7 @@ export function ReportDocument({
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold text-foreground">14. Documents cabinet préparés</h2>
+        <h3 className="text-lg font-semibold text-foreground">14. Documents cabinet préparés</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {documents.map((document) => (
             <div key={document.id} className="rounded-lg border border-border p-4">

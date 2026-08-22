@@ -1,5 +1,11 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const require = createRequire(import.meta.url);
 const nextBin = require.resolve("next/dist/bin/next");
@@ -13,40 +19,162 @@ const port = process.env.E2E_PORT ?? "3015";
 // reachable.
 const serverUrl = `http://localhost:${port}`;
 
-const server = spawn(
-  process.execPath,
-  [nextBin, "dev", "--port", port],
-  {
+// PF-07 — the authenticated journeys need a real Clerk session resolved
+// against a real database. When the fixture is requested, this runner
+// provisions a disposable PostgreSQL cluster, migrates it, seeds the Clerk
+// mapping and points the dev server at a NOBYPASSRLS runtime login. Without
+// the flag the public suite runs exactly as before, with no database at all.
+const authenticatedFixture = process.env.E2E_CLERK_FIXTURE === "1";
+
+/** Reads a gitignored env file without overwriting an already-set variable. */
+function loadEnvFile(file) {
+  if (!existsSync(file)) return false;
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match) continue;
+    const value = match[2].replace(/^"(.*)"$/s, "$1");
+    if (value && process.env[match[1]] === undefined) process.env[match[1]] = value;
+  }
+  return true;
+}
+
+function availablePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const chosen = typeof address === "object" && address ? address.port : 0;
+      server.close((error) => (error ? reject(error) : resolve(chosen)));
+    });
+  });
+}
+
+let embedded = null;
+let databaseDir = null;
+
+async function startAuthenticatedFixture() {
+  for (const file of [".env.e2e.local", ".env.staging.local", ".env.local"]) {
+    loadEnvFile(join(process.cwd(), file));
+  }
+
+  const missing = [
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    "CLERK_SECRET_KEY",
+    "E2E_CLERK_ORG_CABINET_A",
+    "E2E_CLERK_ORG_CABINET_B",
+    "E2E_CLERK_USER_ADVISER_A",
+    "E2E_CLERK_USER_EXPERT_A",
+    "E2E_CLERK_USER_CLIENT_A",
+    "E2E_CLERK_USER_EXPERT_B",
+    "E2E_CLERK_USER_UNKNOWN_A",
+  ].filter((name) => !process.env[name]?.trim());
+
+  if (missing.length > 0) {
+    throw new Error(
+      `E2E_CLERK_FIXTURE=1 but the fixture is not provisioned. Missing: ${missing.join(", ")}.\n`
+      + "Run: npm run e2e:fixture -- provision",
+    );
+  }
+  if (!process.env.CLERK_SECRET_KEY.startsWith("sk_test_")) {
+    throw new Error("E2E_CLERK_FIXTURE refuses a non-development Clerk instance.");
+  }
+
+  const { default: EmbeddedPostgres } = await import("embedded-postgres");
+  databaseDir = await mkdtemp(join(tmpdir(), "patrimoine-pf07-e2e-"));
+  const databasePort = await availablePort();
+
+  embedded = new EmbeddedPostgres({
+    databaseDir,
+    port: databasePort,
+    user: "postgres",
+    password: "postgres",
+    persistent: true,
+    onLog: () => {},
+    onError: (error) => process.stderr.write(`[embedded-postgres] ${String(error)}\n`),
+  });
+
+  process.stdout.write("[e2e] provisioning disposable PostgreSQL…\n");
+  await embedded.initialise();
+  await embedded.start();
+
+  const adminUrl = `postgres://postgres:postgres@127.0.0.1:${databasePort}/postgres`;
+  const runtimePassword = randomBytes(24).toString("base64url");
+
+  const seed = spawnSync(
+    process.execPath,
+    [require.resolve("tsx/cli"), "scripts/seed-e2e-fixture.ts"],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        DATABASE_ADMIN_URL: adminUrl,
+        E2E_RUNTIME_PASSWORD: runtimePassword,
+      },
+      encoding: "utf8",
+      windowsHide: true,
+    },
+  );
+
+  process.stdout.write(seed.stdout ?? "");
+  if (seed.status !== 0) {
+    throw new Error(`E2E fixture seed failed.\n${seed.stderr ?? ""}`);
+  }
+
+  const runtimeUrl = new URL(adminUrl);
+  runtimeUrl.username = "patrimoine_e2e_runtime";
+  runtimeUrl.password = runtimePassword;
+
+  // Handed to Playwright, not to the server: the revocation journey has to
+  // change an authoritative membership while a Clerk session is still live.
+  process.env.E2E_ADMIN_DATABASE_URL = adminUrl;
+
+  return {
+    DATABASE_URL: runtimeUrl.toString(),
+    PERSISTENCE_MODE: "DATABASE",
+    // Deployment-only in production; the E2E server must not hold it.
+    DATABASE_ADMIN_URL: undefined,
+    DOCUMENT_DOWNLOAD_SIGNING_SECRET:
+      process.env.DOCUMENT_DOWNLOAD_SIGNING_SECRET?.trim()
+      || randomBytes(48).toString("base64url"),
+  };
+}
+
+async function stopAuthenticatedFixture() {
+  if (embedded) {
+    await Promise.race([
+      embedded.stop().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 15_000)),
+    ]);
+    embedded = null;
+  }
+  if (databaseDir) {
+    await rm(databaseDir, { recursive: true, force: true }).catch(() => {});
+    databaseDir = null;
+  }
+}
+
+let server = null;
+let serverLog = "";
+
+function startServer(extraEnv) {
+  const env = { ...process.env, ...extraEnv };
+  for (const [key, value] of Object.entries(extraEnv)) {
+    if (value === undefined) delete env[key];
+  }
+
+  server = spawn(process.execPath, [nextBin, "dev", "--port", port], {
     cwd: process.cwd(),
-    env: process.env,
+    env,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
-  },
-);
+  });
 
-let serverLog = "";
-server.stdout.on("data", (chunk) => {
-  serverLog += chunk.toString();
-});
-server.stderr.on("data", (chunk) => {
-  serverLog += chunk.toString();
-});
-
-server.on("exit", (code) => {
-  if (code !== null && code !== 0) {
-    console.error(serverLog);
-  }
-});
-
-try {
-  await waitForServer(serverUrl);
-  const code = await runPlaywright(process.argv.slice(2));
-  await stopServer();
-  process.exit(code);
-} catch (error) {
-  await stopServer();
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
+  server.stdout.on("data", (chunk) => { serverLog += chunk.toString(); });
+  server.stderr.on("data", (chunk) => { serverLog += chunk.toString(); });
+  server.on("exit", (code) => {
+    if (code !== null && code !== 0) console.error(serverLog);
+  });
 }
 
 /**
@@ -92,7 +220,7 @@ function runPlaywright(args) {
 
 function stopServer() {
   return new Promise((resolve) => {
-    if (server.exitCode !== null || server.killed) {
+    if (!server || server.exitCode !== null || server.killed) {
       resolve();
       return;
     }
@@ -101,10 +229,26 @@ function stopServer() {
     server.kill();
 
     setTimeout(() => {
-      if (server.exitCode === null && !server.killed) {
-        server.kill("SIGKILL");
-      }
+      if (server.exitCode === null && !server.killed) server.kill("SIGKILL");
       resolve();
     }, 2_000).unref();
   });
+}
+
+async function shutdown() {
+  await stopServer();
+  await stopAuthenticatedFixture();
+}
+
+try {
+  const extraEnv = authenticatedFixture ? await startAuthenticatedFixture() : {};
+  startServer(extraEnv);
+  await waitForServer(serverUrl);
+  const code = await runPlaywright(process.argv.slice(2));
+  await shutdown();
+  process.exit(code);
+} catch (error) {
+  await shutdown();
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
 }

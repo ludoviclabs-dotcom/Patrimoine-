@@ -275,7 +275,9 @@ describe("PF-06B cabinet report console workflow", () => {
     expect(state.selectedDossier?.id).toBe(dossierA);
     expect(state.runs.map((run) => run.id)).toEqual([runA]);
     expect(state.currentVersion).toBeNull();
-    expect(state.capabilities).toEqual({ generate: true, validate: false, download: true });
+    expect(state.capabilities).toEqual({
+      generate: true, validate: false, download: true, signReview: false,
+    });
     expect(state.blockers.map((blocker) => blocker.code)).toEqual(
       expect.arrayContaining(["REPORT_LEGAL_FREEZE_DATE_REQUIRED", "REPORT_SIMULATION_RUN_REQUIRED"]),
     );
